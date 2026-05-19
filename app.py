@@ -502,10 +502,10 @@ elif page == "import":
                                     st.markdown("**Elemento timetableTabsOuter:**")
                                     st.code(str(tabs_outer)[:3000], language="html")
 
-                                # 3) Probar el nuevo parser directamente
+                                # 3) Probar el nuevo parser directamente (pasamos HTML crudo)
                                 st.markdown("**Resultado del parser de reservas:**")
                                 from src.syltek_connector import _parse_occupied_slots as _pos
-                                parsed_bk = _pos(soup_d, diag_date, syl_imp_url)
+                                parsed_bk = _pos(r_diag.text, diag_date)
                                 # Mostrar siempre el objeto timetable JS (primeros 4000 chars)
                                 raw_d = r_diag.text
                                 m_tt = re.search(r'var\s+timetable\s*=\s*\{', raw_d)

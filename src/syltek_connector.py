@@ -211,7 +211,6 @@ class SyltekConnector:
     def _get_bookings_for_day(self, day: date) -> list[Booking]:
         """
         Lee el calendario de un día concreto y devuelve las reservas ocupadas.
-        Parsea la tabla de la vista diaria de Syltek.
         """
         encoded = base64.b64encode(day.strftime("%d/%m/%Y").encode()).decode()
         url = f"{self.base}{CALENDAR_PATH}?encodedDate={encoded}&type=56"
@@ -222,8 +221,9 @@ class SyltekConnector:
             logger.warning("Error al leer el calendario del %s: %s", day, e)
             return []
 
-        soup = BeautifulSoup(r.text, "html.parser")
-        return _parse_occupied_slots(soup, day, self.base)
+        # Pasamos el HTML crudo (no soup) para evitar que BeautifulSoup
+        # altere el contenido de los tags <script>
+        return _parse_occupied_slots(r.text, day)
 
     # ------------------------------------------------------------------
     # Descubrimiento de pistas
@@ -560,7 +560,7 @@ def run_login_check(url: str, user: str, password: str) -> tuple[bool, str]:
 # Helpers de parsing HTML
 # ---------------------------------------------------------------------------
 
-def _parse_occupied_slots(soup: BeautifulSoup, day: date, base_url: str) -> list[Booking]:
+def _parse_occupied_slots(raw_html: str, day: date) -> list[Booking]:
     """
     Parsea la vista diaria del calendario de Syltek.
 
@@ -579,27 +579,27 @@ def _parse_occupied_slots(soup: BeautifulSoup, day: date, base_url: str) -> list
     from datetime import time as dtime, datetime
 
     bookings: list[Booking] = []
-    raw = str(soup)
 
     # ------------------------------------------------------------------
-    # 1. Extraer el bloque "var timetable = { ... };"
+    # 1. Localizar el bloque "var timetable = { ... };"
+    #    El objeto está en una sola línea larga dentro de un <script>
     # ------------------------------------------------------------------
-    m_start = re.search(r'var\s+timetable\s*=\s*\{', raw)
+    m_start = re.search(r'var\s+timetable\s*=\s*\{', raw_html)
     if not m_start:
         logger.debug("No se encontró 'var timetable' en el HTML del día %s", day)
         return bookings
 
-    # Encontrar el } de cierre usando conteo de llaves
+    # Encontrar el } de cierre usando conteo de llaves (respetando strings)
     idx = m_start.start()
     brace = 0
     end_idx = idx
     in_str = False
     str_char = ""
     i = idx
-    while i < len(raw):
-        ch = raw[i]
+    while i < len(raw_html):
+        ch = raw_html[i]
         if in_str:
-            if ch == str_char and raw[i - 1] != "\\":
+            if ch == str_char and (i == 0 or raw_html[i - 1] != "\\"):
                 in_str = False
         else:
             if ch in ('"', "'"):
@@ -614,7 +614,8 @@ def _parse_occupied_slots(soup: BeautifulSoup, day: date, base_url: str) -> list
                     break
         i += 1
 
-    timetable_js = raw[idx : end_idx + 1]
+    timetable_js = raw_html[idx : end_idx + 1]
+    logger.debug("Bloque timetable extraído: %d chars", len(timetable_js))
 
     # ------------------------------------------------------------------
     # 2. Extraer pistas (resources)
