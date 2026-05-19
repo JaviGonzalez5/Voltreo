@@ -479,16 +479,33 @@ elif page == "import":
                             st.caption(f"URL consultada: `{url_cal}`")
                             try:
                                 r_diag = conn_diag._session.get(url_cal, timeout=20)
-                                st.caption(f"HTTP {r_diag.status_code} — {len(r_diag.text)} caracteres")
-                                # Mostrar primeras 3000 chars del HTML
-                                st.code(r_diag.text[:4000], language="html")
-                                # También buscar clases CSS relevantes
+                                st.caption(f"HTTP {r_diag.status_code} — {len(r_diag.text):,} caracteres")
                                 from bs4 import BeautifulSoup as _BS
                                 soup_d = _BS(r_diag.text, "html.parser")
-                                cells = soup_d.find_all(class_=lambda c: c and "timetable" in " ".join(c).lower())
-                                st.caption(f"Elementos con clase 'timetable*': {len(cells)}")
-                                if cells:
-                                    st.code(str(cells[0])[:2000], language="html")
+
+                                # 1) Clases CSS presentes que contengan palabras clave
+                                all_cls: set = set()
+                                for _tag in soup_d.find_all(True):
+                                    for _c in (_tag.get("class") or []):
+                                        all_cls.add(_c)
+                                rel_cls = sorted(
+                                    c for c in all_cls
+                                    if any(k in c.lower() for k in ("timetable","booking","reserv","cell","slot","court","pista"))
+                                )
+                                st.markdown(f"**Clases relevantes ({len(rel_cls)}):**")
+                                st.code(", ".join(rel_cls) or "(ninguna)", language="text")
+
+                                # 2) Elementos con clase timetable*
+                                tt_els = soup_d.find_all(
+                                    class_=lambda c: c and any("timetable" in x.lower() for x in c)
+                                )
+                                st.markdown(f"**Elementos timetable*: {len(tt_els)}**")
+                                if tt_els:
+                                    st.code(str(tt_els[0])[:3000], language="html")
+                                else:
+                                    # 3) Nada — mostrar fragmento del cuerpo (zona del calendario)
+                                    st.warning("No hay elementos timetable*. HTML zona 3000–8000:")
+                                    st.code(r_diag.text[3000:8000], language="html")
                             except Exception as ex:
                                 st.error(f"Error: {ex}")
 
