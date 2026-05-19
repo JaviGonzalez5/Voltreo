@@ -255,6 +255,8 @@ class Scheduler:
         pair_weekly_count: dict[str, dict[int, int]] = defaultdict(lambda: defaultdict(int))
         day_load: dict[date, int] = defaultdict(int)
         court_load: dict[str, int] = defaultdict(int)
+        # Jugadores con partido ya asignado ese día (cubre jugadores en varios rankings)
+        player_day_set: dict[str, set[date]] = defaultdict(set)
 
         scheduled: list[Match] = []
         conflicts: list[Match] = []
@@ -263,6 +265,11 @@ class Scheduler:
         for match in shuffled:
             p1_id = match.pair_1.id
             p2_id = match.pair_2.id
+            # IDs de los 4 jugadores individuales del partido
+            player_ids = [
+                match.pair_1.player_1.id, match.pair_1.player_2.id,
+                match.pair_2.player_1.id, match.pair_2.player_2.id,
+            ]
 
             # Filtrar candidatos por restricciones duras
             candidates: list[AvailabilitySlot] = []
@@ -277,6 +284,9 @@ class Scheduler:
                 if self._pair_conflicts_existing(p1_id, d, st, et, pair_schedule):
                     continue
                 if self._pair_conflicts_existing(p2_id, d, st, et, pair_schedule):
+                    continue
+                # Ningún jugador puede tener dos partidos el mismo día (cross-ranking)
+                if any(d in player_day_set[pid] for pid in player_ids):
                     continue
                 wk = self._week_num(d)
                 if pair_weekly_count[p1_id][wk] >= self.phase.max_matches_per_week:
@@ -333,6 +343,8 @@ class Scheduler:
             pair_schedule[p2_id].append((best.date, best.start_time, best.end_time, best.court.id))
             pair_weekly_count[p1_id][self._week_num(best.date)] += 1
             pair_weekly_count[p2_id][self._week_num(best.date)] += 1
+            for pid in player_ids:
+                player_day_set[pid].add(best.date)
             day_load[best.date] += 1
             court_load[best.court.id] += 1
 
