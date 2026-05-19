@@ -68,7 +68,13 @@ class SyltekConnector:
         password: Optional[str] = None,
         dry_run: bool = True,
     ):
-        self.base = (url or settings.syltek_url or PADELPLUS_BASE).rstrip("/")
+        raw = (url or settings.syltek_url or PADELPLUS_BASE).rstrip("/")
+        # Si el usuario pega la URL de login completa, extraer solo el origen
+        for lp in LOGIN_PATHS:
+            if raw.endswith(lp):
+                raw = raw[: -len(lp)]
+                break
+        self.base = raw
         self.user = user or settings.syltek_user
         self._password = password or settings.syltek_password
         self.dry_run = dry_run

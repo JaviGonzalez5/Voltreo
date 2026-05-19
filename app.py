@@ -150,7 +150,11 @@ if page == "config":
 
     with col1:
         st.subheader("Credenciales Syltek")
-        syltek_url = st.text_input("URL de Syltek", value=settings.syltek_url or "")
+        syltek_url = st.text_input(
+            "URL de Syltek",
+            value=settings.syltek_url or "https://padelplus.padelclick.com",
+            help="Solo la URL base, sin path. Ej: https://padelplus.padelclick.com",
+        )
         syltek_user = st.text_input("Usuario", value=settings.syltek_user or "")
         syltek_pass = st.text_input("Contraseña", type="password", value="")
 
@@ -890,8 +894,9 @@ elif page == "syltek":
     with col_url:
         syl_url = st.text_input(
             "URL de Syltek",
-            value=settings.syltek_url or "https://padelplus.syltek.com",
+            value=settings.syltek_url or "https://padelplus.padelclick.com",
             key="syl_url",
+            help="Solo la URL base. Ej: https://padelplus.padelclick.com",
         )
     with col_user:
         syl_user = st.text_input(
