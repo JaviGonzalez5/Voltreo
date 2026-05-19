@@ -703,7 +703,7 @@ elif page == "generate":
                 "Fin": m.suggested_end_time,
                 "Pista": m.court.name if m.court else "",
                 "Estado": m.status.value,
-                "Observaciones": m.conflict_reason or m.notes or "",
+                "Observaciones": (m.conflict_reason if m.status == MatchStatus.CONFLICT else m.notes) or "",
             })
 
         df_matches = pd.DataFrame(rows)

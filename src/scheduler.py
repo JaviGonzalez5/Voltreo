@@ -337,6 +337,7 @@ class Scheduler:
             match.suggested_end_time = best.end_time
             match.court = best.court
             match.status = MatchStatus.SCHEDULED
+            match.conflict_reason = None
 
             occupied_slots.add((best.court.id, best.date, best.start_time))
             pair_schedule[p1_id].append((best.date, best.start_time, best.end_time, best.court.id))
