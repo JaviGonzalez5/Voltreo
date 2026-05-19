@@ -3,7 +3,6 @@ Validaciones de datos importados (CSV / Syltek).
 Devuelve listas de errores en lugar de lanzar excepciones para que la UI
 pueda mostrarlos al usuario sin romper el flujo.
 """
-from __future__ import annotations
 
 from typing import Any
 import pandas as pd

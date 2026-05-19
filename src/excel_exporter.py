@@ -2,7 +2,6 @@
 Exporta el calendario de partidos a un Excel formateado.
 Hojas: Calendario General, una por grupo, Conflictos, Contactos, Resumen.
 """
-from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path

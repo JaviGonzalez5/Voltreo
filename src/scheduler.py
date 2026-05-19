@@ -7,7 +7,6 @@ Asigna horarios a los partidos pendientes respetando:
 - Separación mínima de N días entre partidos de la misma pareja.
 - Distribución equilibrada de días, horas y pistas (scoring).
 """
-from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date, time, datetime, timedelta

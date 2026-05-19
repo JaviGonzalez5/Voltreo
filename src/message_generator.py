@@ -2,7 +2,6 @@
 Genera borradores de mensajes/emails para cada grupo o pareja.
 No envía nada automáticamente — solo genera texto para revisión manual.
 """
-from __future__ import annotations
 
 from collections import defaultdict
 

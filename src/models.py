@@ -1,7 +1,6 @@
 """
 Modelos de datos centrales con Pydantic v2.
 """
-from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, time, datetime

@@ -4,7 +4,6 @@ Genera los enfrentamientos round-robin para cada grupo del ranking.
 - Evita duplicados.
 - Soporta importar partidos ya jugados para excluirlos.
 """
-from __future__ import annotations
 
 from itertools import combinations
 from typing import Optional

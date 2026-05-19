@@ -13,7 +13,6 @@ Seguridad:
   - Las contraseñas nunca aparecen en logs.
   - Se detiene si detecta captcha o 2FA.
 """
-from __future__ import annotations
 
 import base64
 import logging

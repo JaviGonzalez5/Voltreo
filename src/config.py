@@ -2,7 +2,6 @@
 Configuración central de la aplicación.
 Lee variables de entorno desde .env y expone valores por defecto editables.
 """
-from __future__ import annotations
 
 import os
 from pathlib import Path
