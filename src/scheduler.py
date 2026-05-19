@@ -290,7 +290,7 @@ class Scheduler:
                 )
                 conflicts.append(match)
                 conflict_details.append(
-                    Conflict(
+                    Conflict.model_construct(
                         match_id=match.id,
                         match_label=match.label,
                         reason=match.conflict_reason,
@@ -324,7 +324,7 @@ class Scheduler:
 
         courts_used = list({m.court.name for m in scheduled if m.court})
 
-        return ScheduleResult(
+        return ScheduleResult.model_construct(
             scheduled=scheduled,
             conflicts=conflicts,
             total_matches=len(matches),
