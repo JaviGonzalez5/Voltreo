@@ -123,6 +123,7 @@ PAGES = {
     "📅 Generar calendario": "generate",
     "📤 Exportar": "export",
     "🔍 Revisión": "review",
+    "🔗 Publicar en Syltek": "syltek",
 }
 page_label = st.sidebar.radio("Navegación", list(PAGES.keys()))
 page = PAGES[page_label]
@@ -423,6 +424,19 @@ elif page == "generate":
             and (not sel_pair or m.pair_1.display_name in sel_pair or m.pair_2.display_name in sel_pair)
         ]
 
+        # Índice de IDs para poder mapear filas editadas → objetos Match
+        filtered_ids = [m.id for m in filtered]
+        match_id_to_obj = {m.id: m for m in st.session_state.matches}
+
+        # Construir lookup de pistas disponibles
+        court_name_to_obj: dict = {}
+        for c in (st.session_state.courts or []):
+            court_name_to_obj[c.name] = c
+        for m in st.session_state.matches:
+            if m.court and m.court.name not in court_name_to_obj:
+                court_name_to_obj[m.court.name] = m.court
+        court_names = sorted(court_name_to_obj.keys())
+
         rows = []
         for m in filtered:
             rows.append({
@@ -430,9 +444,9 @@ elif page == "generate":
                 "Grupo": m.group_name,
                 "Pareja 1": m.pair_1.display_name,
                 "Pareja 2": m.pair_2.display_name,
-                "Fecha": m.suggested_date.strftime("%d/%m/%Y") if m.suggested_date else "",
-                "Inicio": m.suggested_start_time.strftime("%H:%M") if m.suggested_start_time else "",
-                "Fin": m.suggested_end_time.strftime("%H:%M") if m.suggested_end_time else "",
+                "Fecha": m.suggested_date,
+                "Inicio": m.suggested_start_time,
+                "Fin": m.suggested_end_time,
                 "Pista": m.court.name if m.court else "",
                 "Estado": m.status.value,
                 "Observaciones": m.conflict_reason or m.notes or "",
@@ -440,22 +454,95 @@ elif page == "generate":
 
         df_matches = pd.DataFrame(rows)
 
-        def highlight_status(row):
-            color_map = {
-                "scheduled": "background-color: #C6EFCE",
-                "conflict": "background-color: #FFC7CE",
-                "pending": "background-color: #FFEB9C",
-                "manually_modified": "background-color: #C6EFCE",
-            }
-            status = row.get("Estado", "")
-            color = color_map.get(status, "")
-            return [color] * len(row)
+        st.info("✏️ Edita directamente Fecha, Hora, Pista, Estado u Observaciones. Pulsa **Guardar cambios** para confirmar.")
 
-        st.dataframe(
-            df_matches.style.apply(highlight_status, axis=1),
+        edited_df = st.data_editor(
+            df_matches,
+            column_config={
+                "ID": st.column_config.TextColumn("ID", disabled=True, width="small"),
+                "Grupo": st.column_config.TextColumn("Grupo", disabled=True),
+                "Pareja 1": st.column_config.TextColumn("Pareja 1", disabled=True),
+                "Pareja 2": st.column_config.TextColumn("Pareja 2", disabled=True),
+                "Fecha": st.column_config.DateColumn("Fecha", format="DD/MM/YYYY"),
+                "Inicio": st.column_config.TimeColumn("Inicio", format="HH:mm"),
+                "Fin": st.column_config.TimeColumn("Fin", format="HH:mm"),
+                "Pista": st.column_config.SelectboxColumn("Pista", options=[""] + court_names),
+                "Estado": st.column_config.SelectboxColumn("Estado", options=[s.value for s in MatchStatus]),
+                "Observaciones": st.column_config.TextColumn("Observaciones"),
+            },
+            hide_index=True,
             use_container_width=True,
             height=500,
+            key="matches_editor",
         )
+
+        # Detectar cambios pendientes desde el estado del editor
+        editor_state = st.session_state.get("matches_editor", {})
+        edited_rows = editor_state.get("edited_rows", {})
+        n_pending = len(edited_rows)
+
+        col_save, col_hint = st.columns([1, 3])
+        with col_save:
+            save_clicked = st.button(
+                f"💾 Guardar cambios ({n_pending})" if n_pending else "💾 Guardar cambios",
+                type="primary" if n_pending else "secondary",
+                disabled=(n_pending == 0),
+            )
+        with col_hint:
+            if n_pending:
+                st.warning(f"Hay {n_pending} partido(s) modificado(s) sin guardar.")
+
+        if save_clicked and edited_rows:
+            changed = 0
+            for row_idx_raw, changes in edited_rows.items():
+                row_idx = int(row_idx_raw)
+                if row_idx >= len(filtered_ids):
+                    continue
+                match_obj = match_id_to_obj.get(filtered_ids[row_idx])
+                if match_obj is None:
+                    continue
+
+                user_set_status = False
+                for col, new_val in changes.items():
+                    if col == "Fecha" and new_val is not None:
+                        from datetime import date as _date
+                        if isinstance(new_val, str):
+                            from datetime import datetime as _dt
+                            match_obj.suggested_date = _dt.fromisoformat(new_val).date()
+                        else:
+                            match_obj.suggested_date = new_val
+                    elif col == "Inicio" and new_val is not None:
+                        if isinstance(new_val, str):
+                            parts = new_val.split(":")
+                            match_obj.suggested_start_time = time(int(parts[0]), int(parts[1]))
+                        else:
+                            match_obj.suggested_start_time = new_val
+                    elif col == "Fin" and new_val is not None:
+                        if isinstance(new_val, str):
+                            parts = new_val.split(":")
+                            match_obj.suggested_end_time = time(int(parts[0]), int(parts[1]))
+                        else:
+                            match_obj.suggested_end_time = new_val
+                    elif col == "Pista" and new_val and new_val in court_name_to_obj:
+                        match_obj.court = court_name_to_obj[new_val]
+                    elif col == "Estado" and new_val:
+                        try:
+                            match_obj.status = MatchStatus(new_val)
+                            user_set_status = True
+                        except ValueError:
+                            pass
+                    elif col == "Observaciones":
+                        match_obj.notes = str(new_val or "")
+                        match_obj.conflict_reason = None
+
+                if not user_set_status:
+                    match_obj.status = MatchStatus.MANUALLY_MODIFIED
+                changed += 1
+
+            if changed:
+                st.success(f"✅ {changed} partido(s) guardado(s) correctamente.")
+                del st.session_state["matches_editor"]
+                st.rerun()
 
         st.caption(f"Mostrando {len(filtered)} de {len(st.session_state.matches)} partidos.")
 
@@ -615,5 +702,223 @@ elif page == "review":
             for pid, cnt in conflict_pairs
         ]
         st.dataframe(pd.DataFrame(rows_p), use_container_width=True)
+
+# ---------------------------------------------------------------------------
+# PÁGINA 6: Publicar en Syltek
+# ---------------------------------------------------------------------------
+
+elif page == "syltek":
+    st.title("🔗 Publicar en Syltek")
+
+    from src.syltek_connector import SyltekConnector, run_login_check
+
+    # Estado de sesión Syltek
+    if "syltek_logged_in" not in st.session_state:
+        st.session_state["syltek_logged_in"] = False
+    if "syltek_courts" not in st.session_state:
+        st.session_state["syltek_courts"] = {}
+    if "syltek_publish_results" not in st.session_state:
+        st.session_state["syltek_publish_results"] = []
+
+    # ----------------------------------------------------------------
+    # Paso 1: Conexión
+    # ----------------------------------------------------------------
+    st.subheader("Paso 1 — Conectar con Syltek")
+
+    col_url, col_user = st.columns(2)
+    with col_url:
+        syl_url = st.text_input(
+            "URL de Syltek",
+            value=settings.syltek_url or "https://padelplus.syltek.com",
+            key="syl_url",
+        )
+    with col_user:
+        syl_user = st.text_input(
+            "Usuario",
+            value=settings.syltek_user or "",
+            key="syl_user",
+        )
+    syl_pass = st.text_input("Contraseña", type="password", key="syl_pass")
+
+    dry_run_toggle = st.toggle(
+        "Modo seguro (DRY-RUN) — simula las reservas sin crearlas de verdad",
+        value=True,
+        key="syl_dry_run",
+    )
+    if not dry_run_toggle:
+        st.error("⚠️ Modo escritura REAL activado. Las reservas se crearán en Syltek.")
+
+    if st.button("🔌 Conectar", type="primary"):
+        if not syl_url or not syl_user or not syl_pass:
+            st.error("Rellena URL, usuario y contraseña.")
+        else:
+            with st.spinner("Conectando con Syltek..."):
+                ok, msg = run_login_check(syl_url, syl_user, syl_pass)
+            if ok:
+                st.session_state["syltek_logged_in"] = True
+                st.session_state["syltek_credentials"] = (syl_url, syl_user, syl_pass)
+                st.success(f"✅ {msg}")
+            else:
+                st.session_state["syltek_logged_in"] = False
+                st.error(f"❌ {msg}")
+
+    if not st.session_state["syltek_logged_in"]:
+        st.stop()
+
+    st.success("✅ Conectado a Syltek")
+    st.markdown("---")
+
+    # ----------------------------------------------------------------
+    # Paso 2: Descubrir pistas
+    # ----------------------------------------------------------------
+    st.subheader("Paso 2 — Descubrir pistas disponibles")
+    st.info(
+        "Esto conecta al calendario de Syltek y extrae automáticamente "
+        "los nombres e IDs de todas las pistas."
+    )
+
+    col_disc, col_manual = st.columns(2)
+
+    with col_disc:
+        if st.button("🔍 Descubrir pistas automáticamente"):
+            url_, user_, pass_ = st.session_state["syltek_credentials"]
+            conn = SyltekConnector(url=url_, user=user_, password=pass_, dry_run=True)
+            ok, msg = conn.login()
+            if ok:
+                with st.spinner("Leyendo calendario..."):
+                    courts = conn.discover_courts()
+                if courts:
+                    st.session_state["syltek_courts"] = courts
+                    st.success(f"✅ {len(courts)} pistas encontradas: {', '.join(courts.keys())}")
+                else:
+                    st.warning(
+                        "No se pudieron detectar las pistas automáticamente. "
+                        "Usa la configuración manual."
+                    )
+            else:
+                st.error(msg)
+
+    with col_manual:
+        st.markdown("**O configura manualmente:**")
+        n_courts = st.number_input("Número de pistas", min_value=1, max_value=20, value=10)
+        if st.button("Configurar pistas manualmente"):
+            manual_courts = {}
+            for i in range(1, int(n_courts) + 1):
+                manual_courts[f"Padel {i}"] = str(1479 + i)
+            st.session_state["syltek_courts"] = manual_courts
+            st.info(
+                "Pistas configuradas con IDs estimados. Si las reservas fallan, "
+                "usa el botón de descubrimiento automático."
+            )
+
+    if st.session_state["syltek_courts"]:
+        with st.expander("Ver pistas configuradas"):
+            for name, rid in st.session_state["syltek_courts"].items():
+                st.write(f"• **{name}** → ID: `{rid}`")
+
+        # Permitir edición manual de IDs
+        st.markdown("**Corregir IDs si es necesario:**")
+        courts_edit = {}
+        cols = st.columns(5)
+        for i, (name, rid) in enumerate(st.session_state["syltek_courts"].items()):
+            with cols[i % 5]:
+                new_id = st.text_input(name, value=rid, key=f"court_id_{i}", label_visibility="visible")
+                courts_edit[name] = new_id
+        if st.button("💾 Guardar IDs de pistas"):
+            st.session_state["syltek_courts"] = courts_edit
+            st.success("IDs guardados.")
+
+    if not st.session_state["syltek_courts"]:
+        st.stop()
+
+    st.markdown("---")
+
+    # ----------------------------------------------------------------
+    # Paso 3: Publicar partidos
+    # ----------------------------------------------------------------
+    st.subheader("Paso 3 — Crear reservas en Syltek")
+
+    if not st.session_state.matches_scheduled:
+        st.warning("Primero genera y asigna horarios en **Generar calendario**.")
+        st.stop()
+
+    phase: RankingPhase = st.session_state.phase
+    scheduled = [m for m in st.session_state.matches if m.status.value in ("scheduled", "manually_modified")]
+
+    st.metric("Partidos programados listos para publicar", len(scheduled))
+
+    if not scheduled:
+        st.info("No hay partidos programados. Genera el calendario primero.")
+        st.stop()
+
+    # Tabla resumen
+    rows_pub = []
+    for m in scheduled:
+        rows_pub.append({
+            "Grupo": m.group_name,
+            "Pareja 1": m.pair_1.display_name,
+            "Pareja 2": m.pair_2.display_name,
+            "Fecha": m.suggested_date.strftime("%d/%m/%Y") if m.suggested_date else "—",
+            "Hora": m.suggested_start_time.strftime("%H:%M") if m.suggested_start_time else "—",
+            "Pista": m.court.name if m.court else "—",
+        })
+    st.dataframe(pd.DataFrame(rows_pub), use_container_width=True, height=300)
+
+    send_email = st.checkbox("Enviar email de confirmación a los jugadores", value=False)
+
+    mode_label = "🟠 SIMULACIÓN (dry-run)" if dry_run_toggle else "🔴 RESERVAS REALES"
+    if st.button(f"🚀 Publicar {len(scheduled)} partidos en Syltek — {mode_label}", type="primary"):
+        url_, user_, pass_ = st.session_state["syltek_credentials"]
+        conn = SyltekConnector(url=url_, user=user_, password=pass_, dry_run=dry_run_toggle)
+        conn.login()
+        conn.set_courts(st.session_state["syltek_courts"])
+
+        results = []
+        progress = st.progress(0, text="Publicando partidos...")
+        ok_count = 0
+        fail_count = 0
+
+        for i, match in enumerate(scheduled):
+            if not match.suggested_date or not match.suggested_start_time or not match.court:
+                results.append({"Partido": match.label, "Estado": "⚠️ Sin fecha/hora/pista", "Mensaje": ""})
+                fail_count += 1
+                continue
+
+            ok, msg = conn.create_booking(
+                booking_date=match.suggested_date,
+                start_hour=match.suggested_start_time.hour,
+                start_minute=match.suggested_start_time.minute,
+                duration_minutes=phase.match_duration_minutes,
+                court_name=match.court.name,
+                pair1_name=match.pair_1.display_name,
+                pair2_name=match.pair_2.display_name,
+                group_name=match.group_name,
+                send_email=send_email,
+            )
+            results.append({
+                "Partido": match.label,
+                "Estado": "✅ OK" if ok else "❌ Error",
+                "Mensaje": msg,
+            })
+            if ok:
+                ok_count += 1
+            else:
+                fail_count += 1
+
+            progress.progress((i + 1) / len(scheduled), text=f"Publicando... {i+1}/{len(scheduled)}")
+
+        progress.empty()
+        st.session_state["syltek_publish_results"] = results
+
+        if fail_count == 0:
+            st.success(f"✅ {ok_count} reservas {'simuladas' if dry_run_toggle else 'creadas'} correctamente.")
+        else:
+            st.warning(f"✅ {ok_count} OK — ❌ {fail_count} errores")
+
+    # Mostrar resultados anteriores
+    if st.session_state["syltek_publish_results"]:
+        st.subheader("Resultados")
+        df_res = pd.DataFrame(st.session_state["syltek_publish_results"])
+        st.dataframe(df_res, use_container_width=True)
 
 # (helpers definidos al inicio del archivo)

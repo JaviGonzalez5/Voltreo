@@ -1,41 +1,49 @@
 """
-Conector con Syltek/Padelplus usando Playwright.
+Conector con Padelplus/Syltek usando requests + BeautifulSoup.
 
-MODO SEGURO POR DEFECTO:
-- Solo lectura hasta que se active explícitamente el modo escritura.
-- Nunca crea reservas, envía emails ni modifica datos sin confirmación.
-- Guarda capturas de debug en /debug/screenshots.
-- Se detiene si detecta captcha o 2FA.
+Flujo:
+  1. login()             → abre sesión HTTP con las credenciales del .env
+  2. discover_courts()   → lee el calendario y devuelve {nombre_pista: idResource}
+  3. discover_rankings() → lista todos los rankings con sus IDs
+  4. get_groups(id)      → lee grupos y equipos de un ranking
+  5. create_booking()    → crea una reserva real (solo si dry_run=False)
 
-IMPORTANTE PARA PERSONALIZAR:
-Los selectores CSS/XPath de Syltek son específicos de cada instalación.
-Las funciones marcadas con  # <<SELECTOR PENDIENTE>> necesitan
-que tú inspeccionnes el HTML de tu Syltek y pegues el selector correcto.
-Usa el botón "Debug: Guardar HTML" en la UI para obtener el código fuente.
+Seguridad:
+  - dry_run=True por defecto: nunca escribe en Syltek sin confirmación explícita.
+  - Las contraseñas nunca aparecen en logs.
+  - Se detiene si detecta captcha o 2FA.
 """
 from __future__ import annotations
 
-import asyncio
+import base64
 import logging
+import re
 from datetime import date, datetime
-from pathlib import Path
 from typing import Optional
+
+import requests
+from bs4 import BeautifulSoup
 
 from .config import settings
 from .models import Booking, Court, Group, Pair, Player
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Excepción de seguridad
-# ---------------------------------------------------------------------------
+PADELPLUS_BASE = "https://padelplus.syltek.com"
 
-class SyltekSecurityStop(Exception):
-    """Se lanza cuando se detecta un elemento que requiere intervención humana."""
 
+# ---------------------------------------------------------------------------
+# Excepciones
+# ---------------------------------------------------------------------------
 
 class SyltekLoginError(Exception):
-    """Se lanza cuando el login falla."""
+    pass
+
+class SyltekSecurityStop(Exception):
+    pass
+
+class SyltekError(Exception):
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -43,13 +51,6 @@ class SyltekLoginError(Exception):
 # ---------------------------------------------------------------------------
 
 class SyltekConnector:
-    """
-    Abre un navegador Playwright y gestiona la sesión con Syltek.
-    Uso recomendado como context manager async:
-
-        async with SyltekConnector() as conn:
-            groups = await conn.get_groups()
-    """
 
     def __init__(
         self,
@@ -57,268 +58,547 @@ class SyltekConnector:
         user: Optional[str] = None,
         password: Optional[str] = None,
         dry_run: bool = True,
-        headless: bool = True,
     ):
-        self.url = url or settings.syltek_url
+        self.base = (url or settings.syltek_url or PADELPLUS_BASE).rstrip("/")
         self.user = user or settings.syltek_user
-        self._password = password or settings.syltek_password  # nunca loggeamos esto
+        self._password = password or settings.syltek_password
         self.dry_run = dry_run
-        self.headless = headless
 
-        self._browser = None
-        self._context = None
-        self._page = None
+        self._session = requests.Session()
+        self._session.headers.update({
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept-Language": "es-ES,es;q=0.9",
+        })
         self._logged_in = False
-
-        self._screenshots_dir = Path(settings.screenshots_dir)
-        self._html_dir = Path(settings.html_dump_dir)
-
-    # ------------------------------------------------------------------
-    # Context manager
-    # ------------------------------------------------------------------
-
-    async def __aenter__(self):
-        await self._launch()
-        return self
-
-    async def __aexit__(self, *args):
-        await self._close()
-
-    # ------------------------------------------------------------------
-    # Inicialización
-    # ------------------------------------------------------------------
-
-    async def _launch(self) -> None:
-        try:
-            from playwright.async_api import async_playwright
-        except ImportError:
-            raise RuntimeError(
-                "Playwright no está instalado. Ejecuta: pip install playwright && playwright install chromium"
-            )
-
-        self._pw = await async_playwright().start()
-        self._browser = await self._pw.chromium.launch(headless=self.headless)
-        self._context = await self._browser.new_context(
-            viewport={"width": 1280, "height": 900}
-        )
-        self._page = await self._context.new_page()
-        logger.info("Navegador iniciado. dry_run=%s", self.dry_run)
-
-    async def _close(self) -> None:
-        if self._browser:
-            await self._browser.close()
-        if hasattr(self, "_pw") and self._pw:
-            await self._pw.stop()
-        logger.info("Navegador cerrado.")
-
-    # ------------------------------------------------------------------
-    # Utilidades de debug
-    # ------------------------------------------------------------------
-
-    async def save_screenshot(self, name: str) -> Path:
-        path = self._screenshots_dir / f"{name}_{datetime.now().strftime('%H%M%S')}.png"
-        if self._page:
-            await self._page.screenshot(path=str(path), full_page=True)
-            logger.debug("Screenshot guardada: %s", path)
-        return path
-
-    async def save_html(self, name: str) -> Path:
-        path = self._html_dir / f"{name}_{datetime.now().strftime('%H%M%S')}.html"
-        if self._page:
-            content = await self._page.content()
-            path.write_text(content, encoding="utf-8")
-            logger.debug("HTML guardado: %s", path)
-        return path
-
-    async def _check_for_captcha_or_2fa(self) -> None:
-        """
-        Intenta detectar captchas o 2FA. Si los encuentra, guarda screenshot
-        y lanza SyltekSecurityStop para pedir intervención manual.
-        """
-        page_content = await self._page.content()
-        captcha_keywords = ["captcha", "recaptcha", "hcaptcha", "challenge"]
-        twofa_keywords = ["two-factor", "2fa", "autenticación en dos", "verificación"]
-
-        lower = page_content.lower()
-        for kw in captcha_keywords:
-            if kw in lower:
-                await self.save_screenshot("captcha_detected")
-                raise SyltekSecurityStop(
-                    f"Captcha detectado ({kw}). Intervención manual necesaria."
-                )
-        for kw in twofa_keywords:
-            if kw in lower:
-                await self.save_screenshot("2fa_detected")
-                raise SyltekSecurityStop(
-                    f"2FA detectado ({kw}). Intervención manual necesaria."
-                )
+        self._courts: dict[str, str] = {}      # nombre → idResource
+        self._rankings: list[dict] = []        # [{id, nombre, ronda_actual}]
 
     # ------------------------------------------------------------------
     # Login
     # ------------------------------------------------------------------
 
-    async def login(self) -> bool:
+    def login(self) -> tuple[bool, str]:
         """
-        Hace login en Syltek. Devuelve True si tiene éxito.
-
-        <<SELECTOR PENDIENTE>>:
-        Inspecciona tu página de login de Syltek y ajusta los selectores de:
-          - Campo usuario
-          - Campo contraseña
-          - Botón de submit
-          - Elemento que indica login correcto (ej. nombre de usuario en header)
+        Hace login con requests. Devuelve (ok, mensaje).
+        Prueba las rutas de login más comunes de Syltek/Padelplus.
         """
-        if not self.url:
-            raise SyltekLoginError("SYLTEK_URL no configurada. Revisa tu .env")
         if not self.user or not self._password:
-            raise SyltekLoginError("SYLTEK_USER o SYLTEK_PASSWORD no configurados.")
+            return False, "Configura SYLTEK_USER y SYLTEK_PASSWORD en el .env"
 
-        logger.info("Navegando a %s ...", self.url)
-        await self._page.goto(self.url, wait_until="networkidle")
-        await self._check_for_captcha_or_2fa()
-        await self.save_screenshot("login_page")
+        login_candidates = [
+            f"{self.base}/admin/login",
+            f"{self.base}/login",
+            f"{self.base}/users/login",
+        ]
 
-        # ------------------------------------------------------------------
-        # AJUSTA ESTOS SELECTORES inspeccionando tu Syltek con DevTools (F12)
-        # ------------------------------------------------------------------
-        SELECTOR_USER = "input[name='username']"        # <<SELECTOR PENDIENTE>>
-        SELECTOR_PASS = "input[name='password']"        # <<SELECTOR PENDIENTE>>
-        SELECTOR_SUBMIT = "button[type='submit']"       # <<SELECTOR PENDIENTE>>
-        SELECTOR_LOGIN_OK = ".user-name, .navbar-user"  # <<SELECTOR PENDIENTE>>
-        # ------------------------------------------------------------------
+        for login_url in login_candidates:
+            try:
+                r = self._session.get(login_url, timeout=15, allow_redirects=True)
+            except requests.RequestException as e:
+                continue
+
+            soup = BeautifulSoup(r.text, "html.parser")
+            form = soup.find("form")
+            if not form:
+                continue
+
+            # Extraer campos ocultos (tokens CSRF, etc.)
+            data: dict[str, str] = {}
+            for inp in form.find_all("input"):
+                name = inp.get("name", "")
+                if name:
+                    data[name] = inp.get("value", "")
+
+            # Encontrar campos de usuario y contraseña
+            user_inp = (
+                form.find("input", {"name": re.compile(r"user|login|email", re.I)}) or
+                form.find("input", {"type": ["text", "email"]})
+            )
+            pass_inp = form.find("input", {"type": "password"})
+
+            if not user_inp or not pass_inp:
+                continue
+
+            data[user_inp["name"]] = self.user
+            data[pass_inp["name"]] = self._password
+
+            action = form.get("action") or login_url
+            if not action.startswith("http"):
+                action = self.base + ("" if action.startswith("/") else "/") + action
+
+            try:
+                r2 = self._session.post(action, data=data, timeout=15, allow_redirects=True)
+            except requests.RequestException as e:
+                return False, f"Error de red: {e}"
+
+            # Detectar captcha / 2FA
+            lower = r2.text.lower()
+            for kw in ["captcha", "recaptcha", "hcaptcha", "two-factor", "2fa"]:
+                if kw in lower:
+                    raise SyltekSecurityStop(f"Detectado {kw} — intervención manual necesaria.")
+
+            # Comprobar si el login fue exitoso
+            if "login" not in r2.url and r2.status_code in (200, 302):
+                soup2 = BeautifulSoup(r2.text, "html.parser")
+                # Buscar menú admin o nombre de usuario en el header
+                admin_indicator = soup2.find(class_=re.compile(
+                    r"header|navbar|user-?name|admin|masterHeader", re.I
+                ))
+                if admin_indicator or "reservas" in r2.text.lower():
+                    self._logged_in = True
+                    logger.info("Login correcto para %s", self.user)
+                    return True, "Login correcto"
+
+        return False, (
+            "Login fallido. Comprueba usuario, contraseña y URL en el .env. "
+            "Si el problema persiste, abre Syltek en Chrome y copia la URL exacta."
+        )
+
+    # ------------------------------------------------------------------
+    # Descubrimiento de pistas
+    # ------------------------------------------------------------------
+
+    def discover_courts(self, target_date: Optional[date] = None) -> dict[str, str]:
+        """
+        Navega al calendario y extrae {nombre_pista: idResource}.
+        Devuelve el diccionario y lo guarda internamente.
+        """
+        self._assert_logged_in()
+
+        d = target_date or date.today()
+        encoded = base64.b64encode(d.strftime("%d/%m/%Y").encode()).decode()
+        url = f"{self.base}/bookings/admin/index?encodedDate={encoded}&type=56"
 
         try:
-            await self._page.fill(SELECTOR_USER, self.user)
-            # Contraseña: no la loggeamos nunca
-            await self._page.fill(SELECTOR_PASS, self._password)
-            await self._page.click(SELECTOR_SUBMIT)
-            await self._page.wait_for_load_state("networkidle")
-            await self._check_for_captcha_or_2fa()
-        except SyltekSecurityStop:
-            raise
-        except Exception as exc:
-            await self.save_screenshot("login_error")
-            raise SyltekLoginError(f"Error durante el login: {exc}") from exc
+            r = self._session.get(url, timeout=15)
+        except requests.RequestException as e:
+            raise SyltekError(f"Error al cargar el calendario: {e}")
 
-        # Verificar si el login fue exitoso
+        soup = BeautifulSoup(r.text, "html.parser")
+        courts: dict[str, str] = {}
+
+        # 1) Buscar idResource en onclick de celdas (formato más común)
+        #    onclick="document.location='/admin/index?...idResource=1480...'"
+        #    o a través del callback base64
+        for el in soup.find_all(attrs={"onclick": True}):
+            onclick = el.get("onclick", "")
+
+            # Buscar idResource directo
+            m = re.search(r"idResource['\"]?\s*[:=]\s*['\"]?(\d+)", onclick)
+            if m:
+                resource_id = m.group(1)
+                court_name = _extract_court_name_from_element(el)
+                if court_name:
+                    courts[court_name] = resource_id
+                continue
+
+            # Buscar en callback base64
+            m2 = re.search(r"callback=([A-Za-z0-9+/=]+)", onclick)
+            if m2:
+                try:
+                    decoded = base64.b64decode(m2.group(1) + "==").decode("utf-8", errors="ignore")
+                    m3 = re.search(r"idResource[=:](\d+)", decoded)
+                    if m3:
+                        resource_id = m3.group(1)
+                        court_name = _extract_court_name_from_element(el)
+                        if court_name:
+                            courts[court_name] = resource_id
+                except Exception:
+                    pass
+
+        # 2) Si no encontramos nada por onclick, buscar en el HTML del formulario
+        #    cargando la página de nueva reserva para cada columna
+        if not courts:
+            courts = self._discover_courts_from_form(soup, d)
+
+        # 3) Buscar nombres de columnas en cabeceras de la tabla
+        headers = soup.find_all(["th", "td"], class_=re.compile(
+            r"timetableGroup|court-?header|column-?name", re.I
+        ))
+        for h in headers:
+            name = h.get_text(strip=True)
+            if name and re.match(r"padel|pista|cancha|court", name, re.I):
+                # Asociar con el idResource si ya lo tenemos por posición
+                idx = headers.index(h)
+                if str(idx) in courts:
+                    courts[name] = courts.pop(str(idx))
+
+        self._courts = courts
+        logger.info("Pistas descubiertas: %s", list(courts.keys()))
+        return courts
+
+    def _discover_courts_from_form(self, soup: BeautifulSoup, d: date) -> dict[str, str]:
+        """
+        Fallback: busca idResource en los atributos data-* de la tabla del horario.
+        """
+        courts: dict[str, str] = {}
+        timetable = soup.find(id=re.compile(r"timetable|schedule|horario", re.I))
+        if not timetable:
+            timetable = soup.find(class_=re.compile(r"timetable|schedule", re.I))
+        if not timetable:
+            return courts
+
+        # Buscar celdas con data-resource o data-id
+        for cell in timetable.find_all(attrs={"data-resource": True}):
+            rid = cell.get("data-resource") or cell.get("data-id")
+            name = cell.get("data-name") or cell.get("title") or ""
+            if rid and name:
+                courts[name] = rid
+
+        return courts
+
+    # ------------------------------------------------------------------
+    # Descubrimiento de rankings
+    # ------------------------------------------------------------------
+
+    def discover_rankings(self) -> list[dict]:
+        """
+        Lista todos los rankings disponibles en Syltek.
+        Devuelve [{id, nombre, url, ronda_actual}].
+        """
+        self._assert_logged_in()
+
+        candidates = [
+            f"{self.base}/rankings",
+            f"{self.base}/activities/rankings",
+            f"{self.base}/admin/rankings",
+        ]
+
+        for url in candidates:
+            try:
+                r = self._session.get(url, timeout=15, allow_redirects=True)
+                if r.status_code != 200:
+                    continue
+            except requests.RequestException:
+                continue
+
+            soup = BeautifulSoup(r.text, "html.parser")
+            rankings = _parse_rankings_list(soup, self.base)
+            if rankings:
+                self._rankings = rankings
+                return rankings
+
+        # Intentar buscar desde la sección Actividades
         try:
-            await self._page.wait_for_selector(SELECTOR_LOGIN_OK, timeout=5000)
-            self._logged_in = True
-            logger.info("Login correcto para usuario: %s", self.user)
-            await self.save_screenshot("login_success")
-            return True
+            r = self._session.get(f"{self.base}/admin", timeout=15)
+            soup = BeautifulSoup(r.text, "html.parser")
+            link = soup.find("a", text=re.compile(r"ranking|actividad", re.I))
+            if link and link.get("href"):
+                href = link["href"]
+                if not href.startswith("http"):
+                    href = self.base + href
+                r2 = self._session.get(href, timeout=15)
+                soup2 = BeautifulSoup(r2.text, "html.parser")
+                rankings = _parse_rankings_list(soup2, self.base)
+                if rankings:
+                    self._rankings = rankings
+                    return rankings
         except Exception:
-            await self.save_screenshot("login_failed")
-            page_title = await self._page.title()
-            raise SyltekLoginError(
-                f"Login fallido. Título de página: '{page_title}'. "
-                f"Revisa las credenciales y los selectores en syltek_connector.py"
+            pass
+
+        return []
+
+    def get_ranking_groups(self, ranking_id: str, round_num: int) -> list[Group]:
+        """
+        Lee los grupos y equipos de un ranking/rotación desde Syltek.
+        URL: /rankings/showtab/{ranking_id}/round{round_num}
+        """
+        self._assert_logged_in()
+
+        url = f"{self.base}/rankings/showtab/{ranking_id}/round{round_num}"
+        try:
+            r = self._session.get(url, timeout=15)
+        except requests.RequestException as e:
+            raise SyltekError(f"Error al cargar el ranking: {e}")
+
+        soup = BeautifulSoup(r.text, "html.parser")
+        return _parse_ranking_groups(soup, ranking_id)
+
+    # ------------------------------------------------------------------
+    # Crear reserva
+    # ------------------------------------------------------------------
+
+    def create_booking(
+        self,
+        booking_date: date,
+        start_hour: int,
+        start_minute: int,
+        duration_minutes: int,
+        court_name: str,
+        pair1_name: str,
+        pair2_name: str,
+        group_name: str = "",
+        send_email: bool = False,
+    ) -> tuple[bool, str]:
+        """
+        Crea una reserva en Syltek para un partido de ranking.
+        Solo ejecuta si dry_run=False.
+
+        Devuelve (ok, mensaje).
+        """
+        if self.dry_run:
+            label = f"{pair1_name} vs {pair2_name} — {booking_date.strftime('%d/%m/%Y')} {start_hour:02d}:{start_minute:02d} ({court_name})"
+            return True, f"[DRY-RUN] Reserva simulada: {label}"
+
+        self._assert_logged_in()
+
+        court_id = self._courts.get(court_name)
+        if not court_id:
+            return False, (
+                f"No se encontró el ID de la pista '{court_name}'. "
+                f"Ejecuta 'Descubrir pistas' primero. Pistas conocidas: {list(self._courts.keys())}"
             )
 
+        dt_str = f"{booking_date.day}/{booking_date.month}/{booking_date.year} {start_hour:02d}:{start_minute:02d}"
+        client_label = f"{pair1_name} vs {pair2_name}"
+        comment = f"Ranking{(' — ' + group_name) if group_name else ''}: {client_label}"
+
+        # GET de la página de nueva reserva para capturar campos ocultos
+        form_url = f"{self.base}/admin/newreservation"
+        try:
+            rg = self._session.get(
+                form_url,
+                params={"idResource": court_id, "localDatetime": dt_str},
+                timeout=15,
+            )
+        except requests.RequestException as e:
+            return False, f"Error al cargar el formulario: {e}"
+
+        soup = BeautifulSoup(rg.text, "html.parser")
+        form = soup.find("form")
+
+        # Recoger todos los campos ocultos del formulario
+        data: dict[str, str] = {}
+        if form:
+            for inp in form.find_all("input", type="hidden"):
+                name = inp.get("name", "")
+                if name:
+                    data[name] = inp.get("value", "")
+
+        # Rellenar campos conocidos
+        data.update({
+            "localDatetime": dt_str,
+            "idResource": str(court_id),
+            "outstanding": "",
+            "setAsPaid": "",
+            "fromWeekTimeTable": "false",
+            "StartDateHourPicker": str(start_hour),
+            "StartDateMinutePicker": f"{start_minute:02d}",
+            "duration": str(duration_minutes),
+            "numReservations": "1",
+            "idReservationTypeGeneral": "",
+            "IdCustomer_queryParams": "",
+            "IdCustomer": "",
+            "metaview_lookup_IdCustomer": client_label,
+            "idReservationType": "",
+            "comments": comment,
+            "sendEmail": "on" if send_email else "",
+            "metaview_EntityId": "0",
+            "metaview_saveAndNew": "",
+        })
+
+        # Determinar acción del formulario
+        action = form.get("action", form_url) if form else form_url
+        if not action.startswith("http"):
+            action = self.base + ("" if action.startswith("/") else "/") + action
+
+        # Enviar el formulario con el botón "Reservar (Pendiente de pago)"
+        try:
+            rp = self._session.post(
+                action,
+                data=data,
+                timeout=20,
+                allow_redirects=True,
+                headers={"Referer": form_url},
+            )
+        except requests.RequestException as e:
+            return False, f"Error al enviar el formulario: {e}"
+
+        # Verificar resultado
+        if rp.status_code in (200, 302):
+            # Buscar señales de éxito o error en la respuesta
+            resp_lower = rp.text.lower()
+            if any(kw in resp_lower for kw in ["error", "incorrecto", "invalid", "fallo"]):
+                snippet = _extract_error_message(BeautifulSoup(rp.text, "html.parser"))
+                return False, f"Syltek devolvió un error: {snippet}"
+            return True, f"Reserva creada: {client_label} — {booking_date.strftime('%d/%m/%Y')} {start_hour:02d}:{start_minute:02d} en {court_name}"
+
+        return False, f"Error HTTP {rp.status_code} al crear la reserva"
+
     # ------------------------------------------------------------------
-    # Lectura de datos (READ ONLY)
-    # ------------------------------------------------------------------
-
-    async def get_groups(self) -> list[Group]:
-        """
-        Lee los grupos del ranking desde Syltek.
-
-        <<SELECTOR PENDIENTE>>:
-        - Navega a la sección de ranking en Syltek.
-        - Inspecciona la tabla/lista de grupos.
-        - Ajusta la URL de navegación y los selectores.
-
-        Por ahora devuelve lista vacía hasta configurar selectores reales.
-        """
-        self._assert_logged_in()
-        logger.warning(
-            "get_groups() no implementado aún. "
-            "Configura los selectores en syltek_connector.py y carga datos manualmente."
-        )
-        await self.save_html("groups_page")
-        return []
-
-    async def get_bookings(self, from_date: date, to_date: date) -> list[Booking]:
-        """
-        Lee las reservas existentes en el rango de fechas.
-
-        <<SELECTOR PENDIENTE>>:
-        - Navega al calendario/agenda de reservas.
-        - Filtra por fechas.
-        - Parsea filas de la tabla de reservas.
-        """
-        self._assert_logged_in()
-        logger.warning("get_bookings() no implementado aún. Devolviendo lista vacía.")
-        await self.save_html("bookings_page")
-        return []
-
-    async def get_courts(self) -> list[Court]:
-        """
-        Lee las pistas disponibles.
-
-        <<SELECTOR PENDIENTE>>:
-        - Navega a la sección de pistas.
-        - Parsea nombres e IDs.
-        """
-        self._assert_logged_in()
-        logger.warning("get_courts() no implementado aún. Devolviendo lista vacía.")
-        return []
-
-    # ------------------------------------------------------------------
-    # Escritura de datos (WRITE — bloqueado en dry_run)
-    # ------------------------------------------------------------------
-
-    async def create_booking(self, *args, **kwargs) -> None:
-        """
-        Crea una reserva real en Syltek.
-        NUNCA se ejecuta en modo dry_run.
-        Requiere confirmación explícita del usuario.
-
-        <<SELECTOR PENDIENTE>>: implementar cuando los selectores estén claros.
-        """
-        self._assert_write_allowed()
-        raise NotImplementedError(
-            "create_booking() aún no implementado. "
-            "Configura los selectores antes de activar escritura."
-        )
-
-    # ------------------------------------------------------------------
-    # Internos
+    # Helpers internos
     # ------------------------------------------------------------------
 
     def _assert_logged_in(self) -> None:
         if not self._logged_in:
             raise SyltekLoginError("No has iniciado sesión. Llama a login() primero.")
 
-    def _assert_write_allowed(self) -> None:
-        if self.dry_run:
-            raise PermissionError(
-                "Modo dry_run activo. Para escribir en Syltek desactiva dry_run "
-                "y confirma explícitamente la acción."
-            )
+    def set_courts(self, courts: dict[str, str]) -> None:
+        """Permite configurar manualmente el mapa nombre→idResource."""
+        self._courts = courts
+
+    def get_known_courts(self) -> dict[str, str]:
+        return dict(self._courts)
 
 
 # ---------------------------------------------------------------------------
-# Función de ayuda para ejecutar desde scripts síncronos
+# Función síncrona para Streamlit (login check)
 # ---------------------------------------------------------------------------
 
 def run_login_check(url: str, user: str, password: str) -> tuple[bool, str]:
-    """
-    Comprueba el login de forma síncrona (para Streamlit).
-    Devuelve (exito, mensaje).
-    """
-    async def _check():
-        async with SyltekConnector(
-            url=url, user=user, password=password, dry_run=True, headless=True
-        ) as conn:
-            await conn.login()
-            return True, "Login correcto"
+    conn = SyltekConnector(url=url, user=user, password=password, dry_run=True)
+    return conn.login()
 
-    try:
-        return asyncio.run(_check())
-    except SyltekSecurityStop as e:
-        return False, f"Seguridad detectada: {e}"
-    except SyltekLoginError as e:
-        return False, f"Error de login: {e}"
-    except Exception as e:
-        return False, f"Error inesperado: {e}"
+
+# ---------------------------------------------------------------------------
+# Helpers de parsing HTML
+# ---------------------------------------------------------------------------
+
+def _extract_court_name_from_element(el) -> str:
+    """Intenta extraer el nombre de la pista a partir de un elemento HTML."""
+    # Buscar en atributos comunes
+    for attr in ("data-name", "data-resource-name", "title", "aria-label"):
+        val = el.get(attr, "")
+        if val and re.match(r"padel|pista|cancha|court|\d", val, re.I):
+            return val.strip()
+
+    # Buscar en el texto del elemento o de su padre
+    text = el.get_text(strip=True)
+    if text and re.match(r"(padel|pista)\s*\d+", text, re.I):
+        return text
+
+    parent = el.find_parent()
+    if parent:
+        parent_text = parent.get_text(strip=True)
+        m = re.search(r"(padel|pista)\s*\d+", parent_text, re.I)
+        if m:
+            return m.group(0).strip()
+
+    return ""
+
+
+def _parse_rankings_list(soup: BeautifulSoup, base_url: str) -> list[dict]:
+    """Extrae la lista de rankings de una página HTML."""
+    rankings = []
+
+    # Buscar links a rankings
+    for link in soup.find_all("a", href=re.compile(r"/rankings/", re.I)):
+        href = link.get("href", "")
+        m = re.search(r"/rankings/showtab/(\d+)", href)
+        if not m:
+            m = re.search(r"/rankings/(\d+)", href)
+        if not m:
+            continue
+
+        ranking_id = m.group(1)
+        name = link.get_text(strip=True) or f"Ranking {ranking_id}"
+
+        # Evitar duplicados
+        if any(r["id"] == ranking_id for r in rankings):
+            continue
+
+        rankings.append({
+            "id": ranking_id,
+            "nombre": name,
+            "url": f"{base_url}/rankings/showtab/{ranking_id}/round1",
+            "ronda_actual": 1,
+        })
+
+    return rankings
+
+
+def _parse_ranking_groups(soup: BeautifulSoup, ranking_id: str) -> list[Group]:
+    """
+    Parsea los grupos y equipos de la página de rotación de un ranking.
+    Página: /rankings/showtab/{id}/round{n}
+    """
+    groups: list[Group] = []
+
+    # Buscar secciones de grupos (típicamente "Grupo 1", "Grupo 2"...)
+    group_headers = soup.find_all(
+        string=re.compile(r"grupo\s*\d+", re.I)
+    )
+
+    if not group_headers:
+        # Intentar por tabla directamente
+        tables = soup.find_all("table")
+        for i, table in enumerate(tables):
+            group = _parse_group_table(table, f"Grupo {i+1}", ranking_id)
+            if group and group.pairs:
+                groups.append(group)
+        return groups
+
+    for header_text in group_headers:
+        parent = getattr(header_text, "parent", None)
+        if not parent:
+            continue
+        # Buscar la tabla más cercana después de este header
+        table = parent.find_next("table")
+        if not table:
+            container = parent.find_parent()
+            if container:
+                table = container.find("table")
+
+        if table:
+            group_name = re.sub(r"\s+", " ", header_text.strip())
+            group = _parse_group_table(table, group_name, ranking_id)
+            if group and group.pairs:
+                groups.append(group)
+
+    return groups
+
+
+def _parse_group_table(table, group_name: str, ranking_id: str) -> Optional[Group]:
+    """Extrae parejas/equipos de una tabla de ranking."""
+    group = Group(
+        id=f"{ranking_id}_{group_name.replace(' ', '_')}",
+        name=group_name,
+    )
+
+    rows = table.find_all("tr")
+    for row in rows:
+        cells = row.find_all("td")
+        # Buscar la celda con nombre de equipo (típicamente tiene "Equipo" o es la 6ª columna)
+        team_cell = None
+        for cell in cells:
+            text = cell.get_text(strip=True)
+            # Los nombres de equipo suelen ser "Apellido1- Apellido2"
+            if re.search(r"[A-ZÁÉÍÓÚ][a-záéíóú]+-\s*[A-ZÁÉÍÓÚ]", text):
+                team_cell = cell
+                break
+
+        if not team_cell:
+            continue
+
+        team_name = team_cell.get_text(strip=True)
+        # Dividir "García- Martínez" en dos jugadores
+        parts = re.split(r"-\s*", team_name, maxsplit=1)
+        if len(parts) == 2:
+            p1 = Player(name=parts[0].strip())
+            p2 = Player(name=parts[1].strip())
+        else:
+            p1 = Player(name=team_name)
+            p2 = Player(name="")
+
+        pair = Pair(
+            name=team_name,
+            player_1=p1,
+            player_2=p2,
+            group_id=group.id,
+        )
+        group.pairs.append(pair)
+
+    return group
+
+
+def _extract_error_message(soup: BeautifulSoup) -> str:
+    """Extrae el mensaje de error más relevante de una página de respuesta."""
+    for selector in [".error", ".alert", ".alert-danger", "#error", ".errorMessage"]:
+        el = soup.select_one(selector)
+        if el:
+            return el.get_text(strip=True)[:200]
+    return soup.get_text(strip=True)[:200]
