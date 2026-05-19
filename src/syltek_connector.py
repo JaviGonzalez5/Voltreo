@@ -747,65 +747,28 @@ def _extract_ranking_title(soup: BeautifulSoup) -> str:
 
 def _parse_groups_table(soup: BeautifulSoup, ranking_id: str, level_name: str) -> list[Group]:
     """
-    Parsea la tabla de grupos de la página /rankings/showtab/{id}/group{n}.
-    Columnas: Equipo | Jugador1 | Jugador2 | Grupo | Observaciones
+    Parsea los grupos de la página /rankings/showtab/{id}/group{n}.
+
+    La página puede tener:
+    a) Una tabla por grupo, con encabezado "Grupo N" antes de cada tabla.
+    b) Una sola tabla con columna "Grupo".
+    c) Secciones .group-section / [data-group] con la tabla dentro.
     """
     groups: dict[str, Group] = {}
 
-    table = soup.find("table")
-    if not table:
-        return []
-
-    rows = table.find_all("tr")
-    if not rows:
-        return []
-
-    # Detectar índices de columnas desde la cabecera
-    header = rows[0]
-    headers = [th.get_text(strip=True).lower() for th in header.find_all(["th", "td"])]
-    col = {
-        "equipo": _find_col(headers, ["equipo", "team", "pareja"]),
-        "j1":     _find_col(headers, ["jugador1", "jugador 1", "player1", "j1"]),
-        "j2":     _find_col(headers, ["jugador2", "jugador 2", "player2", "j2"]),
-        "grupo":  _find_col(headers, ["grupo", "group"]),
-        "obs":    _find_col(headers, ["observaciones", "obs", "notas", "notes"]),
-    }
-
-    for row in rows[1:]:
-        cells = row.find_all(["td", "th"])
-        if len(cells) < 2:
-            continue
-
-        def cell_text(idx):
-            if idx is None or idx >= len(cells):
-                return ""
-            return cells[idx].get_text(strip=True)
-
-        team_name  = cell_text(col["equipo"])
-        player1    = cell_text(col["j1"])
-        player2    = cell_text(col["j2"])
-        group_num  = cell_text(col["grupo"]) or "1"
-        obs        = cell_text(col["obs"])
-
-        if not team_name and not player1:
-            continue
-
-        group_id   = f"{ranking_id}_G{group_num}"
-        group_name = f"{level_name} — Grupo {group_num}"
-
-        if group_id not in groups:
-            groups[group_id] = Group(id=group_id, name=group_name)
-
+    def _register_pair(team_name, player1, player2, group_num, obs):
+        gid   = f"{ranking_id}_G{group_num}"
+        gname = f"{level_name} — Grupo {group_num}"
+        if gid not in groups:
+            groups[gid] = Group(id=gid, name=gname)
         avail = parse_observaciones(obs)
         p1 = Player(name=player1 or team_name)
         p2 = Player(name=player2)
-
-        from datetime import time as dtime
         pair = Pair(
             name=team_name or f"{player1} / {player2}",
             player_1=p1,
             player_2=p2,
-            group_id=group_id,
+            group_id=gid,
             available_weekdays=avail["weekdays"],
             available_from=avail["available_from"],
             available_until=avail["available_until"],
@@ -813,7 +776,98 @@ def _parse_groups_table(soup: BeautifulSoup, ranking_id: str, level_name: str) -
             preferred_weekday=avail["preferred_weekday"],
             preferred_time=avail["preferred_time"],
         )
-        groups[group_id].pairs.append(pair)
+        groups[gid].pairs.append(pair)
+
+    def _parse_table(table, fallback_group_num):
+        """Extrae parejas de una tabla. Devuelve el group_num usado (puede venir de columna)."""
+        rows = table.find_all("tr")
+        if not rows:
+            return
+        header = rows[0]
+        headers = [th.get_text(strip=True).lower() for th in header.find_all(["th", "td"])]
+        col = {
+            "equipo": _find_col(headers, ["equipo", "team", "pareja"]),
+            "j1":     _find_col(headers, ["jugador1", "jugador 1", "player1", "j1"]),
+            "j2":     _find_col(headers, ["jugador2", "jugador 2", "player2", "j2"]),
+            "grupo":  _find_col(headers, ["grupo", "group"]),
+            "obs":    _find_col(headers, ["observaciones", "obs", "notas", "notes"]),
+        }
+        for row in rows[1:]:
+            cells = row.find_all(["td", "th"])
+            if len(cells) < 2:
+                continue
+
+            def cell(idx):
+                if idx is None or idx >= len(cells):
+                    return ""
+                return cells[idx].get_text(strip=True)
+
+            team_name = cell(col["equipo"])
+            player1   = cell(col["j1"])
+            player2   = cell(col["j2"])
+            obs       = cell(col["obs"])
+            # Grupo desde columna o desde encabezado externo
+            group_num = cell(col["grupo"]) or str(fallback_group_num)
+
+            if not team_name and not player1:
+                continue
+            _register_pair(team_name, player1, player2, group_num, obs)
+
+    # --- Estrategia 1: buscar encabezados "Grupo N" y asociar cada tabla ---
+    # Recorre todos los elementos hijos directos del body/contenedor principal
+    # buscando patrones h2/h3/h4/div con "Grupo N" seguidos de una tabla.
+    heading_re = re.compile(r"grupo\s*(\d+)", re.I)
+    current_group_num = 1
+    found_any = False
+
+    # Construir lista plana de elementos relevantes del documento
+    container = soup.find("main") or soup.find("body") or soup
+    elements = list(container.descendants)
+
+    i = 0
+    visited_tables: set[int] = set()
+    while i < len(elements):
+        el = elements[i]
+        if not hasattr(el, "name") or not el.name:
+            i += 1
+            continue
+
+        # Detectar encabezado de grupo
+        if el.name in ("h1", "h2", "h3", "h4", "h5", "h6", "div", "span", "p", "strong"):
+            text = el.get_text(strip=True)
+            m = heading_re.search(text)
+            if m:
+                current_group_num = int(m.group(1))
+                # Buscar la siguiente tabla dentro de ~50 elementos
+                for j in range(i + 1, min(i + 50, len(elements))):
+                    nxt = elements[j]
+                    if hasattr(nxt, "name") and nxt.name == "table":
+                        tid = id(nxt)
+                        if tid not in visited_tables:
+                            visited_tables.add(tid)
+                            _parse_table(nxt, current_group_num)
+                            found_any = True
+                        break
+
+        i += 1
+
+    if found_any:
+        return list(groups.values())
+
+    # --- Estrategia 2: todas las tablas de la página con group_num incremental ---
+    all_tables = soup.find_all("table")
+    if not all_tables:
+        return []
+
+    for idx, table in enumerate(all_tables, start=1):
+        # Buscar encabezado inmediatamente antes de la tabla (hermanos anteriores)
+        gnum = idx
+        for sib in table.find_all_previous(["h1","h2","h3","h4","h5","h6","strong","div","span"], limit=5):
+            m = heading_re.search(sib.get_text(strip=True))
+            if m:
+                gnum = int(m.group(1))
+                break
+        _parse_table(table, gnum)
 
     return list(groups.values())
 
