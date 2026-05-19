@@ -456,18 +456,34 @@ elif page == "import":
                         _r_d = _conn_d._session.get(_url_d, timeout=20)
                         from bs4 import BeautifulSoup as _BS
                         _soup_d = _BS(_r_d.text, "lxml")
-                        # Mostrar encabezados de grupo encontrados
                         import re as _re
                         _hrx = _re.compile(r"\bgrupo\s*\d+\b", _re.I)
-                        _headings = [t.get_text(strip=True) for t in _soup_d.find_all(["h1","h2","h3","h4","h5","h6"]) if _hrx.search(t.get_text())]
+                        # 1. Headings con "Grupo"
+                        _headings_info = []
+                        for _tag in _soup_d.find_all(["h1","h2","h3","h4","h5","h6"]):
+                            _txt = _tag.get_text(strip=True)
+                            if _hrx.search(_txt):
+                                _headings_info.append(f"<{_tag.name}>: '{_txt}'")
+                        st.write(f"**Headings h1-h6 con 'Grupo':** {_headings_info or 'NINGUNO'}")
+                        # 2. Tablas
                         _tables = _soup_d.find_all("table")
-                        st.write(f"**Headings h1-h6 con 'Grupo':** {_headings}")
                         st.write(f"**Tablas encontradas:** {len(_tables)}")
                         for _i, _t in enumerate(_tables, 1):
                             _rows = _t.find_all("tr")
                             _hdr = [c.get_text(strip=True) for c in (_rows[0].find_all(["th","td"]) if _rows else [])]
-                            st.write(f"  Tabla {_i}: {len(_rows)} filas, cabecera: {_hdr[:8]}")
-                        st.code(_r_d.text[:3000], language="html")
+                            st.write(f"  Tabla {_i}: {len(_rows)} filas · cabecera: `{_hdr[:10]}`")
+                        # 3. HTML alrededor de cada aparición de "Grupo N"
+                        _html_full = _r_d.text
+                        _matches_g = list(_re.finditer(r"grupo\s*\d+", _html_full, _re.I))
+                        st.write(f"**Apariciones de 'Grupo N' en el HTML:** {len(_matches_g)}")
+                        if _matches_g:
+                            # Mostrar contexto de las primeras 6 apariciones
+                            _snippets = []
+                            for _mx in _matches_g[:6]:
+                                _s = max(0, _mx.start() - 80)
+                                _e = min(len(_html_full), _mx.end() + 80)
+                                _snippets.append(_html_full[_s:_e].replace("\n", " "))
+                            st.code("\n---\n".join(_snippets), language="html")
 
         st.markdown("---")
 
