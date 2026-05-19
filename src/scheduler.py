@@ -219,15 +219,16 @@ class Scheduler:
         score -= max(0, 30 - days_offset) * (w.early_day_bonus / 30.0)
 
         # Bonus fuerte si el slot coincide con la pista fija de alguna pareja
+        preferred_bonus = getattr(w, "preferred_slot_bonus", 25.0)
         for pair in (pair_1, pair_2):
             if pair is None:
                 continue
             pw = getattr(pair, "preferred_weekday", None)
             pt = getattr(pair, "preferred_time", None)
             if pw is not None and slot.date.weekday() == pw:
-                score -= w.preferred_slot_bonus
+                score -= preferred_bonus
             if pt is not None and slot.start_time == pt:
-                score -= w.preferred_slot_bonus
+                score -= preferred_bonus
 
         return score
 
