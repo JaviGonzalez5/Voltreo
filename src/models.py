@@ -3,6 +3,7 @@ Modelos de datos centrales con Pydantic v2.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, time, datetime
 from enum import Enum
 from typing import Optional
@@ -89,8 +90,9 @@ class Booking(BaseModel):
     source: str = "syltek"           # "syltek" | "manual"
 
 
-class AvailabilitySlot(BaseModel):
-    """Hueco libre en una pista en un momento dado."""
+@dataclass
+class AvailabilitySlot:
+    """Hueco libre en una pista en un momento dado. Dataclass (sin validación Pydantic)."""
     court: Court
     date: date
     start_time: time
