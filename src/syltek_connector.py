@@ -619,54 +619,46 @@ def _parse_occupied_slots(raw_html: str, day: date) -> list[Booking]:
 
     # ------------------------------------------------------------------
     # 2. Extraer pistas (resources)
+    #    Formato: resources:{1477:{id:'1477',name:'Padel 1 <br>',...}, ...}
     # ------------------------------------------------------------------
-    resources: dict[str, str] = {}  # id → nombre
+    resources: dict[str, str] = {}
+    for m in re.finditer(r"(\d+):\{id:'(\d+)',name:'([^']*)'", timetable_js):
+        court_id = m.group(2)
+        # Limpiar tags HTML del nombre (ej. "Padel 1 <br>" → "Padel 1")
+        name = re.sub(r'\s*<[^>]+>\s*', '', m.group(3)).strip()
+        resources[court_id] = name or f"Pista {court_id}"
 
-    # Patron: {id:1480,name:'Padel 1', ...}  o  {id:1480, name:"Padel 1", ...}
-    for m in re.finditer(
-        r'\{[^{}]*?id\s*:\s*(\d+)[^{}]*?name\s*:\s*[\'"]([^\'"]+)[\'"]',
-        timetable_js,
-    ):
-        resources[m.group(1)] = m.group(2)
-
-    # Patrón alternativo con campos en orden invertido
-    for m in re.finditer(
-        r'\{[^{}]*?name\s*:\s*[\'"]([^\'"]+)[\'"][^{}]*?id\s*:\s*(\d+)',
-        timetable_js,
-    ):
-        resources.setdefault(m.group(2), m.group(1))
-
-    logger.debug("Pistas encontradas en timetable JS: %s", resources)
+    logger.debug("Pistas encontradas: %s", resources)
 
     # ------------------------------------------------------------------
     # 3. Extraer reservas (reservations)
-    #    start/end son MINUTOS DESDE MEDIANOCHE
+    #    Formato: start:new Date(Y,M,D,H,m,s),end:new Date(Y,M,D,H,m,s),...,idResource:[id]
+    #    start y end van CONSECUTIVOS, idResource viene un poco después
     # ------------------------------------------------------------------
-    # Intentar varios órdenes de campos dentro de cada {...}
-    patterns = [
-        r'idResource\s*:\s*(\d+)[^{}]*?start\s*:\s*(\d+)[^{}]*?end\s*:\s*(\d+)',
-        r'start\s*:\s*(\d+)[^{}]*?end\s*:\s*(\d+)[^{}]*?idResource\s*:\s*(\d+)',
-    ]
-
     seen: set[tuple] = set()
-    for pat in patterns:
-        for m in re.finditer(pat, timetable_js):
-            if pat.startswith("idResource"):
-                court_id, start_min, end_min = m.group(1), int(m.group(2)), int(m.group(3))
-            else:
-                start_min, end_min, court_id = int(m.group(1)), int(m.group(2)), m.group(3)
+    for m in re.finditer(
+        r'start:new Date\(\d+,\d+,\d+,(\d+),(\d+),\d+\),'
+        r'end:new Date\(\d+,\d+,\d+,(\d+),(\d+),\d+\)',
+        timetable_js,
+    ):
+        sh, sm = int(m.group(1)), int(m.group(2))
+        eh, em = int(m.group(3)), int(m.group(4))
 
-            key = (court_id, start_min, end_min)
+        # Buscar idResource en los próximos 600 chars
+        snippet = timetable_js[m.end() : m.end() + 600]
+        m_res = re.search(r'idResource:\[(\d+(?:,\s*\d+)*)\]', snippet)
+        if not m_res:
+            continue
+
+        for court_id in [c.strip() for c in m_res.group(1).split(',')]:
+            key = (court_id, sh, sm)
             if key in seen:
                 continue
             seen.add(key)
 
-            if not (0 <= start_min < 1440 and 0 < end_min <= 1440 and end_min > start_min):
-                continue
-
             court_name = resources.get(court_id, f"Pista {court_id}")
-            start_dt = datetime.combine(day, dtime(start_min // 60, start_min % 60))
-            end_dt   = datetime.combine(day, dtime(end_min // 60,   end_min % 60))
+            start_dt = datetime.combine(day, dtime(sh, sm))
+            end_dt   = datetime.combine(day, dtime(eh, em))
 
             bookings.append(Booking(
                 court_id=court_id,
