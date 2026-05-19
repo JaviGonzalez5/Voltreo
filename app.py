@@ -438,6 +438,37 @@ elif page == "import":
                                 "No se encontraron grupos. Revisa los IDs de niveles y el número de rotación."
                             )
 
+        # ---- Diagnóstico: ver HTML del nivel ----
+        with st.expander("🔎 Diagnóstico — ver estructura HTML de un nivel"):
+            diag_level_id = st.number_input("ID de nivel a inspeccionar", value=101, step=1, key="diag_level_id")
+            diag_rotation = st.number_input("Rotación", value=int(grp_rotation), step=1, key="diag_rotation_html")
+            if st.button("🔎 Ver HTML del nivel", key="btn_diag_level"):
+                if not syl_imp_url or not syl_imp_user or not syl_imp_pass:
+                    st.error("Rellena URL, usuario y contraseña.")
+                else:
+                    from src.syltek_connector import SyltekConnector
+                    _conn_d = SyltekConnector(url=syl_imp_url, user=syl_imp_user, password=syl_imp_pass, dry_run=True)
+                    ok_d, msg_d = _conn_d.login()
+                    if not ok_d:
+                        st.error(f"Login fallido: {msg_d}")
+                    else:
+                        _url_d = f"{_conn_d.base}/rankings/showtab/{int(diag_level_id)}/group{int(diag_rotation)}"
+                        _r_d = _conn_d._session.get(_url_d, timeout=20)
+                        from bs4 import BeautifulSoup as _BS
+                        _soup_d = _BS(_r_d.text, "lxml")
+                        # Mostrar encabezados de grupo encontrados
+                        import re as _re
+                        _hrx = _re.compile(r"\bgrupo\s*\d+\b", _re.I)
+                        _headings = [t.get_text(strip=True) for t in _soup_d.find_all(["h1","h2","h3","h4","h5","h6"]) if _hrx.search(t.get_text())]
+                        _tables = _soup_d.find_all("table")
+                        st.write(f"**Headings h1-h6 con 'Grupo':** {_headings}")
+                        st.write(f"**Tablas encontradas:** {len(_tables)}")
+                        for _i, _t in enumerate(_tables, 1):
+                            _rows = _t.find_all("tr")
+                            _hdr = [c.get_text(strip=True) for c in (_rows[0].find_all(["th","td"]) if _rows else [])]
+                            st.write(f"  Tabla {_i}: {len(_rows)} filas, cabecera: {_hdr[:8]}")
+                        st.code(_r_d.text[:3000], language="html")
+
         st.markdown("---")
 
         # ---- B: Importar reservas existentes ----
