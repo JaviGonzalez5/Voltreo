@@ -501,30 +501,21 @@ elif page == "import":
                                     st.markdown("**Elemento timetableTabsOuter:**")
                                     st.code(str(tabs_outer)[:3000], language="html")
 
-                                # 3) Buscar llamadas AJAX/fetch en los scripts
-                                st.markdown("**Scripts con llamadas AJAX al timetable:**")
-                                ajax_hits = []
+                                # 3) Extraer el objeto JavaScript "var timetable = {...}"
+                                st.markdown("**Objeto JavaScript `var timetable` (datos reales del calendario):**")
+                                timetable_js = ""
                                 for script in soup_d.find_all("script"):
-                                    txt = script.string or ""
-                                    for kw in ("timetable", "Timetable", "bookings/admin", "getBookings", "loadTimetable", "ajax", "fetch"):
-                                        if kw in txt:
-                                            # Extraer líneas que contienen la palabra clave
-                                            for line in txt.splitlines():
-                                                if kw in line and line.strip():
-                                                    ajax_hits.append(line.strip()[:200])
-                                if ajax_hits:
-                                    st.code("\n".join(dict.fromkeys(ajax_hits))[:3000], language="javascript")
+                                    stxt = script.string or ""
+                                    if "var timetable" in stxt:
+                                        # Encontrar la línea con var timetable
+                                        idx = stxt.find("var timetable")
+                                        # Mostrar los 5000 caracteres desde ese punto
+                                        timetable_js = stxt[idx:idx+5000]
+                                        break
+                                if timetable_js:
+                                    st.code(timetable_js, language="javascript")
                                 else:
-                                    st.warning("No se encontraron llamadas AJAX en los scripts inline.")
-
-                                # 4) Mostrar URLs de scripts externos cargados
-                                script_srcs = [s.get("src") for s in soup_d.find_all("script", src=True)]
-                                st.markdown(f"**Scripts externos ({len(script_srcs)}):**")
-                                st.code("\n".join(script_srcs[:20]), language="text")
-
-                                # 5) Mostrar HTML zona 7000-12000 (donde suele estar el timetable)
-                                st.markdown("**HTML zona 7000–12000 (zona del calendario):**")
-                                st.code(r_diag.text[7000:12000], language="html")
+                                    st.warning("No se encontró 'var timetable' en los scripts.")
                             except Exception as ex:
                                 st.error(f"Error: {ex}")
 
