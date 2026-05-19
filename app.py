@@ -330,20 +330,80 @@ elif page == "import":
 
     # --- Tab 3: Syltek ---
     with tab3:
-        st.warning(
-            "La conexión con Syltek está en desarrollo. "
-            "Los selectores CSS deben configurarse en `src/syltek_connector.py`. "
-            "Usa los tabs anteriores para cargar datos manualmente mientras tanto."
+        st.markdown("### Importar disponibilidad real de Syltek")
+        st.info(
+            "Conecta con Syltek para leer qué pistas y huecos están ya ocupados "
+            "cada día. El planificador usará esta información para asignar los partidos "
+            "**solo a huecos realmente libres**."
         )
-        st.markdown("""
-**Cómo configurar los selectores de Syltek:**
 
-1. Abre Syltek en Chrome con DevTools (F12).
-2. Navega a la sección que quieras leer (grupos, reservas...).
-3. Usa el botón de inspeccionar elemento para encontrar el selector CSS.
-4. Abre `src/syltek_connector.py` y pega los selectores donde dice `<<SELECTOR PENDIENTE>>`.
-5. Vuelve aquí y prueba el login en la página de Configuración.
-        """)
+        if not st.session_state.phase:
+            st.warning("Guarda primero la configuración de fase (fechas, pistas) en **⚙️ Configuración**.")
+            st.stop()
+
+        col_s1, col_s2 = st.columns(2)
+        with col_s1:
+            imp_url = st.text_input("URL Syltek", value=settings.syltek_url or "https://padelplus.padelclick.com", key="imp_url")
+            imp_user = st.text_input("Usuario", value=settings.syltek_user or "", key="imp_user")
+        with col_s2:
+            imp_pass = st.text_input("Contraseña", type="password", key="imp_pass")
+            phase_tmp = st.session_state.phase
+            st.markdown(f"**Rango:** {phase_tmp.start_date} → {phase_tmp.end_date}")
+            n_days = (phase_tmp.end_date - phase_tmp.start_date).days + 1
+            st.caption(f"Se leerán {n_days} días del calendario de Syltek")
+
+        if st.button("📅 Importar disponibilidad desde Syltek", type="primary"):
+            if not imp_url or not imp_user or not imp_pass:
+                st.error("Rellena URL, usuario y contraseña.")
+            else:
+                from src.syltek_connector import SyltekConnector
+                conn = SyltekConnector(url=imp_url, user=imp_user, password=imp_pass, dry_run=True)
+                ok, msg = conn.login()
+                if not ok:
+                    st.error(f"❌ Login fallido: {msg}")
+                else:
+                    progress_bar = st.progress(0, text="Leyendo calendario de Syltek...")
+                    status_text = st.empty()
+
+                    def update_progress(done, total):
+                        pct = done / total
+                        progress_bar.progress(pct, text=f"Leyendo día {done} de {total}...")
+                        status_text.caption(f"Procesado: {done}/{total} días")
+
+                    bookings = conn.get_bookings_range(
+                        from_date=phase_tmp.start_date,
+                        to_date=phase_tmp.end_date,
+                        progress_callback=update_progress,
+                    )
+
+                    progress_bar.empty()
+                    status_text.empty()
+
+                    st.session_state.bookings = bookings
+                    if st.session_state.phase:
+                        st.session_state.phase.bookings = bookings
+
+                    if bookings:
+                        st.success(f"✅ {len(bookings)} reservas existentes importadas. El planificador las respetará.")
+                        with st.expander("Ver reservas importadas"):
+                            rows_imp = [
+                                {
+                                    "Pista": b.court_name,
+                                    "Fecha": b.start_datetime.strftime("%d/%m/%Y"),
+                                    "Inicio": b.start_datetime.strftime("%H:%M"),
+                                    "Fin": b.end_datetime.strftime("%H:%M"),
+                                    "Descripción": b.description[:50],
+                                }
+                                for b in bookings[:100]
+                            ]
+                            st.dataframe(pd.DataFrame(rows_imp), use_container_width=True)
+                            if len(bookings) > 100:
+                                st.caption(f"Mostrando 100 de {len(bookings)} reservas.")
+                    else:
+                        st.warning(
+                            "No se encontraron reservas existentes en ese rango de fechas. "
+                            "Puede ser normal si las fechas son futuras o si el parsing necesita ajuste."
+                        )
 
 # ---------------------------------------------------------------------------
 # PÁGINA 3: Generar calendario

@@ -29,7 +29,16 @@ from .models import Booking, Court, Group, Pair, Player
 
 logger = logging.getLogger(__name__)
 
-PADELPLUS_BASE = "https://padelplus.syltek.com"
+PADELPLUS_BASE = "https://padelplus.padelclick.com"
+
+# Rutas conocidas de Padelplus/Syltek
+LOGIN_PATHS = [
+    "/system/account/login",
+    "/admin/login",
+    "/login",
+    "/users/login",
+]
+CALENDAR_PATH = "/bookings/admin/index"
 
 
 # ---------------------------------------------------------------------------
@@ -89,11 +98,7 @@ class SyltekConnector:
         if not self.user or not self._password:
             return False, "Configura SYLTEK_USER y SYLTEK_PASSWORD en el .env"
 
-        login_candidates = [
-            f"{self.base}/admin/login",
-            f"{self.base}/login",
-            f"{self.base}/users/login",
-        ]
+        login_candidates = [f"{self.base}{p}" for p in LOGIN_PATHS]
 
         for login_url in login_candidates:
             try:
@@ -157,6 +162,62 @@ class SyltekConnector:
             "Login fallido. Comprueba usuario, contraseña y URL en el .env. "
             "Si el problema persiste, abre Syltek en Chrome y copia la URL exacta."
         )
+
+    # ------------------------------------------------------------------
+    # Leer disponibilidad real del calendario de Syltek
+    # ------------------------------------------------------------------
+
+    def get_bookings_range(
+        self,
+        from_date: date,
+        to_date: date,
+        progress_callback=None,
+    ) -> list[Booking]:
+        """
+        Lee el calendario de Syltek día a día entre from_date y to_date.
+        Devuelve una lista de Booking con todos los huecos YA OCUPADOS.
+        El Scheduler usará esta lista para evitar esos huecos al planificar.
+
+        progress_callback: función opcional que recibe (dias_procesados, total_dias)
+        """
+        self._assert_logged_in()
+
+        from datetime import timedelta
+        bookings: list[Booking] = []
+        current = from_date
+        total_days = (to_date - from_date).days + 1
+        day_num = 0
+
+        while current <= to_date:
+            day_bookings = self._get_bookings_for_day(current)
+            bookings.extend(day_bookings)
+            day_num += 1
+            if progress_callback:
+                progress_callback(day_num, total_days)
+            current += timedelta(days=1)
+
+        logger.info(
+            "Leídas %d reservas existentes entre %s y %s",
+            len(bookings), from_date, to_date,
+        )
+        return bookings
+
+    def _get_bookings_for_day(self, day: date) -> list[Booking]:
+        """
+        Lee el calendario de un día concreto y devuelve las reservas ocupadas.
+        Parsea la tabla de la vista diaria de Syltek.
+        """
+        encoded = base64.b64encode(day.strftime("%d/%m/%Y").encode()).decode()
+        url = f"{self.base}{CALENDAR_PATH}?encodedDate={encoded}&type=56"
+
+        try:
+            r = self._session.get(url, timeout=20)
+        except requests.RequestException as e:
+            logger.warning("Error al leer el calendario del %s: %s", day, e)
+            return []
+
+        soup = BeautifulSoup(r.text, "html.parser")
+        return _parse_occupied_slots(soup, day, self.base)
 
     # ------------------------------------------------------------------
     # Descubrimiento de pistas
@@ -457,6 +518,180 @@ def run_login_check(url: str, user: str, password: str) -> tuple[bool, str]:
 # ---------------------------------------------------------------------------
 # Helpers de parsing HTML
 # ---------------------------------------------------------------------------
+
+def _parse_occupied_slots(soup: BeautifulSoup, day: date, base_url: str) -> list[Booking]:
+    """
+    Parsea la vista diaria del calendario de Syltek y extrae las reservas ocupadas.
+
+    En Padelplus la tabla tiene:
+      - Cabeceras de columna = nombre de pista
+      - Filas = franjas horarias (cada 30 min)
+      - Celdas libres: clase 'timetableCell selectable' (fondo verde #aaee7c)
+      - Celdas ocupadas: tienen texto (nombre cliente) y fondo de color diferente
+
+    Devuelve una lista de Booking con los huecos OCUPADOS del día.
+    """
+    from datetime import time as dtime, datetime, timedelta
+
+    bookings: list[Booking] = []
+
+    # --- Encontrar la tabla del horario ---
+    timetable = (
+        soup.find(id=re.compile(r"timetable|horario|schedule", re.I))
+        or soup.find(class_=re.compile(r"timetableGroupPanel|timetable", re.I))
+        or soup.find("table")
+    )
+    if not timetable:
+        return bookings
+
+    # --- Extraer nombres de columnas (pistas) ---
+    # Las cabeceras suelen estar en <th> o en divs con clase column-header
+    court_names: list[str] = []
+    header_row = timetable.find("tr") or timetable.find(class_=re.compile(r"header|thead", re.I))
+    if header_row:
+        for th in header_row.find_all(["th", "td"]):
+            text = th.get_text(strip=True)
+            if text and text.lower() not in ("hora", "time", ""):
+                court_names.append(text)
+
+    # Si no hay cabeceras en tabla, buscar divs con nombres de pista
+    if not court_names:
+        for el in soup.find_all(class_=re.compile(r"timetableGroupPanel|courtName|court-name", re.I)):
+            text = el.get_text(strip=True)
+            if text:
+                court_names.append(text)
+
+    # --- Parsear celdas ocupadas ---
+    # Estrategia: buscar todos los elementos con onclick que lleven a newreservation
+    # ya creada, o elementos sin clase 'selectable' que tengan texto de cliente
+    occupied_cells = soup.find_all(
+        lambda tag: (
+            tag.name in ("td", "div")
+            and tag.get_text(strip=True)
+            and "selectable" not in (tag.get("class") or [])
+            and re.search(r"\d{1,2}:\d{2}", tag.get_text(strip=True) or "")
+            and (
+                "timetableCell" in " ".join(tag.get("class") or [])
+                or "reservationCell" in " ".join(tag.get("class") or [])
+            )
+        )
+    )
+
+    # Estrategia alternativa: buscar celdas con estilo de fondo NO verde
+    all_cells = soup.find_all(
+        lambda tag: (
+            tag.name in ("td", "div")
+            and "timetableCell" in " ".join(tag.get("class") or [])
+        )
+    )
+
+    for cell in all_cells:
+        style = cell.get("style", "")
+        classes = " ".join(cell.get("class") or [])
+
+        # Una celda libre tiene fondo verde (#aaee7c) o clase 'selectable'
+        is_free = (
+            "selectable" in classes
+            or "#aaee7c" in style
+            or "aaee7c" in style.lower()
+            or "bgGreen" in classes
+        )
+        if is_free:
+            continue
+
+        # Celda ocupada: extraer tiempo e idResource del onclick o del atributo data
+        onclick = cell.get("onclick", "")
+        cell_text = cell.get_text(strip=True)
+
+        # Tiempo: buscar en el texto o en atributos
+        time_match = re.search(r"(\d{1,2}):(\d{2})", cell_text)
+        if not time_match:
+            # Buscar en elementos hijo
+            time_el = cell.find(string=re.compile(r"\d{1,2}:\d{2}"))
+            if time_el:
+                time_match = re.search(r"(\d{1,2}):(\d{2})", time_el)
+        if not time_match:
+            continue
+
+        start_h = int(time_match.group(1))
+        start_m = int(time_match.group(2))
+        start_dt = datetime.combine(day, dtime(start_h, start_m))
+        end_dt = start_dt + timedelta(minutes=30)  # bloque mínimo de 30 min
+
+        # Intentar identificar la pista por posición en la tabla
+        court_name = ""
+        parent_row = cell.find_parent("tr")
+        if parent_row:
+            siblings = parent_row.find_all(["td", "th"])
+            try:
+                col_idx = siblings.index(cell)
+                if 0 < col_idx <= len(court_names):
+                    court_name = court_names[col_idx - 1]
+            except ValueError:
+                pass
+
+        if not court_name:
+            # Buscar por atributo data-resource o data-name
+            court_name = cell.get("data-name") or cell.get("data-resource-name") or "Desconocida"
+
+        # Extraer idResource del onclick para el court_id
+        court_id_match = re.search(r"idResource['\"]?\s*[:=]\s*['\"]?(\d+)", onclick)
+        court_id = court_id_match.group(1) if court_id_match else court_name
+
+        description = re.sub(r"\s+", " ", cell_text)[:100]
+
+        bookings.append(Booking(
+            court_id=court_id,
+            court_name=court_name,
+            start_datetime=start_dt,
+            end_datetime=end_dt,
+            description=description,
+            source="syltek",
+        ))
+
+    # Consolidar bloques consecutivos de 30 min en la misma pista
+    bookings = _merge_consecutive_bookings(bookings)
+    return bookings
+
+
+def _merge_consecutive_bookings(bookings: list[Booking]) -> list[Booking]:
+    """
+    Une bloques de 30 min consecutivos de la misma pista en una sola reserva.
+    Ej: 17:00-17:30 + 17:30-18:00 → 17:00-18:00
+    """
+    from datetime import timedelta
+
+    if not bookings:
+        return bookings
+
+    # Agrupar por pista
+    by_court: dict[str, list[Booking]] = {}
+    for b in bookings:
+        key = f"{b.court_id}_{b.start_datetime.date()}"
+        by_court.setdefault(key, []).append(b)
+
+    merged: list[Booking] = []
+    for group in by_court.values():
+        group.sort(key=lambda b: b.start_datetime)
+        current = group[0]
+        for nxt in group[1:]:
+            if nxt.start_datetime == current.end_datetime:
+                # Extender el bloque actual
+                current = Booking(
+                    court_id=current.court_id,
+                    court_name=current.court_name,
+                    start_datetime=current.start_datetime,
+                    end_datetime=nxt.end_datetime,
+                    description=current.description,
+                    source="syltek",
+                )
+            else:
+                merged.append(current)
+                current = nxt
+        merged.append(current)
+
+    return merged
+
 
 def _extract_court_name_from_element(el) -> str:
     """Intenta extraer el nombre de la pista a partir de un elemento HTML."""
