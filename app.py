@@ -501,21 +501,29 @@ elif page == "import":
                                     st.markdown("**Elemento timetableTabsOuter:**")
                                     st.code(str(tabs_outer)[:3000], language="html")
 
-                                # 3) Extraer el objeto JavaScript "var timetable = {...}"
-                                st.markdown("**Objeto JavaScript `var timetable` (datos reales del calendario):**")
-                                timetable_js = ""
-                                for script in soup_d.find_all("script"):
-                                    stxt = script.string or ""
-                                    if "var timetable" in stxt:
-                                        # Encontrar la línea con var timetable
-                                        idx = stxt.find("var timetable")
-                                        # Mostrar los 5000 caracteres desde ese punto
-                                        timetable_js = stxt[idx:idx+5000]
-                                        break
-                                if timetable_js:
-                                    st.code(timetable_js, language="javascript")
+                                # 3) Probar el nuevo parser directamente
+                                st.markdown("**Resultado del parser de reservas:**")
+                                from src.syltek_connector import _parse_occupied_slots as _pos
+                                parsed_bk = _pos(soup_d, diag_date, syl_imp_url)
+                                if parsed_bk:
+                                    st.success(f"✅ {len(parsed_bk)} reservas detectadas.")
+                                    df_bk_diag = pd.DataFrame([
+                                        {
+                                            "Pista": b.court_name,
+                                            "Inicio": b.start_datetime.strftime("%H:%M"),
+                                            "Fin": b.end_datetime.strftime("%H:%M"),
+                                        }
+                                        for b in parsed_bk
+                                    ])
+                                    st.dataframe(df_bk_diag, use_container_width=True)
                                 else:
-                                    st.warning("No se encontró 'var timetable' en los scripts.")
+                                    st.warning("Parser devolvió 0 reservas. Mostrando inicio del objeto timetable JS:")
+                                    raw_d = r_diag.text
+                                    m_tt = re.search(r'var\s+timetable\s*=\s*\{', raw_d)
+                                    if m_tt:
+                                        st.code(raw_d[m_tt.start():m_tt.start()+3000], language="javascript")
+                                    else:
+                                        st.error("No se encontró 'var timetable' en el HTML.")
                             except Exception as ex:
                                 st.error(f"Error: {ex}")
 

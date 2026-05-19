@@ -562,136 +562,121 @@ def run_login_check(url: str, user: str, password: str) -> tuple[bool, str]:
 
 def _parse_occupied_slots(soup: BeautifulSoup, day: date, base_url: str) -> list[Booking]:
     """
-    Parsea la vista diaria del calendario de Syltek y extrae las reservas ocupadas.
+    Parsea la vista diaria del calendario de Syltek.
 
-    En Padelplus la tabla tiene:
-      - Cabeceras de columna = nombre de pista
-      - Filas = franjas horarias (cada 30 min)
-      - Celdas libres: clase 'timetableCell selectable' (fondo verde #aaee7c)
-      - Celdas ocupadas: tienen texto (nombre cliente) y fondo de color diferente
+    Syltek renderiza el horario mediante JavaScript: los datos están en
+    el objeto  `var timetable = {...}`  incrustado en el HTML.
+    Extraemos resources (pistas) y reservations (reservas) de ese objeto.
 
-    Devuelve una lista de Booking con los huecos OCUPADOS del día.
+    Formato conocido (Padelplus / SCL v10):
+      var timetable = {
+        ...,
+        startTime: 480,        # minutos desde medianoche (ej. 480 = 08:00)
+        resources: [{id:1480, name:'Padel 1', ...}, ...],
+        reservations: [{idResource:1480, start:960, end:1050, color:'FB7615', text:'...'}, ...],
+      };
     """
-    from datetime import time as dtime, datetime, timedelta
+    from datetime import time as dtime, datetime
 
     bookings: list[Booking] = []
+    raw = str(soup)
 
-    # --- Encontrar la tabla del horario ---
-    timetable = (
-        soup.find(id=re.compile(r"timetable|horario|schedule", re.I))
-        or soup.find(class_=re.compile(r"timetableGroupPanel|timetable", re.I))
-        or soup.find("table")
-    )
-    if not timetable:
+    # ------------------------------------------------------------------
+    # 1. Extraer el bloque "var timetable = { ... };"
+    # ------------------------------------------------------------------
+    m_start = re.search(r'var\s+timetable\s*=\s*\{', raw)
+    if not m_start:
+        logger.debug("No se encontró 'var timetable' en el HTML del día %s", day)
         return bookings
 
-    # --- Extraer nombres de columnas (pistas) ---
-    # Las cabeceras suelen estar en <th> o en divs con clase column-header
-    court_names: list[str] = []
-    header_row = timetable.find("tr") or timetable.find(class_=re.compile(r"header|thead", re.I))
-    if header_row:
-        for th in header_row.find_all(["th", "td"]):
-            text = th.get_text(strip=True)
-            if text and text.lower() not in ("hora", "time", ""):
-                court_names.append(text)
+    # Encontrar el } de cierre usando conteo de llaves
+    idx = m_start.start()
+    brace = 0
+    end_idx = idx
+    in_str = False
+    str_char = ""
+    i = idx
+    while i < len(raw):
+        ch = raw[i]
+        if in_str:
+            if ch == str_char and raw[i - 1] != "\\":
+                in_str = False
+        else:
+            if ch in ('"', "'"):
+                in_str = True
+                str_char = ch
+            elif ch == "{":
+                brace += 1
+            elif ch == "}":
+                brace -= 1
+                if brace == 0:
+                    end_idx = i
+                    break
+        i += 1
 
-    # Si no hay cabeceras en tabla, buscar divs con nombres de pista
-    if not court_names:
-        for el in soup.find_all(class_=re.compile(r"timetableGroupPanel|courtName|court-name", re.I)):
-            text = el.get_text(strip=True)
-            if text:
-                court_names.append(text)
+    timetable_js = raw[idx : end_idx + 1]
 
-    # --- Parsear celdas ocupadas ---
-    # Estrategia: buscar todos los elementos con onclick que lleven a newreservation
-    # ya creada, o elementos sin clase 'selectable' que tengan texto de cliente
-    occupied_cells = soup.find_all(
-        lambda tag: (
-            tag.name in ("td", "div")
-            and tag.get_text(strip=True)
-            and "selectable" not in (tag.get("class") or [])
-            and re.search(r"\d{1,2}:\d{2}", tag.get_text(strip=True) or "")
-            and (
-                "timetableCell" in " ".join(tag.get("class") or [])
-                or "reservationCell" in " ".join(tag.get("class") or [])
-            )
-        )
-    )
+    # ------------------------------------------------------------------
+    # 2. Extraer pistas (resources)
+    # ------------------------------------------------------------------
+    resources: dict[str, str] = {}  # id → nombre
 
-    # Estrategia alternativa: buscar celdas con estilo de fondo NO verde
-    all_cells = soup.find_all(
-        lambda tag: (
-            tag.name in ("td", "div")
-            and "timetableCell" in " ".join(tag.get("class") or [])
-        )
-    )
+    # Patron: {id:1480,name:'Padel 1', ...}  o  {id:1480, name:"Padel 1", ...}
+    for m in re.finditer(
+        r'\{[^{}]*?id\s*:\s*(\d+)[^{}]*?name\s*:\s*[\'"]([^\'"]+)[\'"]',
+        timetable_js,
+    ):
+        resources[m.group(1)] = m.group(2)
 
-    for cell in all_cells:
-        style = cell.get("style", "")
-        classes = " ".join(cell.get("class") or [])
+    # Patrón alternativo con campos en orden invertido
+    for m in re.finditer(
+        r'\{[^{}]*?name\s*:\s*[\'"]([^\'"]+)[\'"][^{}]*?id\s*:\s*(\d+)',
+        timetable_js,
+    ):
+        resources.setdefault(m.group(2), m.group(1))
 
-        # Una celda libre tiene fondo verde (#aaee7c) o clase 'selectable'
-        is_free = (
-            "selectable" in classes
-            or "#aaee7c" in style
-            or "aaee7c" in style.lower()
-            or "bgGreen" in classes
-        )
-        if is_free:
-            continue
+    logger.debug("Pistas encontradas en timetable JS: %s", resources)
 
-        # Celda ocupada: extraer tiempo e idResource del onclick o del atributo data
-        onclick = cell.get("onclick", "")
-        cell_text = cell.get_text(strip=True)
+    # ------------------------------------------------------------------
+    # 3. Extraer reservas (reservations)
+    #    start/end son MINUTOS DESDE MEDIANOCHE
+    # ------------------------------------------------------------------
+    # Intentar varios órdenes de campos dentro de cada {...}
+    patterns = [
+        r'idResource\s*:\s*(\d+)[^{}]*?start\s*:\s*(\d+)[^{}]*?end\s*:\s*(\d+)',
+        r'start\s*:\s*(\d+)[^{}]*?end\s*:\s*(\d+)[^{}]*?idResource\s*:\s*(\d+)',
+    ]
 
-        # Tiempo: buscar en el texto o en atributos
-        time_match = re.search(r"(\d{1,2}):(\d{2})", cell_text)
-        if not time_match:
-            # Buscar en elementos hijo
-            time_el = cell.find(string=re.compile(r"\d{1,2}:\d{2}"))
-            if time_el:
-                time_match = re.search(r"(\d{1,2}):(\d{2})", time_el)
-        if not time_match:
-            continue
+    seen: set[tuple] = set()
+    for pat in patterns:
+        for m in re.finditer(pat, timetable_js):
+            if pat.startswith("idResource"):
+                court_id, start_min, end_min = m.group(1), int(m.group(2)), int(m.group(3))
+            else:
+                start_min, end_min, court_id = int(m.group(1)), int(m.group(2)), m.group(3)
 
-        start_h = int(time_match.group(1))
-        start_m = int(time_match.group(2))
-        start_dt = datetime.combine(day, dtime(start_h, start_m))
-        end_dt = start_dt + timedelta(minutes=30)  # bloque mínimo de 30 min
+            key = (court_id, start_min, end_min)
+            if key in seen:
+                continue
+            seen.add(key)
 
-        # Intentar identificar la pista por posición en la tabla
-        court_name = ""
-        parent_row = cell.find_parent("tr")
-        if parent_row:
-            siblings = parent_row.find_all(["td", "th"])
-            try:
-                col_idx = siblings.index(cell)
-                if 0 < col_idx <= len(court_names):
-                    court_name = court_names[col_idx - 1]
-            except ValueError:
-                pass
+            if not (0 <= start_min < 1440 and 0 < end_min <= 1440 and end_min > start_min):
+                continue
 
-        if not court_name:
-            # Buscar por atributo data-resource o data-name
-            court_name = cell.get("data-name") or cell.get("data-resource-name") or "Desconocida"
+            court_name = resources.get(court_id, f"Pista {court_id}")
+            start_dt = datetime.combine(day, dtime(start_min // 60, start_min % 60))
+            end_dt   = datetime.combine(day, dtime(end_min // 60,   end_min % 60))
 
-        # Extraer idResource del onclick para el court_id
-        court_id_match = re.search(r"idResource['\"]?\s*[:=]\s*['\"]?(\d+)", onclick)
-        court_id = court_id_match.group(1) if court_id_match else court_name
+            bookings.append(Booking(
+                court_id=court_id,
+                court_name=court_name,
+                start_datetime=start_dt,
+                end_datetime=end_dt,
+                description="Reserva existente",
+                source="syltek",
+            ))
 
-        description = re.sub(r"\s+", " ", cell_text)[:100]
-
-        bookings.append(Booking(
-            court_id=court_id,
-            court_name=court_name,
-            start_datetime=start_dt,
-            end_datetime=end_dt,
-            description=description,
-            source="syltek",
-        ))
-
-    # Consolidar bloques consecutivos de 30 min en la misma pista
-    bookings = _merge_consecutive_bookings(bookings)
+    logger.debug("Reservas extraídas para %s: %d", day, len(bookings))
     return bookings
 
 
