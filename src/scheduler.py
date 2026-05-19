@@ -187,6 +187,8 @@ class Scheduler:
         pair_schedule: dict[str, list[tuple[date, time, time, str]]],
         day_load: dict[date, int],
         court_load: dict[str, int],
+        pair_1=None,
+        pair_2=None,
     ) -> float:
         """
         Calcula penalización del slot. Menor = mejor.
@@ -215,6 +217,17 @@ class Scheduler:
         # Bonus leve por programar pronto en la fase (resta puntuación)
         days_offset = (slot.date - self.phase.start_date).days
         score -= max(0, 30 - days_offset) * (w.early_day_bonus / 30.0)
+
+        # Bonus fuerte si el slot coincide con la pista fija de alguna pareja
+        for pair in (pair_1, pair_2):
+            if pair is None:
+                continue
+            pw = getattr(pair, "preferred_weekday", None)
+            pt = getattr(pair, "preferred_time", None)
+            if pw is not None and slot.date.weekday() == pw:
+                score -= w.preferred_slot_bonus
+            if pt is not None and slot.start_time == pt:
+                score -= w.preferred_slot_bonus
 
         return score
 
@@ -302,7 +315,10 @@ class Scheduler:
             # Elegir el slot con MENOR penalización
             best = min(
                 candidates,
-                key=lambda s: self._slot_score(s, p1_id, p2_id, pair_schedule, day_load, court_load),
+                key=lambda s: self._slot_score(
+                    s, p1_id, p2_id, pair_schedule, day_load, court_load,
+                    pair_1=match.pair_1, pair_2=match.pair_2,
+                ),
             )
 
             # Asignar

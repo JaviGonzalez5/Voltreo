@@ -810,6 +810,8 @@ def _parse_groups_table(soup: BeautifulSoup, ranking_id: str, level_name: str) -
             available_from=avail["available_from"],
             available_until=avail["available_until"],
             availability_notes=obs,
+            preferred_weekday=avail["preferred_weekday"],
+            preferred_time=avail["preferred_time"],
         )
         groups[group_id].pairs.append(pair)
 
@@ -828,20 +830,28 @@ def _find_col(headers: list[str], candidates: list[str]) -> Optional[int]:
 def parse_observaciones(text: str) -> dict:
     """
     Parsea el campo Observaciones de Syltek para extraer disponibilidad.
-    Devuelve {'weekdays': [0..6], 'available_from': time|None, 'available_until': time|None}
+    Devuelve {
+      'weekdays': [0..6],
+      'available_from': time|None,
+      'available_until': time|None,
+      'preferred_weekday': int|None,   # pista fija: día preferido
+      'preferred_time': time|None,     # pista fija: hora preferida
+    }
 
     Ejemplos soportados:
       L A V 1630 A 2030  →  lunes-viernes, 16:30-20:30
       L - J 19 a 21      →  lunes-jueves, 19:00-21:00
       M , J +19-21       →  martes y jueves, 19:00-21:00
-      PF M 2100          →  fin de semana + martes, 21:00
+      PF X2030           →  pista fija miércoles 20:30
+      PF J 1930          →  pista fija jueves 19:30
       L Y X, M, J Y V HASTA LAS 1800  →  L,M,X,J,V hasta 18:00
       +1930              →  desde las 19:30 cualquier día
     """
     from datetime import time as dtime
 
     if not text or not text.strip():
-        return {"weekdays": [], "available_from": None, "available_until": None}
+        return {"weekdays": [], "available_from": None, "available_until": None,
+                "preferred_weekday": None, "preferred_time": None}
 
     t = text.upper().strip()
 
@@ -849,9 +859,19 @@ def parse_observaciones(text: str) -> dict:
     DMAP = {"L": 0, "M": 1, "X": 2, "J": 3, "V": 4, "S": 5, "D": 6}
 
     weekdays: set[int] = set()
+    preferred_weekday = None
+    preferred_time = None
 
-    # Fin de semana
-    if re.search(r"\bPF\b|FINDE|FIN\s+DE\s+SEMANA", t):
+    # Pista fija: "PF X2030", "PF J 1930", "PF M2100"
+    pf_match = re.search(r"\bPF\s+([LMXJVSD])\s*(\d{3,4})\b", t)
+    if pf_match:
+        preferred_weekday = DMAP.get(pf_match.group(1))
+        h_str = pf_match.group(2)
+        preferred_time = (dtime(int(h_str[:2]), int(h_str[2:])) if len(h_str) == 4
+                          else dtime(int(h_str), 0)) if h_str.isdigit() else None
+
+    # Fin de semana (sin PF de pista fija)
+    if re.search(r"\bFINDE\b|\bFIN\s+DE\s+SEMANA\b", t):
         weekdays.update([5, 6])
 
     # Rangos: "L A V", "L - J", "L A J"
@@ -915,6 +935,8 @@ def parse_observaciones(text: str) -> dict:
         "weekdays": sorted(weekdays),
         "available_from": available_from,
         "available_until": available_until,
+        "preferred_weekday": preferred_weekday,
+        "preferred_time": preferred_time,
     }
 
 

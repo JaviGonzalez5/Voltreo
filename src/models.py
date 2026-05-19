@@ -57,6 +57,9 @@ class Pair(BaseModel):
     available_from: Optional[time] = None     # hora mínima de juego para esta pareja
     available_until: Optional[time] = None    # hora máxima
     availability_notes: str = ""              # texto original de Observaciones
+    # Pista fija: día y hora preferidos (PF X2030 → miércoles 20:30)
+    preferred_weekday: Optional[int] = None   # 0=Lun … 6=Dom
+    preferred_time: Optional[time] = None     # hora exacta preferida
 
     @property
     def display_name(self) -> str:
@@ -173,6 +176,7 @@ class BalanceWeights(BaseModel):
     day_load_penalty: float = 1.5         # cuanto más cargado está el día, peor
     court_load_penalty: float = 1.0       # cuanto más cargada está la pista, peor
     early_day_bonus: float = 0.5          # leve preferencia por programar pronto en la fase
+    preferred_slot_bonus: float = 25.0    # fuerte preferencia por día+hora de pista fija (PF)
 
 
 class RankingPhase(BaseModel):
