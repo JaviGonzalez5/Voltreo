@@ -33,6 +33,14 @@ from src.validators import (
 # Helpers de conversión CSV → modelos (deben definirse antes del routing)
 # ---------------------------------------------------------------------------
 
+def _mc(cls, **kw):
+    """model_construct con uuid por defecto para el campo id."""
+    from uuid import uuid4
+    if "id" not in kw and hasattr(cls.model_fields, "__contains__") and "id" in cls.model_fields:
+        kw["id"] = str(uuid4())
+    return cls.model_construct(**kw)
+
+
 def _df_to_groups(df: pd.DataFrame) -> list[Group]:
     """Convierte un DataFrame de grupos al modelo Group."""
     groups_dict: dict[str, Group] = {}
@@ -40,22 +48,33 @@ def _df_to_groups(df: pd.DataFrame) -> list[Group]:
         gid = str(row["group_id"]).strip()
         gname = str(row["group_name"]).strip()
         if gid not in groups_dict:
-            groups_dict[gid] = Group(id=gid, name=gname)
-        p1 = Player(
+            groups_dict[gid] = Group.model_construct(id=gid, name=gname, pairs=[])
+        p1 = Player.model_construct(
+            id=str(__import__("uuid").uuid4()),
             name=str(row["player1_name"]).strip(),
+            surname="",
             email=str(row.get("player1_email", "")).strip() or None,
             phone=str(row.get("player1_phone", "")).strip() or None,
         )
-        p2 = Player(
+        p2 = Player.model_construct(
+            id=str(__import__("uuid").uuid4()),
             name=str(row["player2_name"]).strip(),
+            surname="",
             email=str(row.get("player2_email", "")).strip() or None,
             phone=str(row.get("player2_phone", "")).strip() or None,
         )
-        pair = Pair(
+        pair = Pair.model_construct(
+            id=str(__import__("uuid").uuid4()),
             name=str(row["pair_name"]).strip(),
             player_1=p1,
             player_2=p2,
             group_id=gid,
+            available_weekdays=[],
+            available_from=None,
+            available_until=None,
+            availability_notes="",
+            preferred_weekday=None,
+            preferred_time=None,
         )
         groups_dict[gid].pairs.append(pair)
     return list(groups_dict.values())
@@ -65,7 +84,8 @@ def _df_to_bookings(df: pd.DataFrame) -> list[Booking]:
     """Convierte un DataFrame de reservas al modelo Booking."""
     bookings = []
     for _, row in df.iterrows():
-        bookings.append(Booking(
+        bookings.append(Booking.model_construct(
+            id=str(__import__("uuid").uuid4()),
             court_id=str(row["court_id"]).strip(),
             court_name=str(row["court_name"]).strip(),
             start_datetime=pd.to_datetime(row["start_datetime"]).to_pydatetime(),
@@ -212,11 +232,14 @@ if page == "config":
                 for e in errs:
                     st.error(e)
             else:
+                from uuid import uuid4 as _uuid4
+                from src.models import BalanceWeights
                 courts = [
-                    Court(id=f"court_{i}", name=f"Pista {i}", active=True)
+                    Court.model_construct(id=f"court_{i}", name=f"Pista {i}", indoor=False, active=True)
                     for i in range(1, n_courts + 1)
                 ]
-                phase = RankingPhase(
+                phase = RankingPhase.model_construct(
+                    id=str(_uuid4()),
                     name=phase_name,
                     start_date=start_date,
                     end_date=end_date,
@@ -229,6 +252,15 @@ if page == "config":
                     max_matches_per_week=max_per_week,
                     min_days_between_matches=min_days_between,
                     random_seed=int(random_seed_val) if random_seed_val is not None else None,
+                    balance_weights=BalanceWeights.model_construct(
+                        same_hour_penalty=10.0,
+                        same_weekday_penalty=6.0,
+                        same_court_penalty=2.0,
+                        day_load_penalty=1.5,
+                        court_load_penalty=1.0,
+                        early_day_bonus=0.5,
+                        preferred_slot_bonus=25.0,
+                    ),
                 )
                 st.session_state.phase = phase
                 st.session_state.courts = courts

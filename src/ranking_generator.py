@@ -34,12 +34,19 @@ def generate_round_robin(group: Group, played_pairs: Optional[set[frozenset[str]
         if key in played_pairs:
             continue
 
-        match = Match(
+        match = Match.model_construct(
+            id=str(__import__("uuid").uuid4()),
             group_id=group.id,
             group_name=group.name,
             pair_1=pair_1,
             pair_2=pair_2,
             status=MatchStatus.PENDING,
+            suggested_date=None,
+            suggested_start_time=None,
+            suggested_end_time=None,
+            court=None,
+            conflict_reason=None,
+            notes="",
         )
         matches.append(match)
 

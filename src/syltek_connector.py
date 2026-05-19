@@ -695,7 +695,8 @@ def _merge_consecutive_bookings(bookings: list[Booking]) -> list[Booking]:
         for nxt in group[1:]:
             if nxt.start_datetime == current.end_datetime:
                 # Extender el bloque actual
-                current = Booking(
+                current = Booking.model_construct(
+                    id=str(__import__("uuid").uuid4()),
                     court_id=current.court_id,
                     court_name=current.court_name,
                     start_datetime=current.start_datetime,
@@ -759,14 +760,16 @@ def _parse_groups_table(soup: BeautifulSoup, ranking_id: str, level_name: str) -
     heading_re = re.compile(r"\bgrupo\s*(\d+)\b", re.I)
 
     def _register_pair(team_name, player1, player2, group_num, obs):
+        from uuid import uuid4 as _u4
         gid   = f"{ranking_id}_G{group_num}"
         gname = f"{level_name} — Grupo {group_num}"
         if gid not in groups:
-            groups[gid] = Group(id=gid, name=gname)
+            groups[gid] = Group.model_construct(id=gid, name=gname, pairs=[])
         avail = parse_observaciones(obs)
-        p1 = Player(name=player1 or team_name)
-        p2 = Player(name=player2)
-        pair = Pair(
+        p1 = Player.model_construct(id=str(_u4()), name=player1 or team_name, surname="")
+        p2 = Player.model_construct(id=str(_u4()), name=player2 or "", surname="")
+        pair = Pair.model_construct(
+            id=str(_u4()),
             name=team_name or f"{player1} / {player2}",
             player_1=p1,
             player_2=p2,
@@ -1049,19 +1052,16 @@ def _parse_ranking_groups(soup: BeautifulSoup, ranking_id: str) -> list[Group]:
 
 def _parse_group_table(table, group_name: str, ranking_id: str) -> Optional[Group]:
     """Extrae parejas/equipos de una tabla de ranking."""
-    group = Group(
-        id=f"{ranking_id}_{group_name.replace(' ', '_')}",
-        name=group_name,
-    )
+    from uuid import uuid4 as _u4
+    gid = f"{ranking_id}_{group_name.replace(' ', '_')}"
+    group = Group.model_construct(id=gid, name=group_name, pairs=[])
 
     rows = table.find_all("tr")
     for row in rows:
         cells = row.find_all("td")
-        # Buscar la celda con nombre de equipo (típicamente tiene "Equipo" o es la 6ª columna)
         team_cell = None
         for cell in cells:
             text = cell.get_text(strip=True)
-            # Los nombres de equipo suelen ser "Apellido1- Apellido2"
             if re.search(r"[A-ZÁÉÍÓÚ][a-záéíóú]+-\s*[A-ZÁÉÍÓÚ]", text):
                 team_cell = cell
                 break
@@ -1070,20 +1070,26 @@ def _parse_group_table(table, group_name: str, ranking_id: str) -> Optional[Grou
             continue
 
         team_name = team_cell.get_text(strip=True)
-        # Dividir "García- Martínez" en dos jugadores
         parts = re.split(r"-\s*", team_name, maxsplit=1)
         if len(parts) == 2:
-            p1 = Player(name=parts[0].strip())
-            p2 = Player(name=parts[1].strip())
+            p1 = Player.model_construct(id=str(_u4()), name=parts[0].strip(), surname="")
+            p2 = Player.model_construct(id=str(_u4()), name=parts[1].strip(), surname="")
         else:
-            p1 = Player(name=team_name)
-            p2 = Player(name="")
+            p1 = Player.model_construct(id=str(_u4()), name=team_name, surname="")
+            p2 = Player.model_construct(id=str(_u4()), name="", surname="")
 
-        pair = Pair(
+        pair = Pair.model_construct(
+            id=str(_u4()),
             name=team_name,
             player_1=p1,
             player_2=p2,
             group_id=group.id,
+            available_weekdays=[],
+            available_from=None,
+            available_until=None,
+            availability_notes="",
+            preferred_weekday=None,
+            preferred_time=None,
         )
         group.pairs.append(pair)
 
