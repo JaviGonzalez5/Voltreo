@@ -73,8 +73,10 @@ def build_availability_slots(
                     for b in day_bookings
                 )
                 if not blocked:
+                    # model_construct omite la validación de Pydantic:
+                    # los valores ya son del tipo correcto (Court, date, time)
                     slots.append(
-                        AvailabilitySlot(
+                        AvailabilitySlot.model_construct(
                             court=court,
                             date=current,
                             start_time=slot_start.time(),
