@@ -454,6 +454,44 @@ elif page == "import":
             n_days = (phase_tmp.end_date - phase_tmp.start_date).days + 1
             st.caption(f"Se leerán {n_days} días del calendario de Syltek")
 
+            # ---- Diagnóstico: ver HTML bruto de un día ----
+            with st.expander("🔎 Diagnóstico — ver HTML del calendario (un día)"):
+                diag_date = st.date_input(
+                    "Día a inspeccionar",
+                    value=date.today(),
+                    key="diag_date",
+                )
+                if st.button("🔎 Obtener HTML de ese día", key="btn_diag"):
+                    if not syl_imp_url or not syl_imp_user or not syl_imp_pass:
+                        st.error("Rellena URL, usuario y contraseña en la sección superior.")
+                    else:
+                        import base64 as _b64
+                        from src.syltek_connector import SyltekConnector
+                        conn_diag = SyltekConnector(
+                            url=syl_imp_url, user=syl_imp_user, password=syl_imp_pass, dry_run=True
+                        )
+                        ok_d, msg_d = conn_diag.login()
+                        if not ok_d:
+                            st.error(f"❌ Login fallido: {msg_d}")
+                        else:
+                            encoded = _b64.b64encode(diag_date.strftime("%d/%m/%Y").encode()).decode()
+                            url_cal = f"{conn_diag.base}/bookings/admin/index?encodedDate={encoded}&type=56"
+                            st.caption(f"URL consultada: `{url_cal}`")
+                            try:
+                                r_diag = conn_diag._session.get(url_cal, timeout=20)
+                                st.caption(f"HTTP {r_diag.status_code} — {len(r_diag.text)} caracteres")
+                                # Mostrar primeras 3000 chars del HTML
+                                st.code(r_diag.text[:4000], language="html")
+                                # También buscar clases CSS relevantes
+                                from bs4 import BeautifulSoup as _BS
+                                soup_d = _BS(r_diag.text, "html.parser")
+                                cells = soup_d.find_all(class_=lambda c: c and "timetable" in " ".join(c).lower())
+                                st.caption(f"Elementos con clase 'timetable*': {len(cells)}")
+                                if cells:
+                                    st.code(str(cells[0])[:2000], language="html")
+                            except Exception as ex:
+                                st.error(f"Error: {ex}")
+
             if st.button("📅 Importar disponibilidad desde Syltek", type="primary"):
                 if not syl_imp_url or not syl_imp_user or not syl_imp_pass:
                     st.error("Rellena URL, usuario y contraseña en la sección superior.")
