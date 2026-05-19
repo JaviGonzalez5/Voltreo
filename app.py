@@ -3,6 +3,7 @@ Ranking Padel Automator — Interfaz Streamlit
 """
 from __future__ import annotations
 
+import re
 import sys
 import io
 from pathlib import Path
@@ -505,8 +506,17 @@ elif page == "import":
                                 st.markdown("**Resultado del parser de reservas:**")
                                 from src.syltek_connector import _parse_occupied_slots as _pos
                                 parsed_bk = _pos(soup_d, diag_date, syl_imp_url)
+                                # Mostrar siempre el objeto timetable JS (primeros 4000 chars)
+                                raw_d = r_diag.text
+                                m_tt = re.search(r'var\s+timetable\s*=\s*\{', raw_d)
+                                if m_tt:
+                                    st.markdown("**Objeto `var timetable` (primeros 4000 chars):**")
+                                    st.code(raw_d[m_tt.start():m_tt.start()+4000], language="javascript")
+                                else:
+                                    st.error("No se encontró 'var timetable' en el HTML.")
+
                                 if parsed_bk:
-                                    st.success(f"✅ {len(parsed_bk)} reservas detectadas.")
+                                    st.success(f"✅ {len(parsed_bk)} reservas detectadas por el parser.")
                                     df_bk_diag = pd.DataFrame([
                                         {
                                             "Pista": b.court_name,
@@ -517,13 +527,7 @@ elif page == "import":
                                     ])
                                     st.dataframe(df_bk_diag, use_container_width=True)
                                 else:
-                                    st.warning("Parser devolvió 0 reservas. Mostrando inicio del objeto timetable JS:")
-                                    raw_d = r_diag.text
-                                    m_tt = re.search(r'var\s+timetable\s*=\s*\{', raw_d)
-                                    if m_tt:
-                                        st.code(raw_d[m_tt.start():m_tt.start()+3000], language="javascript")
-                                    else:
-                                        st.error("No se encontró 'var timetable' en el HTML.")
+                                    st.warning("Parser devolvió 0 reservas — revisa el objeto JS de arriba.")
                             except Exception as ex:
                                 st.error(f"Error: {ex}")
 
