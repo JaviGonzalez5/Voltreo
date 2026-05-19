@@ -363,6 +363,41 @@ class SyltekConnector:
 
         return []
 
+    def read_all_levels(
+        self,
+        level_ids: list[int],
+        rotation: int,
+        progress_callback=None,
+    ) -> list[Group]:
+        """
+        Lee grupos, jugadores y disponibilidades de todos los niveles de ranking.
+        URL: /rankings/showtab/{id}/group{rotation}
+        Devuelve una lista plana de Group con todas las parejas y su disponibilidad.
+        """
+        self._assert_logged_in()
+        all_groups: list[Group] = []
+
+        for i, rid in enumerate(level_ids):
+            url = f"{self.base}/rankings/showtab/{rid}/group{rotation}"
+            try:
+                r = self._session.get(url, timeout=15)
+            except Exception as e:
+                logger.warning("Error leyendo nivel %s: %s", rid, e)
+                if progress_callback:
+                    progress_callback(i + 1, len(level_ids), f"Error en nivel {rid}")
+                continue
+
+            soup = BeautifulSoup(r.text, "html.parser")
+            level_name = _extract_ranking_title(soup) or f"Nivel {i+1}"
+            groups = _parse_groups_table(soup, str(rid), level_name)
+            all_groups.extend(groups)
+
+            if progress_callback:
+                n_pairs = sum(len(g.pairs) for g in groups)
+                progress_callback(i + 1, len(level_ids), f"{level_name}: {len(groups)} grupos, {n_pairs} parejas")
+
+        return all_groups
+
     def get_ranking_groups(self, ranking_id: str, round_num: int) -> list[Group]:
         """
         Lee los grupos y equipos de un ranking/rotación desde Syltek.
@@ -714,6 +749,190 @@ def _extract_court_name_from_element(el) -> str:
             return m.group(0).strip()
 
     return ""
+
+
+def _extract_ranking_title(soup: BeautifulSoup) -> str:
+    """Extrae el título del ranking (ej. 'Ranking RANKING 2024-205 NIVEL 4')."""
+    for tag in ["h1", "h2", "h3", ".page-title", ".ranking-title"]:
+        el = soup.select_one(tag) if tag.startswith(".") else soup.find(tag)
+        if el:
+            text = el.get_text(strip=True)
+            if text:
+                return text
+    return ""
+
+
+def _parse_groups_table(soup: BeautifulSoup, ranking_id: str, level_name: str) -> list[Group]:
+    """
+    Parsea la tabla de grupos de la página /rankings/showtab/{id}/group{n}.
+    Columnas: Equipo | Jugador1 | Jugador2 | Grupo | Observaciones
+    """
+    groups: dict[str, Group] = {}
+
+    table = soup.find("table")
+    if not table:
+        return []
+
+    rows = table.find_all("tr")
+    if not rows:
+        return []
+
+    # Detectar índices de columnas desde la cabecera
+    header = rows[0]
+    headers = [th.get_text(strip=True).lower() for th in header.find_all(["th", "td"])]
+    col = {
+        "equipo": _find_col(headers, ["equipo", "team", "pareja"]),
+        "j1":     _find_col(headers, ["jugador1", "jugador 1", "player1", "j1"]),
+        "j2":     _find_col(headers, ["jugador2", "jugador 2", "player2", "j2"]),
+        "grupo":  _find_col(headers, ["grupo", "group"]),
+        "obs":    _find_col(headers, ["observaciones", "obs", "notas", "notes"]),
+    }
+
+    for row in rows[1:]:
+        cells = row.find_all(["td", "th"])
+        if len(cells) < 2:
+            continue
+
+        def cell_text(idx):
+            if idx is None or idx >= len(cells):
+                return ""
+            return cells[idx].get_text(strip=True)
+
+        team_name  = cell_text(col["equipo"])
+        player1    = cell_text(col["j1"])
+        player2    = cell_text(col["j2"])
+        group_num  = cell_text(col["grupo"]) or "1"
+        obs        = cell_text(col["obs"])
+
+        if not team_name and not player1:
+            continue
+
+        group_id   = f"{ranking_id}_G{group_num}"
+        group_name = f"{level_name} — Grupo {group_num}"
+
+        if group_id not in groups:
+            groups[group_id] = Group(id=group_id, name=group_name)
+
+        avail = parse_observaciones(obs)
+        p1 = Player(name=player1 or team_name)
+        p2 = Player(name=player2)
+
+        from datetime import time as dtime
+        pair = Pair(
+            name=team_name or f"{player1} / {player2}",
+            player_1=p1,
+            player_2=p2,
+            group_id=group_id,
+            available_weekdays=avail["weekdays"],
+            available_from=avail["available_from"],
+            available_until=avail["available_until"],
+            availability_notes=obs,
+        )
+        groups[group_id].pairs.append(pair)
+
+    return list(groups.values())
+
+
+def _find_col(headers: list[str], candidates: list[str]) -> Optional[int]:
+    """Devuelve el índice de la primera columna que coincide con algún candidato."""
+    for i, h in enumerate(headers):
+        for c in candidates:
+            if c in h:
+                return i
+    return None
+
+
+def parse_observaciones(text: str) -> dict:
+    """
+    Parsea el campo Observaciones de Syltek para extraer disponibilidad.
+    Devuelve {'weekdays': [0..6], 'available_from': time|None, 'available_until': time|None}
+
+    Ejemplos soportados:
+      L A V 1630 A 2030  →  lunes-viernes, 16:30-20:30
+      L - J 19 a 21      →  lunes-jueves, 19:00-21:00
+      M , J +19-21       →  martes y jueves, 19:00-21:00
+      PF M 2100          →  fin de semana + martes, 21:00
+      L Y X, M, J Y V HASTA LAS 1800  →  L,M,X,J,V hasta 18:00
+      +1930              →  desde las 19:30 cualquier día
+    """
+    from datetime import time as dtime
+
+    if not text or not text.strip():
+        return {"weekdays": [], "available_from": None, "available_until": None}
+
+    t = text.upper().strip()
+
+    # Mapa de abreviaturas de días
+    DMAP = {"L": 0, "M": 1, "X": 2, "J": 3, "V": 4, "S": 5, "D": 6}
+
+    weekdays: set[int] = set()
+
+    # Fin de semana
+    if re.search(r"\bPF\b|FINDE|FIN\s+DE\s+SEMANA", t):
+        weekdays.update([5, 6])
+
+    # Rangos: "L A V", "L - J", "L A J"
+    for m in re.finditer(r"\b([LMXJVSD])\s*(?:\bA\b|-)\s*([LMXJVSD])\b", t):
+        s = DMAP.get(m.group(1))
+        e = DMAP.get(m.group(2))
+        if s is not None and e is not None:
+            weekdays.update(range(s, e + 1) if s <= e else list(range(s, 7)) + list(range(0, e + 1)))
+
+    # Días sueltos: "M , J", "L Y X, M, J Y V"
+    for m in re.finditer(r"(?<![A-Z])([LMXJVSD])(?![A-Z0-9])", t):
+        d = DMAP.get(m.group(1))
+        if d is not None:
+            weekdays.add(d)
+
+    # Parsear horas
+    available_from = None
+    available_until = None
+
+    def _make_time(h: int, m: int) -> Optional[dtime]:
+        try:
+            return dtime(h, m) if 0 <= h <= 23 and 0 <= m <= 59 else None
+        except ValueError:
+            return None
+
+    def _parse_hhmm(s: str) -> Optional[dtime]:
+        s = s.strip()
+        if len(s) == 4 and s.isdigit():
+            return _make_time(int(s[:2]), int(s[2:]))
+        if len(s) <= 2 and s.isdigit():
+            return _make_time(int(s), 0)
+        return None
+
+    # +HHMM o +HH
+    m = re.search(r"\+\s*(\d{3,4})", t)
+    if m:
+        available_from = _parse_hhmm(m.group(1))
+
+    # "HH:MM A HH:MM" o "HHMM A HHMM" o "HH A HH"
+    m = re.search(r"\b(\d{2,4})\s+A\s+(\d{2,4})\b", t)
+    if m:
+        tf = _parse_hhmm(m.group(1))
+        tu = _parse_hhmm(m.group(2))
+        if tf and (available_from is None):
+            available_from = tf
+        if tu:
+            available_until = tu
+
+    # "HASTA LAS HHMM" o "HASTA HHMM"
+    m = re.search(r"HASTA\s+(?:LAS\s+)?(\d{3,4})", t)
+    if m and available_until is None:
+        available_until = _parse_hhmm(m.group(1))
+
+    # Número de 4 dígitos suelto tipo "1930", "1800", "2100"
+    if available_from is None:
+        nums = re.findall(r"\b(1[6-9]\d{2}|2[0-2]\d{2})\b", t)
+        if nums:
+            available_from = _parse_hhmm(nums[0])
+
+    return {
+        "weekdays": sorted(weekdays),
+        "available_from": available_from,
+        "available_until": available_until,
+    }
 
 
 def _parse_rankings_list(soup: BeautifulSoup, base_url: str) -> list[dict]:

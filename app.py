@@ -330,80 +330,181 @@ elif page == "import":
 
     # --- Tab 3: Syltek ---
     with tab3:
-        st.markdown("### Importar disponibilidad real de Syltek")
+        st.markdown("### Conectar con Syltek")
+
+        col_c1, col_c2 = st.columns(2)
+        with col_c1:
+            syl_imp_url = st.text_input(
+                "URL Syltek",
+                value=settings.syltek_url or "https://padelplus.padelclick.com",
+                key="syl_imp_url",
+            )
+            syl_imp_user = st.text_input(
+                "Usuario",
+                value=settings.syltek_user or "",
+                key="syl_imp_user",
+            )
+        with col_c2:
+            syl_imp_pass = st.text_input("Contraseña", type="password", key="syl_imp_pass")
+
+        st.markdown("---")
+
+        # ---- A: Importar grupos y parejas ----
+        st.markdown("#### 👥 Importar grupos y parejas del ranking")
         st.info(
-            "Conecta con Syltek para leer qué pistas y huecos están ya ocupados "
-            "cada día. El planificador usará esta información para asignar los partidos "
-            "**solo a huecos realmente libres**."
+            "Lee directamente desde Syltek los grupos, jugadores y disponibilidad "
+            "de todos los niveles. URL utilizada: `/rankings/showtab/{id}/group{rotacion}`"
+        )
+
+        col_r1, col_r2 = st.columns(2)
+        with col_r1:
+            level_ids_str = st.text_input(
+                "IDs de los niveles (separados por comas)",
+                value="101, 102, 103, 104, 105, 106, 107",
+                key="grp_level_ids",
+                help="Los IDs de cada nivel de ranking en Syltek (p.ej. 101 = Nivel 1).",
+            )
+        with col_r2:
+            grp_rotation = st.number_input(
+                "Número de grupo (rotación)",
+                value=5,
+                min_value=1,
+                max_value=20,
+                key="grp_rotation",
+                help="El número de grupo/rotación que aparece en la URL: group{N}.",
+            )
+
+        if st.button("👥 Importar grupos desde Syltek", type="primary", key="btn_import_groups"):
+            if not syl_imp_url or not syl_imp_user or not syl_imp_pass:
+                st.error("Rellena URL, usuario y contraseña.")
+            else:
+                try:
+                    level_ids = [int(x.strip()) for x in level_ids_str.split(",") if x.strip()]
+                except ValueError:
+                    st.error("IDs de niveles inválidos. Usa números separados por comas (ej: 101, 102).")
+                    level_ids = []
+
+                if level_ids:
+                    from src.syltek_connector import SyltekConnector
+                    conn_grp = SyltekConnector(
+                        url=syl_imp_url, user=syl_imp_user, password=syl_imp_pass, dry_run=True
+                    )
+                    ok, msg = conn_grp.login()
+                    if not ok:
+                        st.error(f"❌ Login fallido: {msg}")
+                    else:
+                        progress_grp = st.progress(0, text="Leyendo niveles del ranking...")
+                        status_grp = st.empty()
+
+                        def _update_grp(done, total, info=""):
+                            progress_grp.progress(done / total, text=f"Nivel {done}/{total}... {info}")
+                            status_grp.caption(info)
+
+                        groups_imp = conn_grp.read_all_levels(
+                            level_ids=level_ids,
+                            rotation=int(grp_rotation),
+                            progress_callback=_update_grp,
+                        )
+                        progress_grp.empty()
+                        status_grp.empty()
+
+                        if groups_imp:
+                            st.session_state.groups = groups_imp
+                            st.session_state.data_loaded = True
+                            if st.session_state.phase:
+                                st.session_state.phase.groups = groups_imp
+                            n_pairs_imp = sum(len(g.pairs) for g in groups_imp)
+                            st.success(
+                                f"✅ {len(groups_imp)} grupos y {n_pairs_imp} parejas importados correctamente."
+                            )
+                            day_names = ["L", "M", "X", "J", "V", "S", "D"]
+                            with st.expander("Ver grupos importados"):
+                                for g in groups_imp:
+                                    st.markdown(f"**{g.name}** — {len(g.pairs)} parejas")
+                                    for p in g.pairs:
+                                        avail = ""
+                                        if p.available_weekdays:
+                                            avail += ", ".join(day_names[d] for d in p.available_weekdays)
+                                        if p.available_from or p.available_until:
+                                            avail += f"  {p.available_from or '?'} → {p.available_until or '?'}"
+                                        st.write(f"  • {p.display_name}" + (f"  [{avail.strip()}]" if avail.strip() else ""))
+                        else:
+                            st.warning(
+                                "No se encontraron grupos. Revisa los IDs de niveles y el número de rotación."
+                            )
+
+        st.markdown("---")
+
+        # ---- B: Importar reservas existentes ----
+        st.markdown("#### 📅 Importar reservas existentes del calendario")
+        st.info(
+            "Lee el calendario de Syltek para saber qué pistas ya están ocupadas "
+            "cada día. El planificador asignará los partidos **solo a huecos libres**."
         )
 
         if not st.session_state.phase:
             st.warning("Guarda primero la configuración de fase (fechas, pistas) en **⚙️ Configuración**.")
-            st.stop()
-
-        col_s1, col_s2 = st.columns(2)
-        with col_s1:
-            imp_url = st.text_input("URL Syltek", value=settings.syltek_url or "https://padelplus.padelclick.com", key="imp_url")
-            imp_user = st.text_input("Usuario", value=settings.syltek_user or "", key="imp_user")
-        with col_s2:
-            imp_pass = st.text_input("Contraseña", type="password", key="imp_pass")
+        else:
             phase_tmp = st.session_state.phase
-            st.markdown(f"**Rango:** {phase_tmp.start_date} → {phase_tmp.end_date}")
+            st.markdown(f"**Rango de la fase:** {phase_tmp.start_date} → {phase_tmp.end_date}")
             n_days = (phase_tmp.end_date - phase_tmp.start_date).days + 1
             st.caption(f"Se leerán {n_days} días del calendario de Syltek")
 
-        if st.button("📅 Importar disponibilidad desde Syltek", type="primary"):
-            if not imp_url or not imp_user or not imp_pass:
-                st.error("Rellena URL, usuario y contraseña.")
-            else:
-                from src.syltek_connector import SyltekConnector
-                conn = SyltekConnector(url=imp_url, user=imp_user, password=imp_pass, dry_run=True)
-                ok, msg = conn.login()
-                if not ok:
-                    st.error(f"❌ Login fallido: {msg}")
+            if st.button("📅 Importar disponibilidad desde Syltek", type="primary"):
+                if not syl_imp_url or not syl_imp_user or not syl_imp_pass:
+                    st.error("Rellena URL, usuario y contraseña en la sección superior.")
                 else:
-                    progress_bar = st.progress(0, text="Leyendo calendario de Syltek...")
-                    status_text = st.empty()
-
-                    def update_progress(done, total):
-                        pct = done / total
-                        progress_bar.progress(pct, text=f"Leyendo día {done} de {total}...")
-                        status_text.caption(f"Procesado: {done}/{total} días")
-
-                    bookings = conn.get_bookings_range(
-                        from_date=phase_tmp.start_date,
-                        to_date=phase_tmp.end_date,
-                        progress_callback=update_progress,
+                    from src.syltek_connector import SyltekConnector
+                    conn_bk = SyltekConnector(
+                        url=syl_imp_url, user=syl_imp_user, password=syl_imp_pass, dry_run=True
                     )
-
-                    progress_bar.empty()
-                    status_text.empty()
-
-                    st.session_state.bookings = bookings
-                    if st.session_state.phase:
-                        st.session_state.phase.bookings = bookings
-
-                    if bookings:
-                        st.success(f"✅ {len(bookings)} reservas existentes importadas. El planificador las respetará.")
-                        with st.expander("Ver reservas importadas"):
-                            rows_imp = [
-                                {
-                                    "Pista": b.court_name,
-                                    "Fecha": b.start_datetime.strftime("%d/%m/%Y"),
-                                    "Inicio": b.start_datetime.strftime("%H:%M"),
-                                    "Fin": b.end_datetime.strftime("%H:%M"),
-                                    "Descripción": b.description[:50],
-                                }
-                                for b in bookings[:100]
-                            ]
-                            st.dataframe(pd.DataFrame(rows_imp), use_container_width=True)
-                            if len(bookings) > 100:
-                                st.caption(f"Mostrando 100 de {len(bookings)} reservas.")
+                    ok, msg = conn_bk.login()
+                    if not ok:
+                        st.error(f"❌ Login fallido: {msg}")
                     else:
-                        st.warning(
-                            "No se encontraron reservas existentes en ese rango de fechas. "
-                            "Puede ser normal si las fechas son futuras o si el parsing necesita ajuste."
+                        progress_bar = st.progress(0, text="Leyendo calendario de Syltek...")
+                        status_text = st.empty()
+
+                        def _update_bk(done, total):
+                            progress_bar.progress(done / total, text=f"Leyendo día {done} de {total}...")
+                            status_text.caption(f"Procesado: {done}/{total} días")
+
+                        bookings = conn_bk.get_bookings_range(
+                            from_date=phase_tmp.start_date,
+                            to_date=phase_tmp.end_date,
+                            progress_callback=_update_bk,
                         )
+
+                        progress_bar.empty()
+                        status_text.empty()
+
+                        st.session_state.bookings = bookings
+                        if st.session_state.phase:
+                            st.session_state.phase.bookings = bookings
+
+                        if bookings:
+                            st.success(
+                                f"✅ {len(bookings)} reservas existentes importadas. El planificador las respetará."
+                            )
+                            with st.expander("Ver reservas importadas"):
+                                rows_imp = [
+                                    {
+                                        "Pista": b.court_name,
+                                        "Fecha": b.start_datetime.strftime("%d/%m/%Y"),
+                                        "Inicio": b.start_datetime.strftime("%H:%M"),
+                                        "Fin": b.end_datetime.strftime("%H:%M"),
+                                        "Descripción": b.description[:50],
+                                    }
+                                    for b in bookings[:100]
+                                ]
+                                st.dataframe(pd.DataFrame(rows_imp), use_container_width=True)
+                                if len(bookings) > 100:
+                                    st.caption(f"Mostrando 100 de {len(bookings)} reservas.")
+                        else:
+                            st.warning(
+                                "No se encontraron reservas existentes en ese rango de fechas. "
+                                "Puede ser normal si las fechas son futuras o si el parsing necesita ajuste."
+                            )
 
 # ---------------------------------------------------------------------------
 # PÁGINA 3: Generar calendario

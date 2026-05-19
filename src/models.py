@@ -52,6 +52,11 @@ class Pair(BaseModel):
     player_1: Player
     player_2: Player
     group_id: Optional[str] = None
+    # Disponibilidad de la pareja (extraída de Observaciones en Syltek)
+    available_weekdays: list[int] = Field(default_factory=list)  # 0=Lun … 6=Dom, vacío=cualquier día
+    available_from: Optional[time] = None     # hora mínima de juego para esta pareja
+    available_until: Optional[time] = None    # hora máxima
+    availability_notes: str = ""              # texto original de Observaciones
 
     @property
     def display_name(self) -> str:

@@ -148,6 +148,23 @@ class Scheduler:
                 return True
         return False
 
+    @staticmethod
+    def _pair_available(pair, d: date, st: time) -> bool:
+        """Comprueba si la pareja está disponible ese día y hora según sus Observaciones."""
+        from .models import Pair as PairModel
+        if not isinstance(pair, PairModel):
+            return True
+        # Días de la semana
+        if pair.available_weekdays and d.weekday() not in pair.available_weekdays:
+            return False
+        # Hora mínima
+        if pair.available_from and st < pair.available_from:
+            return False
+        # Hora máxima
+        if pair.available_until and st >= pair.available_until:
+            return False
+        return True
+
     def _violates_min_days(
         self,
         pair_id: str,
@@ -257,6 +274,11 @@ class Scheduler:
                 if self._violates_min_days(p1_id, d, pair_schedule):
                     continue
                 if self._violates_min_days(p2_id, d, pair_schedule):
+                    continue
+                # Disponibilidad de la pareja (días y horario de Observaciones)
+                if not self._pair_available(match.pair_1, d, st):
+                    continue
+                if not self._pair_available(match.pair_2, d, st):
                     continue
 
                 candidates.append(slot)
