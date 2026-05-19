@@ -617,6 +617,18 @@ elif page == "generate":
             st.session_state.schedule_result = None
             st.success(f"✅ {len(matches)} enfrentamientos generados.")
 
+        # Desglose de grupos y parejas
+        with st.expander("🔎 Ver desglose por grupo", expanded=False):
+            from math import comb
+            total_pairs = sum(len(g.pairs) for g in phase.groups)
+            total_expected = sum(comb(len(g.pairs), 2) for g in phase.groups)
+            st.caption(f"**{len(phase.groups)} grupos · {total_pairs} parejas · {total_expected} partidos esperados**")
+            rows_diag = []
+            for g in sorted(phase.groups, key=lambda x: x.name):
+                n = len(g.pairs)
+                rows_diag.append({"Grupo": g.name, "Parejas": n, "Partidos esperados": comb(n, 2)})
+            st.dataframe(rows_diag, use_container_width=True, hide_index=True)
+
         if st.session_state.matches_generated:
             if st.button("🗓️ Asignar horarios", type="primary"):
                 with st.spinner("Asignando horarios... "):
