@@ -569,26 +569,31 @@ def _parse_occupied_slots(raw_html: str, day: date) -> list[Booking]:
 
     Formato conocido (Padelplus / SCL v10):
       var timetable = {
-        ...,
-        startTime: 480,        # minutos desde medianoche (ej. 480 = 08:00)
-        resources: [{id:1480, name:'Padel 1', ...}, ...],
-        reservations: [{idResource:1480, start:960, end:1050, color:'FB7615', text:'...'}, ...],
+        resources: {1477:{id:'1477',name:'Padel 1 <br>',...}, ...},
+        reservations: {
+          12345: {
+            start: new Date(2026,3,27,20,30,0),
+            end:   new Date(2026,3,27,22,0,0),
+            ...,
+            idResource: [1477],
+          },
+          ...
+        }
       };
     """
-    from datetime import time as dtime, datetime
+    from datetime import time as dtime, datetime as _dt
 
     bookings: list[Booking] = []
 
     # ------------------------------------------------------------------
-    # 1. Localizar el bloque "var timetable = { ... };"
-    #    El objeto está en una sola línea larga dentro de un <script>
+    # 1. Extraer el bloque "var timetable = { ... };"
+    #    Buscamos la primera apertura de llave y contamos hasta cerrar
     # ------------------------------------------------------------------
     m_start = re.search(r'var\s+timetable\s*=\s*\{', raw_html)
     if not m_start:
         logger.debug("No se encontró 'var timetable' en el HTML del día %s", day)
         return bookings
 
-    # Encontrar el } de cierre usando conteo de llaves (respetando strings)
     idx = m_start.start()
     brace = 0
     end_idx = idx
@@ -598,7 +603,7 @@ def _parse_occupied_slots(raw_html: str, day: date) -> list[Booking]:
     while i < len(raw_html):
         ch = raw_html[i]
         if in_str:
-            if ch == str_char and (i == 0 or raw_html[i - 1] != "\\"):
+            if ch == str_char and raw_html[i - 1:i] != "\\":
                 in_str = False
         else:
             if ch in ('"', "'"):
@@ -613,53 +618,103 @@ def _parse_occupied_slots(raw_html: str, day: date) -> list[Booking]:
                     break
         i += 1
 
-    timetable_js = raw_html[idx : end_idx + 1]
+    timetable_js = raw_html[idx: end_idx + 1]
     logger.debug("Bloque timetable extraído: %d chars", len(timetable_js))
 
     # ------------------------------------------------------------------
     # 2. Extraer pistas (resources)
-    #    Formato: resources:{1477:{id:'1477',name:'Padel 1 <br>',...}, ...}
+    #    Soporta: {id:'1477',name:'Padel 1 <br>',...}
+    #             {id:"1477",name:"Padel 1",...}
+    #             1477:{id:'1477',...}
     # ------------------------------------------------------------------
     resources: dict[str, str] = {}
-    for m in re.finditer(r"(\d+):\{id:'(\d+)',name:'([^']*)'", timetable_js):
-        court_id = m.group(2)
-        # Limpiar tags HTML del nombre (ej. "Padel 1 <br>" → "Padel 1")
-        name = re.sub(r'\s*<[^>]+>\s*', '', m.group(3)).strip()
+    for m in re.finditer(
+        r"""id\s*:\s*['"]?(\d+)['"]?\s*,\s*name\s*:\s*['"]([^'"]+)['"]""",
+        timetable_js,
+    ):
+        court_id = m.group(1)
+        name = re.sub(r'\s*<[^>]+>\s*', ' ', m.group(2)).strip()
         resources[court_id] = name or f"Pista {court_id}"
+
+    # Fallback: clave numérica como key del objeto resources
+    if not resources:
+        for m in re.finditer(r"(\d{4,5})\s*:\s*\{[^}]*name\s*:\s*'([^']*)'", timetable_js):
+            court_id = m.group(1)
+            name = re.sub(r'\s*<[^>]+>\s*', ' ', m.group(2)).strip()
+            resources[court_id] = name or f"Pista {court_id}"
 
     logger.debug("Pistas encontradas: %s", resources)
 
     # ------------------------------------------------------------------
-    # 3. Extraer reservas (reservations)
-    #    Formato: start:new Date(Y,M,D,H,m,s),end:new Date(Y,M,D,H,m,s),...,idResource:[id]
-    #    start y end van CONSECUTIVOS, idResource viene un poco después
+    # 3. Extraer reservas — estrategia robusta en dos pasos:
+    #
+    #    Paso A: encontrar TODAS las apariciones de "start: new Date(...)"
+    #            con posición en el texto.
+    #    Paso B: para cada una, buscar "end: new Date(...)" e "idResource:[...]"
+    #            en una ventana hacia adelante ANTES de que aparezca el
+    #            siguiente "start:". Así evitamos mezclar reservas.
     # ------------------------------------------------------------------
-    seen: set[tuple] = set()
-    for m in re.finditer(
-        r'start:new Date\(\d+,\d+,\d+,(\d+),(\d+),\d+\),'
-        r'end:new Date\(\d+,\d+,\d+,(\d+),(\d+),\d+\)',
-        timetable_js,
-    ):
-        sh, sm = int(m.group(1)), int(m.group(2))
-        eh, em = int(m.group(3)), int(m.group(4))
+    DATE_RE = re.compile(
+        r'start\s*:\s*new\s+Date\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,'
+        r'\s*(\d+)\s*,\s*(\d+)\s*,\s*\d+\s*\)',
+        re.IGNORECASE,
+    )
+    END_RE = re.compile(
+        r'end\s*:\s*new\s+Date\s*\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,'
+        r'\s*(\d+)\s*,\s*(\d+)\s*,\s*\d+\s*\)',
+        re.IGNORECASE,
+    )
+    RES_RE = re.compile(r'idResource\s*:\s*\[([^\]]*)\]', re.IGNORECASE)
 
-        # Buscar idResource en los próximos 600 chars
-        snippet = timetable_js[m.end() : m.end() + 600]
-        m_res = re.search(r'idResource:\[(\d+(?:,\s*\d+)*)\]', snippet)
-        if not m_res:
+    seen: set[tuple] = set()
+
+    all_starts = list(DATE_RE.finditer(timetable_js))
+    for idx_s, m_s in enumerate(all_starts):
+        sh = int(m_s.group(4))
+        sm = int(m_s.group(5))
+
+        # Ventana: desde el fin de este start hasta el inicio del siguiente start
+        # (máximo 1500 chars para robustez)
+        win_start = m_s.end()
+        win_end   = (all_starts[idx_s + 1].start()
+                     if idx_s + 1 < len(all_starts)
+                     else min(win_start + 1500, len(timetable_js)))
+        window = timetable_js[win_start:win_end]
+
+        m_end = END_RE.search(window)
+        m_res = RES_RE.search(window)
+        if not m_end or not m_res:
+            # Ampliar ventana para buscar idResource (puede estar más lejos)
+            wider = timetable_js[win_start: win_start + 2000]
+            if not m_end:
+                m_end = END_RE.search(wider)
+            if not m_res:
+                m_res = RES_RE.search(wider)
+        if not m_end or not m_res:
             continue
 
-        for court_id in [c.strip() for c in m_res.group(1).split(',')]:
+        eh = int(m_end.group(1))
+        em = int(m_end.group(2))
+
+        # Validar horas
+        if not (0 <= sh <= 23 and 0 <= sm <= 59 and 0 <= eh <= 23 and 0 <= em <= 59):
+            continue
+
+        for court_id in [c.strip() for c in m_res.group(1).split(',') if c.strip().isdigit()]:
             key = (court_id, sh, sm)
             if key in seen:
                 continue
             seen.add(key)
 
             court_name = resources.get(court_id, f"Pista {court_id}")
-            start_dt = datetime.combine(day, dtime(sh, sm))
-            end_dt   = datetime.combine(day, dtime(eh, em))
+            try:
+                start_dt = _dt.combine(day, dtime(sh, sm))
+                end_dt   = _dt.combine(day, dtime(eh, em))
+            except ValueError:
+                continue
 
-            bookings.append(Booking(
+            bookings.append(Booking.model_construct(
+                id=str(__import__("uuid").uuid4()),
                 court_id=court_id,
                 court_name=court_name,
                 start_datetime=start_dt,
