@@ -1086,8 +1086,11 @@ def parse_observaciones(text: str) -> dict:
         and not _has_plus
     ):
         from datetime import timedelta, datetime as _dt2
+        # Ventana de 30 min: acepta SOLO el slot que empieza exactamente a esa hora.
+        # El siguiente slot posible es mínimo 60 min después (duración mínima),
+        # así que ningún slot posterior puede colarse.
         _until = (
-            _dt2.combine(_dt2.today().date(), available_from) + timedelta(hours=2)
+            _dt2.combine(_dt2.today().date(), available_from) + timedelta(minutes=30)
         ).time()
         available_until = _until
         # Marcar como preferred (pista fija implícita)
