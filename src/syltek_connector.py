@@ -981,6 +981,13 @@ def parse_observaciones(text: str) -> dict:
         if d is not None:
             weekdays.add(d)
 
+    # Patrón día+hora pegados sin espacio: "L1930", "M2100", "J2030"
+    # (la regex de días sueltos los ignora porque el día va seguido de un dígito)
+    for m in re.finditer(r"(?<![A-Z])([LMXJVSD])(\d{4})\b", t):
+        d_code = DMAP.get(m.group(1))
+        if d_code is not None:
+            weekdays.add(d_code)
+
     # Parsear horas
     available_from = None
     available_until = None
@@ -1039,6 +1046,35 @@ def parse_observaciones(text: str) -> dict:
         nums = re.findall(r"\b(1[6-9]\d{2}|2[0-2]\d{2})\b", t)
         if nums:
             available_from = _parse_hhmm(nums[0])
+
+    # -----------------------------------------------------------------------
+    # Caso "DÍA HORA" exacto: "L 1930", "M2100", "J 2030"
+    # Si hay exactamente UN día y UNA hora sin rango ("A") ni prefijo "+",
+    # significa "solo puedo jugar ESE día A ESA hora".
+    # → Fijar ventana de 2 horas y marcar como preferred.
+    # -----------------------------------------------------------------------
+    _has_day_range  = bool(re.search(r"[LMXJVSD]\s*(?:\bA\b|-)\s*[LMXJVSD]", t))
+    _has_time_range = bool(re.search(r"\b\d{2,4}\s+A\s+\d{2,4}\b", t))
+    _has_plus       = bool(re.search(r"\+\s*\d{2,4}", t))
+
+    if (
+        available_from is not None
+        and available_until is None
+        and len(weekdays) == 1
+        and not _has_day_range
+        and not _has_time_range
+        and not _has_plus
+    ):
+        from datetime import timedelta, datetime as _dt2
+        _until = (
+            _dt2.combine(_dt2.today().date(), available_from) + timedelta(hours=2)
+        ).time()
+        available_until = _until
+        # Marcar como preferred (pista fija implícita)
+        if preferred_weekday is None:
+            preferred_weekday = next(iter(weekdays))
+        if preferred_time is None:
+            preferred_time = available_from
 
     return {
         "weekdays": sorted(weekdays),
