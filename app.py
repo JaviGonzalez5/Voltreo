@@ -538,11 +538,15 @@ elif page == "import":
                             progress_grp.progress(done / total, text=f"Nivel {done}/{total}... {info}")
                             status_grp.caption(info)
 
-                        groups_imp = conn_grp.read_all_levels(
-                            level_ids=level_ids,
-                            rotation=int(grp_rotation),
-                            progress_callback=_update_grp,
-                        )
+                        try:
+                            groups_imp = conn_grp.read_all_levels(
+                                level_ids=level_ids,
+                                rotation=int(grp_rotation),
+                                progress_callback=_update_grp,
+                            )
+                        except Exception as _e_grp:
+                            groups_imp = []
+                            st.error(f"❌ Error al leer los niveles: {_e_grp}")
                         progress_grp.empty()
                         status_grp.empty()
 
@@ -581,12 +585,15 @@ elif page == "import":
                 else:
                     from src.syltek_connector import SyltekConnector
                     _conn2 = SyltekConnector(url=syl_imp_url, user=syl_imp_user, password=syl_imp_pass, dry_run=True)
-                    ok2, _ = _conn2.login()
-                    if ok2:
+                    ok2, _msg2 = _conn2.login()
+                    if not ok2:
+                        st.error(f"❌ Login fallido: {_msg2}")
+                    else:
+                      try:
                         _url2 = f"{_conn2.base}/rankings/showtab/{int(diag_level_id2)}/group{int(diag_rotation2)}"
                         _r2 = _conn2._session.get(_url2, timeout=20)
                         from bs4 import BeautifulSoup as _BS2
-                        _soup2 = _BS2(_r2.text, "lxml")
+                        _soup2 = _BS2(_r2.text, "html.parser")
                         _tables2 = _soup2.find_all("table")
                         st.write(f"**Tablas encontradas:** {len(_tables2)}")
                         for _ti, _tbl2 in enumerate(_tables2, 1):
@@ -612,6 +619,8 @@ elif page == "import":
                                     st.dataframe(_vc.rename("Parejas"), use_container_width=True)
                                 # Tabla completa
                                 st.dataframe(_df_diag, use_container_width=True, height=600)
+                      except Exception as _e2:
+                          st.error(f"❌ Error en diagnóstico: {_e2}")
 
         # ---- Diagnóstico: ver HTML del nivel ----
         with st.expander("🔎 Diagnóstico — ver estructura HTML de un nivel"):
@@ -627,10 +636,11 @@ elif page == "import":
                     if not ok_d:
                         st.error(f"Login fallido: {msg_d}")
                     else:
+                      try:
                         _url_d = f"{_conn_d.base}/rankings/showtab/{int(diag_level_id)}/group{int(diag_rotation)}"
                         _r_d = _conn_d._session.get(_url_d, timeout=20)
                         from bs4 import BeautifulSoup as _BS
-                        _soup_d = _BS(_r_d.text, "lxml")
+                        _soup_d = _BS(_r_d.text, "html.parser")
                         import re as _re
                         _hrx = _re.compile(r"\bgrupo\s*\d+\b", _re.I)
                         # 1. Headings con "Grupo"
@@ -659,6 +669,8 @@ elif page == "import":
                                 _e = min(len(_html_full), _mx.end() + 80)
                                 _snippets.append(_html_full[_s:_e].replace("\n", " "))
                             st.code("\n---\n".join(_snippets), language="html")
+                      except Exception as _e_d:
+                          st.error(f"❌ Error en diagnóstico HTML: {_e_d}")
 
         st.markdown("---")
 
@@ -769,14 +781,19 @@ elif page == "import":
                         status_text = st.empty()
 
                         def _update_bk(done, total):
-                            progress_bar.progress(done / total, text=f"Leyendo día {done} de {total}...")
+                            pct = (done / total) if total > 0 else 1.0
+                            progress_bar.progress(min(pct, 1.0), text=f"Leyendo día {done} de {total}...")
                             status_text.caption(f"Procesado: {done}/{total} días")
 
-                        bookings = conn_bk.get_bookings_range(
-                            from_date=phase_tmp.start_date,
-                            to_date=phase_tmp.end_date,
-                            progress_callback=_update_bk,
-                        )
+                        try:
+                            bookings = conn_bk.get_bookings_range(
+                                from_date=phase_tmp.start_date,
+                                to_date=phase_tmp.end_date,
+                                progress_callback=_update_bk,
+                            )
+                        except Exception as _e_bk:
+                            bookings = []
+                            st.error(f"❌ Error al importar reservas: {_e_bk}")
 
                         progress_bar.empty()
                         status_text.empty()

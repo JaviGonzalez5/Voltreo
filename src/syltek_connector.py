@@ -222,7 +222,11 @@ class SyltekConnector:
 
         # Pasamos el HTML crudo (no soup) para evitar que BeautifulSoup
         # altere el contenido de los tags <script>
-        return _parse_occupied_slots(r.text, day)
+        try:
+            return _parse_occupied_slots(r.text, day)
+        except Exception as e:
+            logger.warning("Error al parsear reservas del %s: %s", day, e)
+            return []
 
     # ------------------------------------------------------------------
     # Descubrimiento de pistas
