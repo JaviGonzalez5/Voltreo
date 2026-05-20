@@ -860,12 +860,35 @@ elif page == "generate":
                 st.session_state.matches_scheduled = True
                 st.session_state.matches = result.scheduled + result.conflicts
 
+                # Ejecutar validación automáticamente
+                from src.schedule_validator import validate_schedule, validation_summary
+                violations = validate_schedule(result, phase)
+                st.session_state["schedule_violations"] = violations
+
                 if result.conflict_count == 0:
                     st.success(f"✅ Todos los partidos asignados ({result.scheduled_count}).")
                 else:
                     st.warning(
                         f"⚠️ {result.scheduled_count} partidos programados, "
                         f"{result.conflict_count} con conflictos."
+                    )
+
+        # ---- Botón exportar Excel (plantilla grupos) ----
+        if st.session_state.matches_scheduled and st.session_state.schedule_result:
+            st.markdown("---")
+            if st.button("📥 Exportar Excel (plantilla grupos)", type="secondary"):
+                with st.spinner("Generando Excel..."):
+                    from src.excel_template_exporter import export_groups_to_template
+                    _path_xls = export_groups_to_template(
+                        st.session_state.schedule_result, phase
+                    )
+                with open(_path_xls, "rb") as _f:
+                    st.download_button(
+                        "⬇️ Descargar Excel grupos",
+                        data=_f.read(),
+                        file_name=_path_xls.name,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="dl_xls_gen",
                     )
 
     with col2:
@@ -879,6 +902,31 @@ elif page == "generate":
                           delta=f"-{result.conflict_count}" if result.conflict_count else None,
                           delta_color="inverse")
                 m3.metric("Tasa de éxito", f"{result.success_rate:.1f}%")
+
+                # ---- Panel rápido de validación ----
+                violations = st.session_state.get("schedule_violations")
+                if violations is None and st.session_state.matches_scheduled:
+                    from src.schedule_validator import validate_schedule, validation_summary
+                    violations = validate_schedule(result, phase)
+                    st.session_state["schedule_violations"] = violations
+
+                if violations is not None:
+                    from src.schedule_validator import validation_summary, SEVERITY_EMOJI
+                    vs = validation_summary(violations)
+                    st.markdown("**Validación del calendario:**")
+                    vc1, vc2, vc3 = st.columns(3)
+                    vc1.metric("🔴 Errores",   vs["errors"])
+                    vc2.metric("🟡 Avisos",    vs["warnings"])
+                    vc3.metric("🔵 Info (PF)", vs["infos"])
+                    if vs["total"] == 0:
+                        st.success("✅ Sin incidencias — el calendario cumple todas las restricciones.")
+                    else:
+                        if vs["errors"] > 0:
+                            st.error(f"⛔ Hay {vs['errors']} error(es) críticos. Revísalos en la página **🔍 Revisión**.")
+                        elif vs["warnings"] > 0:
+                            st.warning(f"⚠️ Hay {vs['warnings']} aviso(s). Revísalos en **🔍 Revisión**.")
+                        else:
+                            st.info(f"ℹ️ {vs['infos']} nota(s) sobre pistas fijas. Ver **🔍 Revisión**.")
 
     if st.session_state.matches:
         st.subheader("Calendario generado")
@@ -1212,6 +1260,86 @@ elif page == "review":
     m2.metric("Programados", result.scheduled_count)
     m3.metric("Conflictos", result.conflict_count)
     m4.metric("Éxito", f"{result.success_rate:.1f}%")
+
+    # ---- Validación post-asignación ----
+    st.subheader("🔎 Validación del calendario")
+    from src.schedule_validator import validate_schedule, validation_summary, SEVERITY_EMOJI
+
+    if st.button("🔄 Ejecutar validación completa", type="primary"):
+        violations = validate_schedule(result, phase)
+        st.session_state["schedule_violations"] = violations
+
+    violations = st.session_state.get("schedule_violations")
+    if violations is None:
+        st.info("Pulsa el botón para ejecutar la validación completa del calendario.")
+    else:
+        vs = validation_summary(violations)
+        rv1, rv2, rv3, rv4 = st.columns(4)
+        rv1.metric("Total incidencias", vs["total"])
+        rv2.metric("🔴 Errores",  vs["errors"])
+        rv3.metric("🟡 Avisos",   vs["warnings"])
+        rv4.metric("🔵 Info PF",  vs["infos"])
+
+        if vs["total"] == 0:
+            st.success("✅ Sin incidencias — el calendario cumple todas las restricciones.")
+        else:
+            # Filtro de tipo
+            type_labels = {
+                "player_double_day":       "🔴 Jugador con 2 partidos mismo día",
+                "court_double_booking":    "🔴 Pista reservada doble",
+                "availability_weekday":    "🟡 Día no disponible",
+                "availability_time_early": "🟡 Hora demasiado temprana",
+                "availability_time_late":  "🟡 Hora demasiado tarde",
+                "min_days_violation":      "🟡 Separación mínima incumplida",
+                "max_week_violation":      "🟡 Máximo semanal superado",
+                "preferred_slot_mismatch": "🔵 Pista fija no respetada (PF)",
+            }
+            all_types = sorted({v["type"] for v in violations})
+            sel_types = st.multiselect(
+                "Filtrar por tipo",
+                all_types,
+                default=all_types,
+                format_func=lambda t: type_labels.get(t, t),
+            )
+            filtered_v = [v for v in violations if v["type"] in sel_types]
+            st.caption(f"Mostrando {len(filtered_v)} de {vs['total']} incidencias")
+
+            rows_v = []
+            for v in filtered_v:
+                match_labels = " / ".join(
+                    m.label for m in v.get("matches", [])[:2]
+                )
+                fecha = ""
+                if v.get("matches"):
+                    m0 = v["matches"][0]
+                    if m0.suggested_date:
+                        fecha = m0.suggested_date.strftime("%d/%m/%Y")
+                    if m0.suggested_start_time:
+                        fecha += f" {m0.suggested_start_time.strftime('%H:%M')}"
+                rows_v.append({
+                    "Sev.": SEVERITY_EMOJI.get(v["severity"], ""),
+                    "Tipo": type_labels.get(v["type"], v["type"]),
+                    "Descripción": v["description"],
+                    "Partido(s)": match_labels,
+                    "Fecha": fecha,
+                })
+            st.dataframe(
+                pd.DataFrame(rows_v),
+                use_container_width=True,
+                hide_index=True,
+                height=min(600, 60 + len(rows_v) * 35),
+            )
+
+            # Descarga CSV de incidencias
+            csv_v = pd.DataFrame(rows_v).to_csv(index=False)
+            st.download_button(
+                "⬇️ Descargar incidencias CSV",
+                data=csv_v,
+                file_name="validacion_calendario.csv",
+                mime="text/csv",
+            )
+
+    st.markdown("---")
 
     # Conflictos detallados
     if result.conflicts:
