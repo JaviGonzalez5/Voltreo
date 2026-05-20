@@ -470,6 +470,41 @@ elif page == "import":
                                 "No se encontraron grupos. Revisa los IDs de niveles y el número de rotación."
                             )
 
+        # ---- Diagnóstico: valores columna Grupo ----
+        with st.expander("🔎 Diagnóstico — valores columna Grupo por nivel"):
+            diag_level_id2 = st.number_input("ID de nivel", value=101, step=1, key="diag_level_id2")
+            diag_rotation2 = st.number_input("Rotación", value=int(grp_rotation), step=1, key="diag_rotation2")
+            if st.button("🔎 Ver valores del campo Grupo", key="btn_diag_grupo"):
+                if not syl_imp_url or not syl_imp_user or not syl_imp_pass:
+                    st.error("Rellena URL, usuario y contraseña.")
+                else:
+                    from src.syltek_connector import SyltekConnector
+                    _conn2 = SyltekConnector(url=syl_imp_url, user=syl_imp_user, password=syl_imp_pass, dry_run=True)
+                    ok2, _ = _conn2.login()
+                    if ok2:
+                        _url2 = f"{_conn2.base}/rankings/showtab/{int(diag_level_id2)}/group{int(diag_rotation2)}"
+                        _r2 = _conn2._session.get(_url2, timeout=20)
+                        from bs4 import BeautifulSoup as _BS2
+                        _soup2 = _BS2(_r2.text, "lxml")
+                        _tables2 = _soup2.find_all("table")
+                        st.write(f"**Tablas encontradas:** {len(_tables2)}")
+                        for _ti, _tbl2 in enumerate(_tables2, 1):
+                            _rows2 = _tbl2.find_all("tr")
+                            if not _rows2:
+                                continue
+                            _hdrs2 = [c.get_text(strip=True) for c in _rows2[0].find_all(["th","td"])]
+                            st.write(f"**Tabla {_ti} — cabecera:** `{_hdrs2}`")
+                            # Mostrar todas las filas con sus valores
+                            _data_rows = []
+                            for _row2 in _rows2[1:]:
+                                _cells2 = [c.get_text(strip=True) for c in _row2.find_all(["td","th"])]
+                                if any(_cells2):
+                                    _data_rows.append(_cells2)
+                            import pandas as _pd2
+                            if _data_rows:
+                                _df_diag = _pd2.DataFrame(_data_rows, columns=_hdrs2[:len(_data_rows[0])])
+                                st.dataframe(_df_diag, use_container_width=True)
+
         # ---- Diagnóstico: ver HTML del nivel ----
         with st.expander("🔎 Diagnóstico — ver estructura HTML de un nivel"):
             diag_level_id = st.number_input("ID de nivel a inspeccionar", value=101, step=1, key="diag_level_id")
