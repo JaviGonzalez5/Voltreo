@@ -215,14 +215,12 @@ class Scheduler:
         # Hora mínima
         if pair.available_from and st < pair.available_from:
             return False
-        # Hora máxima. Si conocemos la hora de fin del partido, la disponibilidad
-        # se interpreta como ventana completa: el partido debe terminar antes o
-        # justo a esa hora. Si no, mantenemos la comprobación antigua sobre inicio.
-        if pair.available_until:
-            if et is not None and et > pair.available_until:
-                return False
-            if et is None and st >= pair.available_until:
-                return False
+        # Hora máxima = ÚLTIMA HORA A LA QUE PUEDE EMPEZAR EL PARTIDO.
+        # Importante: en las observaciones del ranking, rangos como 19-2030
+        # significan que el partido puede EMPEZAR entre 19:00 y 20:30;
+        # no que tenga que terminar antes de 20:30.
+        if pair.available_until and st > pair.available_until:
+            return False
         return True
 
     def _violates_min_days(

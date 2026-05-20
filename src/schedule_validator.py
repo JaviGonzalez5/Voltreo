@@ -187,13 +187,13 @@ def validate_schedule(
                     "matches": [m],
                     "pair_names": [pair.display_name],
                 })
-            if pair.available_until and m.suggested_end_time and m.suggested_end_time > pair.available_until:
+            if pair.available_until and st > pair.available_until:
                 violations.append({
                     "type": "availability_time_late",
                     "severity": "warning",
                     "description": (
-                        f"{pair.display_name}: partido {st.strftime('%H:%M')}-{m.suggested_end_time.strftime('%H:%M')} "
-                        f"pero disponible solo hasta {pair.available_until.strftime('%H:%M')}"
+                        f"{pair.display_name}: partido empieza a las {st.strftime('%H:%M')} "
+                        f"pero la última hora de inicio permitida es {pair.available_until.strftime('%H:%M')}"
                     ),
                     "matches": [m],
                     "pair_names": [pair.display_name],
