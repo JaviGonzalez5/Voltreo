@@ -999,8 +999,23 @@ def parse_observaciones(text: str) -> dict:
             return _make_time(int(s), 0)
         return None
 
-    # +HHMM o +HH
-    m = re.search(r"\+\s*(\d{3,4})", t)
+    # Negaciones: "L NO", "M NO", etc. — el día aparece explícitamente EXCLUIDO
+    negated: set[int] = set()
+    for nm in re.finditer(r"(?<![A-Z])([LMXJVSD])\s+NO\b", t):
+        d_neg = DMAP.get(nm.group(1))
+        if d_neg is not None:
+            negated.add(d_neg)
+
+    if negated:
+        if not weekdays or weekdays.issubset(negated):
+            # Todos los días encontrados son negados (o no había días positivos)
+            # → significa "todos los días EXCEPTO los negados"
+            weekdays = set(range(7)) - negated
+        else:
+            weekdays -= negated
+
+    # +HHMM, +HHH, +HH  (acepta horas de 2 dígitos como +18, +21)
+    m = re.search(r"\+\s*(\d{2,4})", t)
     if m:
         available_from = _parse_hhmm(m.group(1))
 
