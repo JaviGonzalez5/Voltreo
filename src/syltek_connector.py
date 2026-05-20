@@ -90,6 +90,7 @@ class SyltekConnector:
         self._logged_in = False
         self._courts: dict[str, str] = {}      # nombre → idResource
         self._rankings: list[dict] = []        # [{id, nombre, ronda_actual}]
+        self._last_import_report: list[dict] = []  # diagnóstico de importación de reservas
 
     # ------------------------------------------------------------------
     # Login
@@ -177,56 +178,115 @@ class SyltekConnector:
         from_date: date,
         to_date: date,
         progress_callback=None,
+        attempts_per_day: int = 3,
     ) -> list[Booking]:
         """
         Lee el calendario de Syltek día a día entre from_date y to_date.
         Devuelve una lista de Booking con todos los huecos YA OCUPADOS.
-        El Scheduler usará esta lista para evitar esos huecos al planificar.
+
+        IMPORTANTE: la lectura se hace con varios intentos por día y se fusionan
+        los resultados. Syltek a veces devuelve el calendario parcialmente
+        cargado; si una lectura trae 8 reservas y otra trae 11, nos quedamos con
+        la unión deduplicada para evitar perder pistas ocupadas.
 
         progress_callback: función opcional que recibe (dias_procesados, total_dias)
+        attempts_per_day: número de lecturas por día para estabilizar resultados
         """
         self._assert_logged_in()
 
         from datetime import timedelta
         bookings: list[Booking] = []
+        self._last_import_report = []
         current = from_date
         total_days = (to_date - from_date).days + 1
         day_num = 0
 
         while current <= to_date:
-            day_bookings = self._get_bookings_for_day(current)
+            day_bookings = self._get_bookings_for_day(current, attempts=attempts_per_day)
             bookings.extend(day_bookings)
+            if hasattr(self, "_last_day_import_info"):
+                self._last_import_report.append(getattr(self, "_last_day_import_info"))
             day_num += 1
             if progress_callback:
                 progress_callback(day_num, total_days)
             current += timedelta(days=1)
 
+        bookings = _dedupe_bookings(bookings)
         logger.info(
             "Leídas %d reservas existentes entre %s y %s",
             len(bookings), from_date, to_date,
         )
         return bookings
 
-    def _get_bookings_for_day(self, day: date) -> list[Booking]:
+    def get_last_import_report(self) -> list[dict]:
+        """Devuelve el diagnóstico de la última importación de reservas."""
+        return list(self._last_import_report)
+
+    def _get_bookings_for_day(self, day: date, attempts: int = 3) -> list[Booking]:
         """
         Lee el calendario de un día concreto y devuelve las reservas ocupadas.
+
+        Se realizan varios intentos y se hace una unión deduplicada. Esto evita
+        el fallo que provocaba que unas veces importase unas reservas y otras
+        veces otras, cuando Syltek devolvía HTML/JS parcialmente cargado.
         """
+        import time as _time
         encoded = base64.b64encode(day.strftime("%d/%m/%Y").encode()).decode()
-        url = f"{self.base}{CALENDAR_PATH}?encodedDate={encoded}&type=56"
+        url = f"{self.base}{CALENDAR_PATH}"
 
-        try:
-            r = self._session.get(url, timeout=20)
-        except requests.RequestException as e:
-            logger.warning("Error al leer el calendario del %s: %s", day, e)
-            return []
+        union: list[Booking] = []
+        attempt_counts: list[int] = []
+        http_statuses: list[int | str] = []
+        html_sizes: list[int] = []
 
-        # Pasamos el HTML crudo (no soup) para evitar que BeautifulSoup
-        # altere el contenido de los tags <script>
-        try:
-            return _parse_occupied_slots(r.text, day)
-        except Exception as e:
-            logger.warning("Error al parsear reservas del %s: %s", day, e)
-            return []
+        for attempt in range(max(1, attempts)):
+            params = {
+                "encodedDate": encoded,
+                "type": "56",
+                # Cache-buster para evitar que el servidor o Cloudflare devuelvan
+                # una versión antigua/parcial del calendario.
+                "_": str(int(_time.time() * 1000)) + str(attempt),
+            }
+            try:
+                r = self._session.get(url, params=params, timeout=25, allow_redirects=True)
+                http_statuses.append(r.status_code)
+                html_sizes.append(len(r.text or ""))
+            except requests.RequestException as e:
+                logger.warning("Error al leer el calendario del %s intento %s: %s", day, attempt + 1, e)
+                http_statuses.append("ERR")
+                html_sizes.append(0)
+                continue
+
+            # Si nos redirige a login, no parseamos porque saldrían 0 reservas falsas.
+            if "login" in (r.url or "").lower():
+                logger.warning("Syltek devolvió login al leer %s; sesión caducada o URL incorrecta", day)
+                attempt_counts.append(0)
+                continue
+
+            try:
+                parsed = _parse_occupied_slots(r.text, day)
+            except Exception as e:
+                logger.warning("Error al parsear reservas del %s intento %s: %s", day, attempt + 1, e)
+                parsed = []
+
+            attempt_counts.append(len(parsed))
+            union.extend(parsed)
+
+            # Pequeña pausa para que Syltek no responda con una página parcial.
+            if attempt + 1 < attempts:
+                _time.sleep(0.15)
+
+        union = _dedupe_bookings(union)
+        self._last_day_import_info = {
+            "fecha": day.isoformat(),
+            "intentos": attempt_counts,
+            "total_union": len(union),
+            "http": http_statuses,
+            "html_chars": html_sizes,
+            "estable": len(set(attempt_counts)) <= 1,
+        }
+        logger.info("Reservas %s: intentos=%s union=%d", day, attempt_counts, len(union))
+        return union
 
     # ------------------------------------------------------------------
     # Descubrimiento de pistas
@@ -1251,3 +1311,299 @@ def _extract_error_message(soup: BeautifulSoup) -> str:
         if el:
             return el.get_text(strip=True)[:200]
     return soup.get_text(strip=True)[:200]
+
+
+# ---------------------------------------------------------------------------
+# Parser robusto de reservas de calendario — versión estable
+# ---------------------------------------------------------------------------
+
+def _dedupe_bookings(bookings: list[Booking]) -> list[Booking]:
+    """Elimina duplicados conservando orden."""
+    seen: set[tuple] = set()
+    out: list[Booking] = []
+    for b in bookings:
+        key = (
+            str(b.court_id or "").strip(),
+            str(b.court_name or "").strip().lower(),
+            b.start_datetime.replace(second=0, microsecond=0),
+            b.end_datetime.replace(second=0, microsecond=0),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(b)
+    return out
+
+
+def _extract_balanced_js_objects(raw_html: str, pattern: str) -> list[str]:
+    """
+    Extrae bloques JS balanceados que empiezan en un patrón tipo
+    'var timetable = {'. Puede haber más de uno en la página.
+    """
+    objects: list[str] = []
+    for m_start in re.finditer(pattern, raw_html, flags=re.IGNORECASE):
+        brace_start = raw_html.find("{", m_start.end() - 1)
+        if brace_start < 0:
+            continue
+        brace = 0
+        in_str = False
+        str_char = ""
+        escaped = False
+        for i in range(brace_start, len(raw_html)):
+            ch = raw_html[i]
+            if in_str:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == str_char:
+                    in_str = False
+            else:
+                if ch in ('"', "'"):
+                    in_str = True
+                    str_char = ch
+                elif ch == "{":
+                    brace += 1
+                elif ch == "}":
+                    brace -= 1
+                    if brace == 0:
+                        objects.append(raw_html[brace_start:i + 1])
+                        break
+    return objects
+
+
+def _extract_object_around(raw: str, pos: int, max_back: int = 1200, max_forward: int = 4000) -> str:
+    """Devuelve el objeto JS balanceado que contiene una posición aproximada."""
+    start_search = max(0, pos - max_back)
+    # Buscar la llave de apertura más cercana antes del marker.
+    brace_start = raw.rfind("{", start_search, pos)
+    if brace_start < 0:
+        brace_start = pos
+
+    brace = 0
+    in_str = False
+    str_char = ""
+    escaped = False
+    end_limit = min(len(raw), pos + max_forward)
+    for i in range(brace_start, end_limit):
+        ch = raw[i]
+        if in_str:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == str_char:
+                in_str = False
+        else:
+            if ch in ('"', "'"):
+                in_str = True
+                str_char = ch
+            elif ch == "{":
+                brace += 1
+            elif ch == "}":
+                brace -= 1
+                if brace <= 0:
+                    return raw[brace_start:i + 1]
+    return raw[brace_start:end_limit]
+
+
+def _normalise_court_name(name: str) -> str:
+    name = re.sub(r"<[^>]+>", " ", name or "")
+    name = re.sub(r"\s+", " ", name).strip()
+    return name
+
+
+def _parse_js_date_from_text(txt: str, field: str, default_day: date):
+    """Extrae Date JS de un campo start/end."""
+    # start: new Date(2026, 4, 25, 20, 30, 0)
+    m = re.search(
+        rf"\b{field}\s*:\s*new\s+Date\s*\(\s*(\d{{4}})\s*,\s*(\d{{1,2}})\s*,\s*(\d{{1,2}})\s*,\s*(\d{{1,2}})\s*,\s*(\d{{1,2}})(?:\s*,\s*\d+)?\s*\)",
+        txt,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        y, mo0, d, h, mi = map(int, m.groups())
+        try:
+            return datetime(y, mo0 + 1, d, h, mi)
+        except ValueError:
+            return None
+
+    # start: '2026-05-25T20:30:00' o start:"25/05/2026 20:30"
+    m = re.search(rf"\b{field}\s*:\s*['\"]([^'\"]+)['\"]", txt, flags=re.IGNORECASE)
+    if m:
+        val = m.group(1).strip()
+        for fmt in (
+            "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M",
+            "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%d-%m-%Y %H:%M",
+        ):
+            try:
+                return datetime.strptime(val[:len(datetime.now().strftime(fmt))], fmt)
+            except Exception:
+                pass
+
+    # startHour / startMinute o start:{hour:20,minute:30} no se soporta aquí.
+    return None
+
+
+def _parse_resource_ids(txt: str) -> list[str]:
+    patterns = [
+        r"\bidResource\s*:\s*\[([^\]]*)\]",
+        r"\bidResource\s*:\s*['\"]?(\d+)['\"]?",
+        r"\bresourceId\s*:\s*['\"]?(\d+)['\"]?",
+        r"\bid_resource\s*:\s*['\"]?(\d+)['\"]?",
+        r"\bresource_id\s*:\s*['\"]?(\d+)['\"]?",
+    ]
+    ids: list[str] = []
+    for pat in patterns:
+        for m in re.finditer(pat, txt, flags=re.IGNORECASE):
+            raw = m.group(1)
+            for rid in re.findall(r"\d+", raw):
+                ids.append(rid)
+    # dedupe preserving order
+    out = []
+    for rid in ids:
+        if rid not in out:
+            out.append(rid)
+    return out
+
+
+def _parse_resources_from_js(js: str) -> dict[str, str]:
+    resources: dict[str, str] = {}
+
+    # {id:'1477', name:'Padel 1 <br>'}
+    for m in re.finditer(
+        r"""\bid\s*:\s*['\"]?(\d+)['\"]?[^{}]{0,500}?\bname\s*:\s*['\"]([^'\"]+)['\"]""",
+        js,
+        flags=re.IGNORECASE | re.DOTALL,
+    ):
+        resources[m.group(1)] = _normalise_court_name(m.group(2)) or f"Pista {m.group(1)}"
+
+    # 1477:{..., name:'Padel 1'}
+    for m in re.finditer(
+        r"""(\d{3,6})\s*:\s*\{[^{}]{0,800}?\bname\s*:\s*['\"]([^'\"]+)['\"]""",
+        js,
+        flags=re.IGNORECASE | re.DOTALL,
+    ):
+        resources.setdefault(m.group(1), _normalise_court_name(m.group(2)) or f"Pista {m.group(1)}")
+
+    return resources
+
+
+def _parse_dom_occupied_slots(raw_html: str, day: date) -> list[Booking]:
+    """Fallback DOM para calendarios que no exponen var timetable claramente."""
+    from datetime import datetime as _dt
+    soup = BeautifulSoup(raw_html, "html.parser")
+    bookings: list[Booking] = []
+
+    candidates = soup.find_all(attrs={"data-start": True}) + soup.find_all(attrs={"data-starttime": True})
+    for el in candidates:
+        attrs = {k.lower(): v for k, v in el.attrs.items() if isinstance(v, str)}
+        start_raw = attrs.get("data-start") or attrs.get("data-starttime") or ""
+        end_raw = attrs.get("data-end") or attrs.get("data-endtime") or ""
+        rid = attrs.get("data-resource") or attrs.get("data-resource-id") or attrs.get("data-idresource") or attrs.get("data-court") or ""
+        cname = attrs.get("data-resource-name") or attrs.get("data-court-name") or attrs.get("title") or ""
+        text = el.get_text(" ", strip=True)
+
+        # Evitar celdas libres si lo indica la clase/texto.
+        cls = " ".join(el.get("class") or []).lower()
+        if "free" in cls or "available" in cls or "libre" in text.lower():
+            continue
+
+        dt_start = None
+        dt_end = None
+        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M", "%d/%m/%Y %H:%M", "%H:%M"):
+            try:
+                parsed = _dt.strptime(start_raw[:len(_dt.now().strftime(fmt))], fmt)
+                dt_start = parsed if "%Y" in fmt else _dt.combine(day, parsed.time())
+                break
+            except Exception:
+                pass
+        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M", "%d/%m/%Y %H:%M", "%H:%M"):
+            try:
+                parsed = _dt.strptime(end_raw[:len(_dt.now().strftime(fmt))], fmt)
+                dt_end = parsed if "%Y" in fmt else _dt.combine(day, parsed.time())
+                break
+            except Exception:
+                pass
+        if not dt_start or not dt_end or dt_start.date() != day:
+            continue
+        if not rid:
+            nums = re.findall(r"\d+", cname or text)
+            rid = nums[-1] if nums else cname or "unknown"
+        bookings.append(Booking.model_construct(
+            id=str(__import__("uuid").uuid4()),
+            court_id=str(rid),
+            court_name=_normalise_court_name(cname) or f"Pista {rid}",
+            start_datetime=dt_start,
+            end_datetime=dt_end,
+            description=(text or "Reserva existente")[:100],
+            source="syltek",
+        ))
+    return _dedupe_bookings(bookings)
+
+
+def _parse_occupied_slots(raw_html: str, day: date) -> list[Booking]:
+    """
+    Parser robusto de reservas de Syltek.
+
+    Mejora clave respecto al parser anterior:
+    - analiza TODOS los objetos timetable de la página, no solo el primero;
+    - no depende de que las propiedades estén siempre en el mismo orden;
+    - acepta idResource como array o como valor simple;
+    - une resultados y elimina duplicados;
+    - fallback DOM si el calendario viene renderizado sin var timetable.
+    """
+    bookings: list[Booking] = []
+
+    js_objects = _extract_balanced_js_objects(raw_html, r"var\s+timetable\s*=")
+    if not js_objects:
+        # Otros nombres vistos en calendarios similares.
+        js_objects = _extract_balanced_js_objects(raw_html, r"(?:var\s+)?(?:calendar|schedule|bookingData|timetableData)\s*=")
+
+    for js in js_objects:
+        resources = _parse_resources_from_js(js)
+
+        # Encontrar cada objeto que contiene start:new Date(...)
+        for m_start in re.finditer(r"\bstart\s*:\s*(?:new\s+Date\s*\(|['\"])", js, flags=re.IGNORECASE):
+            obj = _extract_object_around(js, m_start.start())
+            if not obj:
+                continue
+
+            start_dt = _parse_js_date_from_text(obj, "start", day)
+            end_dt = _parse_js_date_from_text(obj, "end", day)
+            if not start_dt or not end_dt:
+                continue
+            if start_dt.date() != day:
+                # Evita arrastrar reservas de otro día si Syltek precarga días vecinos.
+                continue
+            if end_dt <= start_dt:
+                continue
+
+            resource_ids = _parse_resource_ids(obj)
+            if not resource_ids:
+                continue
+
+            # Descripción opcional para diagnóstico
+            desc = "Reserva existente"
+            for field in ("title", "name", "customer", "client", "description", "comments"):
+                m_desc = re.search(rf"\b{field}\s*:\s*['\"]([^'\"]+)['\"]", obj, flags=re.IGNORECASE)
+                if m_desc:
+                    desc = _normalise_court_name(m_desc.group(1))[:100] or desc
+                    break
+
+            for rid in resource_ids:
+                bookings.append(Booking.model_construct(
+                    id=str(__import__("uuid").uuid4()),
+                    court_id=str(rid),
+                    court_name=resources.get(str(rid), f"Pista {rid}"),
+                    start_datetime=start_dt,
+                    end_datetime=end_dt,
+                    description=desc,
+                    source="syltek",
+                ))
+
+    # Fallback DOM si el JS no aporta nada.
+    if not bookings:
+        bookings = _parse_dom_occupied_slots(raw_html, day)
+
+    return _dedupe_bookings(bookings)

@@ -817,6 +817,25 @@ elif page == "import":
                             st.success(
                                 f"✅ {len(bookings)} reservas existentes importadas. El planificador las respetará."
                             )
+
+                            # Diagnóstico de estabilidad: Syltek se lee varias veces por día
+                            # y se fusionan resultados para evitar importaciones incompletas.
+                            report = conn_bk.get_last_import_report() if hasattr(conn_bk, "get_last_import_report") else []
+                            if report:
+                                unstable = [r for r in report if not r.get("estable", True)]
+                                total_union = sum(int(r.get("total_union", 0)) for r in report)
+                                st.caption(
+                                    f"Control de importación: {len(report)} días leídos, "
+                                    f"{total_union} reservas únicas detectadas tras fusionar intentos."
+                                )
+                                if unstable:
+                                    st.warning(
+                                        f"⚠️ {len(unstable)} día(s) devolvieron recuentos distintos entre intentos. "
+                                        "La app ha usado la unión de todos los intentos para no perder reservas."
+                                    )
+                                with st.expander("🔎 Diagnóstico de importación por día"):
+                                    st.dataframe(pd.DataFrame(report), use_container_width=True)
+
                             with st.expander("Ver reservas importadas"):
                                 rows_imp = [
                                     {
