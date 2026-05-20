@@ -202,3 +202,50 @@ class TestSchedulerBalance:
         assert "weekday_distribution" in m
         assert "court_distribution" in m
         assert sum(m["court_distribution"].values()) == result.scheduled_count
+
+
+def test_preferred_fixed_court_slot_has_priority():
+    """Una PF J 20:00 debe ganarle a otros huecos válidos siempre que sea posible."""
+    group = make_group(2, "g_pf")
+    # 2025-06-02 es lunes; jueves = 2025-06-05
+    pf_pair = group.pairs[0]
+    pf_pair.preferred_weekday = 3
+    pf_pair.preferred_time = time(20, 0)
+    pf_pair.available_weekdays = [3]
+    pf_pair.available_from = time(20, 0)
+    pf_pair.available_until = time(22, 0)
+
+    other_pair = group.pairs[1]
+    other_pair.available_weekdays = [3]
+    other_pair.available_from = time(16, 0)
+    other_pair.available_until = time(22, 30)
+
+    phase = make_phase(n_courts=2, n_days=7, groups=[group], max_per_week=1)
+    matches = generate_all_matches(phase.groups)
+    result = Scheduler(phase).schedule(matches)
+
+    assert result.conflict_count == 0
+    assert result.scheduled_count == 1
+    scheduled = result.scheduled[0]
+    assert scheduled.suggested_date.weekday() == 3
+    assert scheduled.suggested_start_time == time(20, 0)
+
+
+def test_parse_pf_allows_full_match_window():
+    """PF J 2000 debe permitir un partido de 90 min que empiece a las 20:00."""
+    from src.syltek_connector import parse_observaciones
+
+    parsed = parse_observaciones("PF J 2000")
+    assert parsed["preferred_weekday"] == 3
+    assert parsed["preferred_time"] == time(20, 0)
+    assert parsed["available_from"] == time(20, 0)
+    # Antes quedaba en 20:30, incompatible con partidos de 90 min.
+    assert parsed["available_until"] >= time(21, 30)
+
+
+def test_parse_pf_with_colon():
+    from src.syltek_connector import parse_observaciones
+
+    parsed = parse_observaciones("PF J 20:00")
+    assert parsed["preferred_weekday"] == 3
+    assert parsed["preferred_time"] == time(20, 0)

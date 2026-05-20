@@ -180,7 +180,7 @@ class BalanceWeights(BaseModel):
     global_hour_load_penalty: float = 3.0 # evita concentrar demasiados partidos en la misma hora
     group_hour_penalty: float = 14.0      # evita que un grupo juegue casi siempre a la misma hora
     early_day_bonus: float = 0.2          # preferencia muy leve por programar pronto en la fase
-    preferred_slot_bonus: float = 25.0    # fuerte preferencia por día+hora de pista fija (PF)
+    preferred_slot_bonus: float = 1000.0  # prioridad MUY fuerte por día+hora exactos de pista fija (PF)
 
 
 class RankingPhase(BaseModel):

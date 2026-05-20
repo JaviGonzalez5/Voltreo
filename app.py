@@ -368,7 +368,7 @@ if page == "config":
                         global_hour_load_penalty=3.0,
                         group_hour_penalty=14.0,
                         early_day_bonus=0.2,
-                        preferred_slot_bonus=25.0,
+                        preferred_slot_bonus=1000.0,
                     ),
                 )
                 st.session_state.phase = phase

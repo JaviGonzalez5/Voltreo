@@ -976,13 +976,20 @@ def parse_observaciones(text: str) -> dict:
     preferred_weekday = None
     preferred_time = None
 
-    # Pista fija: "PF X2030", "PF J 1930", "PF M2100"
-    pf_match = re.search(r"\bPF\s+([LMXJVSD])\s*(\d{3,4})\b", t)
+    # Pista fija: "PF X2030", "PF J 1930", "PF M2100", "PF J 20:00".
+    # PF = pista fija, no solo disponibilidad genérica. Se guarda como preferencia
+    # prioritaria y también se añade el día a la disponibilidad si no aparece aparte.
+    pf_match = re.search(r"\bPF\s*([LMXJVSD])\s*(\d{1,2})(?::?(\d{2}))?\b", t)
     if pf_match:
         preferred_weekday = DMAP.get(pf_match.group(1))
-        h_str = pf_match.group(2)
-        preferred_time = (dtime(int(h_str[:2]), int(h_str[2:])) if len(h_str) == 4
-                          else dtime(int(h_str), 0)) if h_str.isdigit() else None
+        try:
+            h = int(pf_match.group(2))
+            m = int(pf_match.group(3) or 0)
+            preferred_time = dtime(h, m) if 0 <= h <= 23 and 0 <= m <= 59 else None
+        except ValueError:
+            preferred_time = None
+        if preferred_weekday is not None:
+            weekdays.add(preferred_weekday)
 
     # Fin de semana (sin PF de pista fija)
     if re.search(r"\bFINDE\b|\bFIN\s+DE\s+SEMANA\b", t):
@@ -1073,6 +1080,14 @@ def parse_observaciones(text: str) -> dict:
     # significa "solo puedo jugar ESE día A ESA hora".
     # → Fijar ventana de 2 horas y marcar como preferred.
     # -----------------------------------------------------------------------
+    # Si solo viene una PF tipo "PF J 20:00", puede que no haya una hora
+    # parseada por los patrones generales. Usamos la hora de PF como inicio de
+    # disponibilidad para poder comprobar correctamente la franja completa.
+    if preferred_time is not None and available_from is None:
+        available_from = preferred_time
+    if preferred_weekday is not None and not weekdays:
+        weekdays.add(preferred_weekday)
+
     _has_day_range  = bool(re.search(r"[LMXJVSD]\s*(?:\bA\b|-)\s*[LMXJVSD]", t))
     _has_time_range = bool(re.search(r"\b\d{2,4}\s+A\s+\d{2,4}\b", t))
     _has_plus       = bool(re.search(r"\+\s*\d{2,4}", t))
@@ -1086,11 +1101,14 @@ def parse_observaciones(text: str) -> dict:
         and not _has_plus
     ):
         from datetime import timedelta, datetime as _dt2
-        # Ventana de 30 min: acepta SOLO el slot que empieza exactamente a esa hora.
-        # El siguiente slot posible es mínimo 60 min después (duración mínima),
-        # así que ningún slot posterior puede colarse.
+        # Ventana mínima útil para partidos de ranking.
+        # Antes se usaban solo 30 min, lo que hacía imposible colocar partidos
+        # de 90 min exactamente en la PF (ej: PF J 20:00 terminaba a 20:30).
+        # Con 120 min caben partidos de 90 min y queda margen si la duración
+        # del club se configura algo mayor. La prioridad exacta la controla el
+        # scheduler mediante preferred_weekday/preferred_time.
         _until = (
-            _dt2.combine(_dt2.today().date(), available_from) + timedelta(minutes=30)
+            _dt2.combine(_dt2.today().date(), available_from) + timedelta(minutes=120)
         ).time()
         available_until = _until
         # Marcar como preferred (pista fija implícita)

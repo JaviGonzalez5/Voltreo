@@ -290,17 +290,38 @@ class Scheduler:
         days_offset = (slot.date - self.phase.start_date).days
         score -= max(0, 30 - days_offset) * (w.early_day_bonus / 30.0)
 
-        # Bonus fuerte si el slot coincide con la pista fija de alguna pareja
-        preferred_bonus = getattr(w, "preferred_slot_bonus", 25.0)
+        # Prioridad de pista fija (PF)
+        # --------------------------------
+        # PF no es una disponibilidad cualquiera: si una pareja tiene PF J 20:00,
+        # primero debe intentarse Jueves 20:00. Antes se bonificaba por separado
+        # "mismo día" y "misma hora", lo que hacía que Jueves 18:00 compitiese
+        # demasiado bien. Ahora el gran bonus solo se aplica cuando coinciden
+        # DÍA + HORA exactos. Las coincidencias parciales tienen un bonus pequeño.
+        preferred_bonus = getattr(w, "preferred_slot_bonus", 1000.0)
+        partial_day_bonus = min(30.0, preferred_bonus * 0.03)
+        partial_time_bonus = min(15.0, preferred_bonus * 0.015)
         for pair in (pair_1, pair_2):
             if pair is None:
                 continue
             pw = getattr(pair, "preferred_weekday", None)
             pt = getattr(pair, "preferred_time", None)
-            if pw is not None and slot.date.weekday() == pw:
+            if pw is None and pt is None:
+                continue
+
+            same_day = pw is not None and slot.date.weekday() == pw
+            same_time = pt is not None and slot.start_time == pt
+
+            if same_day and same_time:
+                # La pista fija exacta gana de forma muy clara frente a cualquier
+                # otro slot válido, salvo que otra restricción dura lo impida.
                 score -= preferred_bonus
-            if pt is not None and slot.start_time == pt:
-                score -= preferred_bonus
+            else:
+                # Si la PF exacta no cabe, seguimos prefiriendo suavemente el
+                # mismo día o la misma hora, pero sin desplazar a la PF exacta.
+                if same_day:
+                    score -= partial_day_bonus
+                if same_time:
+                    score -= partial_time_bonus
 
         return score
 
