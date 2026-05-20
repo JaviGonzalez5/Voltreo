@@ -1,216 +1,180 @@
 """
-Exporta el calendario de cada grupo al formato de la plantilla del club:
-matriz triangular round-robin por grupo, un sheet por grupo.
+Exporta el calendario al formato de la plantilla del club.
 
-Estructura de cada bloque de grupo:
-  - Fila título:    col C  →  "NIVEL X — GRUPO Y"
-  - Fila cabecera:  col C  →  "Pareja"  |  cols D..D+N-2 → nombres parejas 2..N
-  - Filas datos:    col C  →  nombre pareja i
-                   col j  →  ┌ verde (A1EB88):  triángulo inferior (j <= i) duplicado
-                              └ data:            partido parejas[i] vs parejas[j]
-  - Fila pie:       cols D..D+N-2 mergeadas → resumen del grupo
-
-Colores como en la plantilla:
-  Verde  A1EB88 → triangulo inferior / celdas sin partido
-  Gris   CCCCCC → celdas de partidos pendientes / cabecera
-  Blanco FFFFFF → partido programado
-  Rojo   FDE8E8 → conflicto
+Estructura:
+  - Un sheet por NIVEL (todos los grupos del nivel en el mismo sheet)
+  - Grupos apilados verticalmente
+  - Matriz triangular round-robin por grupo:
+      · Col A              = etiqueta fila ("Equipo" / nombre pareja)
+      · Cols B .. B+N-2    = cabeceras de columna (parejas 0..N-2)
+      · Celda (i, j) con i > j  → triángulo inferior  = partido válido (verde)
+      · Celda (i, j) con i <= j → triángulo superior   = gris vacío
+  - Contenido de celda programada: "DD/MM/YYYY\\nHH:MM"
 """
 
+import re
+from collections import defaultdict
 from datetime import datetime
-from itertools import combinations
 from pathlib import Path
 
 from openpyxl import Workbook
-from openpyxl.styles import (
-    Alignment, Border, Font, PatternFill, Side
-)
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from .models import Group, Match, MatchStatus, RankingPhase, ScheduleResult
+from .models import Group, MatchStatus, RankingPhase, ScheduleResult
 
 
 # ---------------------------------------------------------------------------
-# Estilos reutilizables
+# Colores (iguales a la plantilla)
+# ---------------------------------------------------------------------------
+
+C_GREEN        = "A1EB88"   # triángulo inferior — partido programado
+C_GREY         = "CCCCCC"   # triángulo superior — celda sin partido
+C_RED          = "FDE8E8"   # conflicto
+C_TITLE_ACCENT = "4BACC6"   # celda decorativa junto al título de grupo
+
+
+# ---------------------------------------------------------------------------
+# Helpers de estilo
 # ---------------------------------------------------------------------------
 
 def _fill(rgb: str) -> PatternFill:
     return PatternFill(fill_type="solid", fgColor=rgb)
 
 
-def _side(style: str = "medium") -> Side:
-    return Side(border_style=style, color="FF000000")
+def _thin() -> Side:
+    return Side(border_style="thin", color="FF000000")
 
 
-def _border(style: str = "medium") -> Border:
-    s = _side(style)
+def _border() -> Border:
+    s = _thin()
     return Border(left=s, right=s, top=s, bottom=s)
 
 
-def _font(bold: bool = False, size: int = 11,
-          color: str = "FF000000", italic: bool = False) -> Font:
-    return Font(bold=bold, size=size, color=color, name="Calibri", italic=italic)
+def _font(bold: bool = False, size: int = 10, color: str = "FF000000") -> Font:
+    return Font(bold=bold, size=size, color=color, name="Calibri")
 
 
 def _align(h: str = "center", v: str = "center", wrap: bool = False) -> Alignment:
     return Alignment(horizontal=h, vertical=v, wrap_text=wrap)
 
 
-# Constantes de color (igual que la plantilla)
-C_GREEN   = "FFA1EB88"   # triángulo inferior / confirmado
-C_GREY    = "FFCCCCCC"   # pendiente / cabecera
-C_WHITE   = "FFFFFFFF"   # programado
-C_RED     = "FFFDE8E8"   # conflicto
-C_TITLE   = "FF1E3A5F"   # azul oscuro para títulos
-C_HEADER  = "FFD9E1EC"   # gris azulado para cabeceras de columna
-
-
 # ---------------------------------------------------------------------------
 # Bloque de un grupo
 # ---------------------------------------------------------------------------
 
-def _write_group_block(
-    ws,
-    group: Group,
-    match_map: dict,
-    start_row: int,
-    data_col: int = 3,  # columna C (1-based = 3)
-) -> int:
+def _write_group_block(ws, group: Group, match_map: dict, start_row: int) -> int:
     """
-    Escribe el bloque del grupo en ws a partir de start_row.
-    Devuelve la primera fila disponible tras el bloque (incluyendo separación).
+    Escribe el bloque de un grupo en ws a partir de start_row.
+
+    Layout:
+      start_row      → título "GRUPO X"  +  celda teal en col B
+      start_row + 1  → fila en blanco
+      start_row + 2  → cabecera: "Equipo" | parejas[0] | parejas[1] | ...
+      start_row + 3  → datos pareja 0
+      ...
+      start_row+2+N  → datos pareja N-1
+
+    Devuelve la primera fila disponible tras el bloque (incluye 3 filas de separación).
     """
     pairs = group.pairs
     N = len(pairs)
     if N < 2:
-        ws.cell(row=start_row, column=data_col).value = f"{group.name} — sin parejas suficientes"
-        return start_row + 3
+        ws.cell(row=start_row, column=1).value = f"{group.name} — sin parejas suficientes"
+        return start_row + 4
 
-    # Las columnas de datos son data_col+1 .. data_col+N-1  (= N-1 columnas)
-    # data_col   = columna C (fila de pareja)
-    # data_col+j = columna de rival pairs[j]  (j=1..N-1)
+    # Nombre corto del grupo para el título: "GRUPO X"
+    group_short = group.name
+    if "—" in group_short:
+        group_short = group_short.split("—")[-1].strip()
+    group_short = group_short.upper()
 
-    # ---- Título ----
+    # ---- Fila título ----
     title_row = start_row
-    tc = ws.cell(row=title_row, column=data_col)
-    tc.value = group.name.upper()
-    tc.font = Font(bold=True, size=18, name="Calibri", color=C_TITLE)
+    tc = ws.cell(row=title_row, column=1)
+    tc.value = group_short
+    tc.font = Font(bold=True, size=14, name="Calibri", color="FF000000")
     tc.alignment = _align("left", "center")
-    ws.row_dimensions[title_row].height = 28
+    ws.row_dimensions[title_row].height = 22
 
-    # ---- Cabecera ----
-    header_row = title_row + 1
-    ws.row_dimensions[header_row].height = 38  # altura para 2 líneas (nombre pareja)
+    # Celda decorativa teal junto al título (col B)
+    ws.cell(row=title_row, column=2).fill = _fill(C_TITLE_ACCENT)
 
-    # Celda esquina C
-    hc = ws.cell(row=header_row, column=data_col)
-    hc.value = "Pareja"
+    # ---- Fila en blanco (start_row + 1) ----
+    # (no se escribe nada, simplemente se deja en blanco)
+
+    # ---- Fila cabecera (start_row + 2) ----
+    header_row = title_row + 2
+    ws.row_dimensions[header_row].height = 34
+
+    hc = ws.cell(row=header_row, column=1)
+    hc.value = "Equipo"
     hc.font = _font(bold=True, size=10)
     hc.fill = _fill(C_GREY)
     hc.border = _border()
     hc.alignment = _align("center", "center")
 
-    # Columnas = rivals pairs[1..N-1]
-    for j in range(1, N):
-        col = data_col + j
+    # Columnas de parejas: pairs[0..N-2]  (N-1 columnas)
+    for j in range(N - 1):
+        col = 2 + j
         cell = ws.cell(row=header_row, column=col)
         cell.value = pairs[j].display_name
         cell.font = _font(bold=True, size=9)
-        cell.fill = _fill(C_HEADER)
+        cell.fill = _fill(C_GREY)
         cell.border = _border()
         cell.alignment = _align("center", "center", wrap=True)
 
     # ---- Filas de datos ----
-    group_pair_ids = {p.id for p in pairs}
-
     for i in range(N):
         data_row = header_row + 1 + i
-        ws.row_dimensions[data_row].height = 50  # 3 líneas
+        ws.row_dimensions[data_row].height = 28
 
-        # Col C — nombre de la pareja (fila)
-        rh = ws.cell(row=data_row, column=data_col)
+        # Col A — nombre de la pareja (etiqueta de fila)
+        rh = ws.cell(row=data_row, column=1)
         rh.value = pairs[i].display_name
-        rh.font = _font(bold=True, size=10)
+        rh.font = _font(bold=False, size=9)
         rh.border = _border()
         rh.alignment = _align("left", "center", wrap=True)
 
-        for j in range(1, N):
-            col = data_col + j
+        # Columnas B .. B+N-2
+        for j in range(N - 1):
+            col = 2 + j
             cell = ws.cell(row=data_row, column=col)
             cell.border = _border()
             cell.alignment = _align("center", "center", wrap=True)
 
-            if j <= i:
-                # Triángulo inferior → verde (este partido ya aparece en la fila j)
-                cell.fill = _fill(C_GREEN)
+            if i <= j:
+                # Triángulo superior (incluyendo diagonal) → gris vacío
+                cell.fill = _fill(C_GREY)
                 cell.value = ""
-                cell.font = _font(size=9)
             else:
-                # Partido válido: pairs[i] vs pairs[j]
+                # Triángulo inferior → partido pairs[i] vs pairs[j]
                 key = frozenset({pairs[i].id, pairs[j].id})
                 match = match_map.get(key)
 
                 if match is None:
-                    # Partido no generado / pendiente
                     cell.fill = _fill(C_GREY)
-                    cell.value = "Pendiente"
-                    cell.font = _font(size=9, color="FF888888", italic=True)
-
+                    cell.value = ""
                 elif match.status == MatchStatus.CONFLICT:
                     cell.fill = _fill(C_RED)
-                    cell.value = "⚠️ Sin horario\n(conflicto)"
-                    cell.font = _font(size=9, color="FFB71C1C")
-
+                    cell.value = "Sin horario"
+                    cell.font = _font(size=8, color="FFB71C1C")
                 elif match.suggested_date:
-                    # Partido programado
-                    cell.fill = _fill(C_WHITE)
+                    cell.fill = _fill(C_GREEN)
                     fecha = match.suggested_date.strftime("%d/%m/%Y")
-                    hora  = (match.suggested_start_time.strftime("%H:%M")
-                             if match.suggested_start_time else "—")
-                    pista = match.court.name if match.court else "—"
-                    cell.value = f"{fecha}\n{hora}\n{pista}"
+                    hora = (
+                        match.suggested_start_time.strftime("%H:%M")
+                        if match.suggested_start_time else ""
+                    )
+                    cell.value = f"{fecha}\n{hora}" if hora else fecha
                     cell.font = _font(size=9)
-
                 else:
                     cell.fill = _fill(C_GREY)
-                    cell.value = "Pendiente"
-                    cell.font = _font(size=9, color="FF888888", italic=True)
+                    cell.value = ""
 
-    # ---- Pie (fila resumen) ----
-    footer_row = header_row + 1 + N
-    ws.row_dimensions[footer_row].height = 18
-
-    # Calcular stats del grupo
-    n_sched = 0
-    n_conf  = 0
-    for key, m in match_map.items():
-        if key.issubset(group_pair_ids):
-            if m.status in (MatchStatus.SCHEDULED, MatchStatus.MANUALLY_MODIFIED):
-                n_sched += 1
-            elif m.status == MatchStatus.CONFLICT:
-                n_conf += 1
-    n_total = n_sched + n_conf
-
-    # Merge pie: data_col+1 .. data_col+N-1
-    fc_start = data_col + 1
-    fc_end   = data_col + N - 1
-    if fc_end > fc_start:
-        ws.merge_cells(
-            start_row=footer_row, start_column=fc_start,
-            end_row=footer_row,   end_column=fc_end,
-        )
-    footer_cell = ws.cell(row=footer_row, column=fc_start)
-    footer_cell.value = (
-        f"{n_total} partidos  ·  {n_sched} programados  ·  {n_conf} conflictos"
-    )
-    footer_cell.font = _font(bold=True, size=10)
-    footer_cell.border = _border()
-    footer_cell.alignment = _align("center", "center")
-
-    # Celda C del pie (sin borde / vacía)
-    ws.cell(row=footer_row, column=data_col).value = ""
-
-    return footer_row + 4  # 3 filas en blanco de separación + 1
+    # Devolver primera fila disponible (3 filas de separación)
+    last_data_row = header_row + N
+    return last_data_row + 4
 
 
 # ---------------------------------------------------------------------------
@@ -223,7 +187,7 @@ def export_groups_to_template(
 ) -> Path:
     """
     Genera el Excel con la plantilla de grupos del club.
-    Un sheet por grupo, con la matriz triangular round-robin.
+    Un sheet por NIVEL con todos sus grupos apilados.
     """
     # Mapa global: frozenset(pair1_id, pair2_id) → Match
     all_matches = result.scheduled + result.conflicts
@@ -232,36 +196,35 @@ def export_groups_to_template(
         key = frozenset({m.pair_1.id, m.pair_2.id})
         match_map[key] = m
 
+    # Agrupar los grupos por NIVEL
+    level_groups: dict[str, list] = defaultdict(list)
+    for group in phase.groups:
+        level_key = _extract_level_name(group.name)
+        level_groups[level_key].append(group)
+
+    # Ordenar niveles numéricamente, grupos dentro de cada nivel también
+    sorted_levels = sorted(level_groups.keys(), key=_level_sort_key)
+
     wb = Workbook()
     wb.remove(wb.active)  # eliminar hoja por defecto
 
-    # ---- Hoja resumen ----
-    ws_res = wb.create_sheet(title="Resumen")
-    _write_summary_sheet(ws_res, phase, result, match_map)
+    for level_name in sorted_levels:
+        groups = sorted(level_groups[level_name], key=lambda g: _group_sort_key(g.name))
 
-    # ---- Una hoja por grupo ----
-    groups_sorted = sorted(phase.groups, key=lambda g: g.name)
-    for group in groups_sorted:
-        # Nombre de hoja: máx 31 chars, sin caracteres prohibidos
-        raw = group.name[:31]
-        for ch in r'\/*?:[]':
-            raw = raw.replace(ch, "-")
-        raw = raw.replace("—", "-").strip(" -")
-        sheet_name = raw[:31]
-
+        sheet_name = _safe_sheet_name(level_name.upper())
         ws = wb.create_sheet(title=sheet_name)
 
-        N = len(group.pairs)
-        # Anchos de columnas
-        ws.column_dimensions["A"].width = 3
-        ws.column_dimensions["B"].width = 3
-        ws.column_dimensions[get_column_letter(3)].width = 26  # col C: nombres de pareja
-        for j in range(1, max(N, 2)):
-            ws.column_dimensions[get_column_letter(3 + j)].width = 15
+        # Ancho de columnas
+        ws.column_dimensions["A"].width = 24  # nombres de parejas
+        max_N = max((len(g.pairs) for g in groups), default=2)
+        for j in range(max_N - 1):
+            ws.column_dimensions[get_column_letter(2 + j)].width = 16
 
-        _write_group_block(ws, group, match_map, start_row=4, data_col=3)
+        current_row = 2  # una fila de margen superior
+        for group in groups:
+            current_row = _write_group_block(ws, group, match_map, current_row)
 
-    # ---- Guardar ----
+    # Guardar
     output_dir = Path("output")
     output_dir.mkdir(exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M")
@@ -271,76 +234,34 @@ def export_groups_to_template(
 
 
 # ---------------------------------------------------------------------------
-# Hoja resumen
+# Helpers de nombres
 # ---------------------------------------------------------------------------
 
-def _write_summary_sheet(ws, phase, result: ScheduleResult, match_map: dict):
-    """Escribe una hoja de resumen con todos los grupos."""
-    ws.column_dimensions["A"].width = 30
-    ws.column_dimensions["B"].width = 12
-    ws.column_dimensions["C"].width = 12
-    ws.column_dimensions["D"].width = 12
-    ws.column_dimensions["E"].width = 14
+def _extract_level_name(group_name: str) -> str:
+    """Extrae el nombre del nivel de un nombre de grupo como 'Nivel 3 — Grupo 5'."""
+    if "—" in group_name:
+        return group_name.split("—")[0].strip()
+    m = re.search(r"grupo\s*\d+", group_name, re.I)
+    if m:
+        return group_name[: m.start()].strip() or group_name
+    return group_name
 
-    # Título
-    ws["A1"] = f"RANKING PÁDEL — {phase.name.upper()}"
-    ws["A1"].font = Font(bold=True, size=16, name="Calibri", color=C_TITLE)
-    ws["A1"].alignment = _align("left")
-    ws["A2"] = f"Fase: {phase.start_date.strftime('%d/%m/%Y')} → {phase.end_date.strftime('%d/%m/%Y')}"
-    ws["A2"].font = _font(size=11, italic=True)
-    ws.row_dimensions[1].height = 28
-    ws.row_dimensions[3].height = 6  # espacio
 
-    # Cabecera tabla
-    headers = ["Grupo", "Parejas", "Partidos", "Programados", "Conflictos"]
-    for ci, h in enumerate(headers, start=1):
-        cell = ws.cell(row=4, column=ci)
-        cell.value = h
-        cell.font = _font(bold=True, size=11, color="FFFFFFFF")
-        cell.fill = _fill(C_TITLE)
-        cell.border = _border("thin")
-        cell.alignment = _align("center", "center")
-    ws.row_dimensions[4].height = 20
+def _level_sort_key(name: str) -> tuple:
+    """Ordena niveles numéricamente ('Nivel 3' < 'Nivel 10')."""
+    nums = re.findall(r"\d+", name)
+    return (int(nums[0]),) if nums else (999, name)
 
-    groups_sorted = sorted(phase.groups, key=lambda g: g.name)
-    for ri, group in enumerate(groups_sorted, start=5):
-        gids = {p.id for p in group.pairs}
-        n_sched = sum(
-            1 for k, m in match_map.items()
-            if k.issubset(gids)
-            and m.status in (MatchStatus.SCHEDULED, MatchStatus.MANUALLY_MODIFIED)
-        )
-        n_conf = sum(
-            1 for k, m in match_map.items()
-            if k.issubset(gids) and m.status == MatchStatus.CONFLICT
-        )
-        n_total = n_sched + n_conf
-        n_pairs = len(group.pairs)
 
-        row_data = [group.name, n_pairs, n_total, n_sched, n_conf]
-        bg = "FFFAFAFA" if ri % 2 == 0 else "FFFFFFFF"
-        for ci, val in enumerate(row_data, start=1):
-            cell = ws.cell(row=ri, column=ci)
-            cell.value = val
-            cell.font = _font(size=10)
-            cell.fill = _fill(bg)
-            cell.border = _border("thin")
-            cell.alignment = _align("left" if ci == 1 else "center", "center")
-        ws.row_dimensions[ri].height = 16
+def _group_sort_key(name: str) -> tuple:
+    """Ordena grupos numéricamente por el último número del nombre."""
+    nums = re.findall(r"\d+", name)
+    return (int(nums[-1]),) if nums else (999, name)
 
-    # Totales
-    total_row = 5 + len(groups_sorted)
-    ws.row_dimensions[total_row].height = 18
-    total_sched = result.scheduled_count
-    total_conf  = result.conflict_count
-    total_all   = result.total_matches
-    for ci, val in enumerate(
-        ["TOTAL", sum(len(g.pairs) for g in groups_sorted), total_all, total_sched, total_conf],
-        start=1,
-    ):
-        cell = ws.cell(row=total_row, column=ci)
-        cell.value = val
-        cell.font = _font(bold=True, size=11, color="FFFFFFFF")
-        cell.fill = _fill(C_TITLE)
-        cell.border = _border("thin")
-        cell.alignment = _align("left" if ci == 1 else "center", "center")
+
+def _safe_sheet_name(name: str) -> str:
+    """Limpia el nombre para usarlo como nombre de hoja Excel (máx 31 chars)."""
+    for ch in r"\/*?:[]":
+        name = name.replace(ch, "-")
+    name = name.replace("—", "-").strip(" -")
+    return name[:31]
