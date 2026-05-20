@@ -41,6 +41,107 @@ def _mc(cls, **kw):
     return cls.model_construct(**kw)
 
 
+def _build_calendar_html(matches: list, week_start: "date") -> str:
+    """Genera una tabla HTML estilo calendario semanal con los partidos."""
+    from collections import defaultdict
+    from datetime import timedelta as _td
+
+    week_dates = [week_start + _td(days=i) for i in range(7)]
+    day_names_es = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+
+    # Partidos de la semana
+    week_matches = [
+        m for m in matches
+        if m.suggested_date and m.suggested_date in week_dates
+    ]
+
+    # Franjas horarias únicas (ordenadas)
+    times = sorted({m.suggested_start_time for m in week_matches if m.suggested_start_time})
+
+    if not times:
+        return "<p style='color:#888;padding:12px'>No hay partidos programados esta semana.</p>"
+
+    # Agrupar por (fecha, hora)
+    cell: dict = defaultdict(list)
+    for m in week_matches:
+        if m.suggested_start_time:
+            cell[(m.suggested_date, m.suggested_start_time)].append(m)
+
+    # Colores por grupo (paleta cíclica)
+    group_colors = [
+        "#1976d2", "#388e3c", "#f57c00", "#7b1fa2", "#c62828",
+        "#00838f", "#6d4c41", "#1565c0", "#2e7d32", "#ad1457",
+    ]
+    group_ids = list(dict.fromkeys(m.group_id for m in week_matches))
+    group_color_map = {gid: group_colors[i % len(group_colors)] for i, gid in enumerate(group_ids)}
+
+    css = """
+<style>
+.ppcal{border-collapse:collapse;width:100%;font-family:sans-serif;font-size:12px}
+.ppcal th{background:#1e3a5f;color:#fff;padding:8px 4px;text-align:center;border:1px solid #b0b8c4;white-space:nowrap}
+.ppcal td{padding:3px;border:1px solid #dde3ea;vertical-align:top;background:#fafbfc;min-width:110px}
+.ppcal .time-col{background:#e9eef5;font-weight:600;text-align:center;color:#2c3e50;font-size:13px;padding:6px 8px;white-space:nowrap;width:52px}
+.ppcal .has-match{background:#fff}
+.pp-card{border-radius:5px;padding:5px 7px;margin:2px 0;border-left:4px solid #1976d2;background:#e8f4fd;line-height:1.35}
+.pp-card.conflict{background:#fde8e8;border-left-color:#d32f2f}
+.pp-vs{font-weight:700;font-size:11px;color:#1a237e}
+.pp-info{font-size:10px;color:#546e7a;margin-top:1px}
+.pp-court{font-size:10px;font-weight:600;color:#37474f}
+.day-name{font-size:13px;font-weight:700}
+.day-date{font-size:11px;opacity:.85;margin-top:1px}
+.today-hdr{background:#2e7d32 !important}
+</style>"""
+
+    today = date.today()
+
+    # Cabecera
+    rows = [css, '<table class="ppcal"><thead><tr>',
+            '<th style="width:52px">Hora</th>']
+    for i, d in enumerate(week_dates):
+        cnt = sum(len(cell[(d, t)]) for t in times)
+        extra = ' class="today-hdr"' if d == today else ""
+        rows.append(
+            f'<th{extra}>'
+            f'<div class="day-name">{day_names_es[i]}</div>'
+            f'<div class="day-date">{d.strftime("%d/%m")}</div>'
+            f'{"<br><small style=\'opacity:.7\'>(" + str(cnt) + ")</small>" if cnt else ""}'
+            f'</th>'
+        )
+    rows.append("</tr></thead><tbody>")
+
+    # Filas por franja horaria
+    for t in times:
+        rows.append(f'<tr><td class="time-col">{t.strftime("%H:%M")}</td>')
+        for d in week_dates:
+            ms = cell.get((d, t), [])
+            if ms:
+                rows.append('<td class="has-match">')
+                for m in ms:
+                    color = group_color_map.get(m.group_id, "#1976d2")
+                    is_conf = m.status.value == "conflict"
+                    card_cls = "pp-card conflict" if is_conf else "pp-card"
+                    border_color = "#d32f2f" if is_conf else color
+                    bg_color = "#fde8e8" if is_conf else "#e8f4fd"
+                    court_txt = m.court.name if m.court else "—"
+                    p1 = m.pair_1.display_name
+                    p2 = m.pair_2.display_name
+                    rows.append(
+                        f'<div class="{card_cls}" style="border-left-color:{border_color};background:{bg_color}">'
+                        f'<div class="pp-vs">{p1}</div>'
+                        f'<div class="pp-vs" style="color:#555">vs {p2}</div>'
+                        f'<div class="pp-info"><span class="pp-court">{court_txt}</span>'
+                        f' · <span style="color:{color}">{m.group_name}</span></div>'
+                        f'</div>'
+                    )
+                rows.append("</td>")
+            else:
+                rows.append("<td></td>")
+        rows.append("</tr>")
+
+    rows.append("</tbody></table>")
+    return "\n".join(rows)
+
+
 def _df_to_groups(df: pd.DataFrame) -> list[Group]:
     """Convierte un DataFrame de grupos al modelo Group."""
     groups_dict: dict[str, Group] = {}
@@ -782,7 +883,7 @@ elif page == "generate":
     if st.session_state.matches:
         st.subheader("Calendario generado")
 
-        # Filtros
+        # Filtros globales (aplican a ambas vistas)
         fc1, fc2, fc3 = st.columns(3)
         group_names = list({m.group_name for m in st.session_state.matches})
         sel_group = fc1.multiselect("Filtrar por grupo", group_names, default=group_names)
@@ -812,114 +913,199 @@ elif page == "generate":
                 court_name_to_obj[m.court.name] = m.court
         court_names = sorted(court_name_to_obj.keys())
 
-        rows = []
-        for m in filtered:
-            rows.append({
-                "ID": m.id[:8],
-                "Grupo": m.group_name,
-                "Pareja 1": m.pair_1.display_name,
-                "Pareja 2": m.pair_2.display_name,
-                "Fecha": m.suggested_date,
-                "Inicio": m.suggested_start_time,
-                "Fin": m.suggested_end_time,
-                "Pista": m.court.name if m.court else "",
-                "Estado": m.status.value,
-                "Observaciones": (m.conflict_reason if m.status == MatchStatus.CONFLICT else m.notes) or "",
-            })
+        view_tab1, view_tab2 = st.tabs(["📋 Tabla", "📅 Vista calendario"])
 
-        df_matches = pd.DataFrame(rows)
+        # ----------------------------------------------------------------
+        # TAB 1: Tabla editable
+        # ----------------------------------------------------------------
+        with view_tab1:
+            rows = []
+            for m in filtered:
+                rows.append({
+                    "ID": m.id[:8],
+                    "Grupo": m.group_name,
+                    "Pareja 1": m.pair_1.display_name,
+                    "Pareja 2": m.pair_2.display_name,
+                    "Fecha": m.suggested_date,
+                    "Inicio": m.suggested_start_time,
+                    "Fin": m.suggested_end_time,
+                    "Pista": m.court.name if m.court else "",
+                    "Estado": m.status.value,
+                    "Observaciones": (m.conflict_reason if m.status == MatchStatus.CONFLICT else m.notes) or "",
+                })
 
-        st.info("✏️ Edita directamente Fecha, Hora, Pista, Estado u Observaciones. Pulsa **Guardar cambios** para confirmar.")
+            df_matches = pd.DataFrame(rows)
 
-        edited_df = st.data_editor(
-            df_matches,
-            column_config={
-                "ID": st.column_config.TextColumn("ID", disabled=True, width="small"),
-                "Grupo": st.column_config.TextColumn("Grupo", disabled=True),
-                "Pareja 1": st.column_config.TextColumn("Pareja 1", disabled=True),
-                "Pareja 2": st.column_config.TextColumn("Pareja 2", disabled=True),
-                "Fecha": st.column_config.DateColumn("Fecha", format="DD/MM/YYYY"),
-                "Inicio": st.column_config.TimeColumn("Inicio", format="HH:mm"),
-                "Fin": st.column_config.TimeColumn("Fin", format="HH:mm"),
-                "Pista": st.column_config.SelectboxColumn("Pista", options=[""] + court_names),
-                "Estado": st.column_config.SelectboxColumn("Estado", options=[s.value for s in MatchStatus]),
-                "Observaciones": st.column_config.TextColumn("Observaciones"),
-            },
-            hide_index=True,
-            use_container_width=True,
-            height=500,
-            key="matches_editor",
-        )
+            st.info("✏️ Edita directamente Fecha, Hora, Pista, Estado u Observaciones. Pulsa **Guardar cambios** para confirmar.")
 
-        # Detectar cambios pendientes desde el estado del editor
-        editor_state = st.session_state.get("matches_editor", {})
-        edited_rows = editor_state.get("edited_rows", {})
-        n_pending = len(edited_rows)
-
-        col_save, col_hint = st.columns([1, 3])
-        with col_save:
-            save_clicked = st.button(
-                f"💾 Guardar cambios ({n_pending})" if n_pending else "💾 Guardar cambios",
-                type="primary" if n_pending else "secondary",
-                disabled=(n_pending == 0),
+            edited_df = st.data_editor(
+                df_matches,
+                column_config={
+                    "ID": st.column_config.TextColumn("ID", disabled=True, width="small"),
+                    "Grupo": st.column_config.TextColumn("Grupo", disabled=True),
+                    "Pareja 1": st.column_config.TextColumn("Pareja 1", disabled=True),
+                    "Pareja 2": st.column_config.TextColumn("Pareja 2", disabled=True),
+                    "Fecha": st.column_config.DateColumn("Fecha", format="DD/MM/YYYY"),
+                    "Inicio": st.column_config.TimeColumn("Inicio", format="HH:mm"),
+                    "Fin": st.column_config.TimeColumn("Fin", format="HH:mm"),
+                    "Pista": st.column_config.SelectboxColumn("Pista", options=[""] + court_names),
+                    "Estado": st.column_config.SelectboxColumn("Estado", options=[s.value for s in MatchStatus]),
+                    "Observaciones": st.column_config.TextColumn("Observaciones"),
+                },
+                hide_index=True,
+                use_container_width=True,
+                height=500,
+                key="matches_editor",
             )
-        with col_hint:
-            if n_pending:
-                st.warning(f"Hay {n_pending} partido(s) modificado(s) sin guardar.")
 
-        if save_clicked and edited_rows:
-            changed = 0
-            for row_idx_raw, changes in edited_rows.items():
-                row_idx = int(row_idx_raw)
-                if row_idx >= len(filtered_ids):
-                    continue
-                match_obj = match_id_to_obj.get(filtered_ids[row_idx])
-                if match_obj is None:
-                    continue
+            # Detectar cambios pendientes desde el estado del editor
+            editor_state = st.session_state.get("matches_editor", {})
+            edited_rows = editor_state.get("edited_rows", {})
+            n_pending = len(edited_rows)
 
-                user_set_status = False
-                for col, new_val in changes.items():
-                    if col == "Fecha" and new_val is not None:
-                        from datetime import date as _date
-                        if isinstance(new_val, str):
-                            from datetime import datetime as _dt
-                            match_obj.suggested_date = _dt.fromisoformat(new_val).date()
-                        else:
-                            match_obj.suggested_date = new_val
-                    elif col == "Inicio" and new_val is not None:
-                        if isinstance(new_val, str):
-                            parts = new_val.split(":")
-                            match_obj.suggested_start_time = time(int(parts[0]), int(parts[1]))
-                        else:
-                            match_obj.suggested_start_time = new_val
-                    elif col == "Fin" and new_val is not None:
-                        if isinstance(new_val, str):
-                            parts = new_val.split(":")
-                            match_obj.suggested_end_time = time(int(parts[0]), int(parts[1]))
-                        else:
-                            match_obj.suggested_end_time = new_val
-                    elif col == "Pista" and new_val and new_val in court_name_to_obj:
-                        match_obj.court = court_name_to_obj[new_val]
-                    elif col == "Estado" and new_val:
-                        try:
-                            match_obj.status = MatchStatus(new_val)
-                            user_set_status = True
-                        except ValueError:
-                            pass
-                    elif col == "Observaciones":
-                        match_obj.notes = str(new_val or "")
-                        match_obj.conflict_reason = None
+            col_save, col_hint = st.columns([1, 3])
+            with col_save:
+                save_clicked = st.button(
+                    f"💾 Guardar cambios ({n_pending})" if n_pending else "💾 Guardar cambios",
+                    type="primary" if n_pending else "secondary",
+                    disabled=(n_pending == 0),
+                )
+            with col_hint:
+                if n_pending:
+                    st.warning(f"Hay {n_pending} partido(s) modificado(s) sin guardar.")
 
-                if not user_set_status:
-                    match_obj.status = MatchStatus.MANUALLY_MODIFIED
-                changed += 1
+            if save_clicked and edited_rows:
+                changed = 0
+                for row_idx_raw, changes in edited_rows.items():
+                    row_idx = int(row_idx_raw)
+                    if row_idx >= len(filtered_ids):
+                        continue
+                    match_obj = match_id_to_obj.get(filtered_ids[row_idx])
+                    if match_obj is None:
+                        continue
 
-            if changed:
-                st.success(f"✅ {changed} partido(s) guardado(s) correctamente.")
-                del st.session_state["matches_editor"]
-                st.rerun()
+                    user_set_status = False
+                    for col, new_val in changes.items():
+                        if col == "Fecha" and new_val is not None:
+                            from datetime import date as _date
+                            if isinstance(new_val, str):
+                                from datetime import datetime as _dt
+                                match_obj.suggested_date = _dt.fromisoformat(new_val).date()
+                            else:
+                                match_obj.suggested_date = new_val
+                        elif col == "Inicio" and new_val is not None:
+                            if isinstance(new_val, str):
+                                parts = new_val.split(":")
+                                match_obj.suggested_start_time = time(int(parts[0]), int(parts[1]))
+                            else:
+                                match_obj.suggested_start_time = new_val
+                        elif col == "Fin" and new_val is not None:
+                            if isinstance(new_val, str):
+                                parts = new_val.split(":")
+                                match_obj.suggested_end_time = time(int(parts[0]), int(parts[1]))
+                            else:
+                                match_obj.suggested_end_time = new_val
+                        elif col == "Pista" and new_val and new_val in court_name_to_obj:
+                            match_obj.court = court_name_to_obj[new_val]
+                        elif col == "Estado" and new_val:
+                            try:
+                                match_obj.status = MatchStatus(new_val)
+                                user_set_status = True
+                            except ValueError:
+                                pass
+                        elif col == "Observaciones":
+                            match_obj.notes = str(new_val or "")
+                            match_obj.conflict_reason = None
 
-        st.caption(f"Mostrando {len(filtered)} de {len(st.session_state.matches)} partidos.")
+                    if not user_set_status:
+                        match_obj.status = MatchStatus.MANUALLY_MODIFIED
+                    changed += 1
+
+                if changed:
+                    st.success(f"✅ {changed} partido(s) guardado(s) correctamente.")
+                    del st.session_state["matches_editor"]
+                    st.rerun()
+
+            st.caption(f"Mostrando {len(filtered)} de {len(st.session_state.matches)} partidos.")
+
+        # ----------------------------------------------------------------
+        # TAB 2: Vista calendario semanal
+        # ----------------------------------------------------------------
+        with view_tab2:
+            scheduled_filtered = [m for m in filtered if m.suggested_date]
+
+            if not scheduled_filtered:
+                st.info("No hay partidos con fecha asignada para mostrar en el calendario.")
+            else:
+                # Calcular rango de semanas disponibles
+                all_dates = sorted({m.suggested_date for m in scheduled_filtered})
+                min_date = all_dates[0]
+                max_date = all_dates[-1]
+
+                # Primer lunes del rango
+                first_monday = min_date - timedelta(days=min_date.weekday())
+                last_monday = max_date - timedelta(days=max_date.weekday())
+
+                # Lista de semanas (lunes)
+                week_starts = []
+                d_iter = first_monday
+                while d_iter <= last_monday:
+                    week_starts.append(d_iter)
+                    d_iter += timedelta(weeks=1)
+
+                # Selector de semana
+                cal_col1, cal_col2 = st.columns([2, 3])
+                with cal_col1:
+                    week_labels = [
+                        f"Sem {i+1}  ({ws.strftime('%d/%m')} – {(ws + timedelta(days=6)).strftime('%d/%m')})"
+                        for i, ws in enumerate(week_starts)
+                    ]
+                    sel_week_idx = st.selectbox(
+                        "Semana",
+                        range(len(week_starts)),
+                        format_func=lambda i: week_labels[i],
+                        key="cal_week_sel",
+                    )
+                with cal_col2:
+                    # Resumen rápido de la semana seleccionada
+                    ws = week_starts[sel_week_idx]
+                    we = ws + timedelta(days=6)
+                    week_ms = [m for m in scheduled_filtered if ws <= m.suggested_date <= we]
+                    conflicts_week = [m for m in week_ms if m.status.value == "conflict"]
+                    st.markdown(
+                        f"**{len(week_ms)} partidos** esta semana"
+                        + (f" · ⚠️ {len(conflicts_week)} conflictos" if conflicts_week else " · ✅ sin conflictos")
+                    )
+
+                selected_week_start = week_starts[sel_week_idx]
+                calendar_html = _build_calendar_html(scheduled_filtered, selected_week_start)
+                st.markdown(calendar_html, unsafe_allow_html=True)
+
+                # Leyenda de colores por grupo
+                group_colors_leg = [
+                    "#1976d2", "#388e3c", "#f57c00", "#7b1fa2", "#c62828",
+                    "#00838f", "#6d4c41", "#1565c0", "#2e7d32", "#ad1457",
+                ]
+                ws_sel = week_starts[sel_week_idx]
+                we_sel = ws_sel + timedelta(days=6)
+                week_group_ids = list(dict.fromkeys(
+                    m.group_id for m in scheduled_filtered
+                    if ws_sel <= m.suggested_date <= we_sel
+                ))
+                if week_group_ids:
+                    st.markdown("---")
+                    st.caption("Leyenda de grupos:")
+                    leg_cols = st.columns(min(len(week_group_ids), 6))
+                    group_name_map = {m.group_id: m.group_name for m in scheduled_filtered}
+                    for i, gid in enumerate(week_group_ids):
+                        color = group_colors_leg[i % len(group_colors_leg)]
+                        gname = group_name_map.get(gid, gid)
+                        leg_cols[i % len(leg_cols)].markdown(
+                            f'<span style="display:inline-block;width:12px;height:12px;'
+                            f'background:{color};border-radius:2px;margin-right:4px"></span>'
+                            f'<small>{gname}</small>',
+                            unsafe_allow_html=True,
+                        )
 
 # ---------------------------------------------------------------------------
 # PÁGINA 4: Exportar
