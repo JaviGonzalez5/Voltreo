@@ -38,6 +38,32 @@ def _overlaps(s1: datetime, e1: datetime, s2: datetime, e2: datetime) -> bool:
     return s1 < e2 and s2 < e1
 
 
+def _booking_belongs_to_court(booking: Booking, court: Court) -> bool:
+    """
+    Comprueba si una reserva de Syltek corresponde a una pista del scheduler.
+
+    Syltek usa IDs numéricos ('1477') y nombres 'Padel 1',
+    el scheduler usa IDs internos ('court_1') y nombres 'Pista 1'.
+    Se intenta la coincidencia en tres niveles:
+      1. court_id exacto (útil si se importan con el mismo ID)
+      2. court_name exacto (case-insensitive)
+      3. número extraído del nombre  ('Padel 3' ↔ 'Pista 3' → ambos tienen el 3)
+    """
+    import re as _re
+    # 1. ID exacto
+    if booking.court_id == court.id:
+        return True
+    # 2. Nombre exacto (case-insensitive, sin espacios extra)
+    if booking.court_name.strip().lower() == court.name.strip().lower():
+        return True
+    # 3. Número extraído del nombre
+    b_nums = _re.findall(r"\d+", booking.court_name)
+    c_nums = _re.findall(r"\d+", court.name)
+    if b_nums and c_nums and b_nums[-1] == c_nums[-1]:
+        return True
+    return False
+
+
 def build_availability_slots(
     courts: list[Court],
     phase: RankingPhase,
@@ -46,6 +72,9 @@ def build_availability_slots(
     """
     Genera todos los huecos disponibles en cada pista para cada día de la fase,
     divididos en bloques de match_duration_minutes, respetando las reservas existentes.
+
+    Las reservas se asocian a pistas por ID, nombre exacto o número del nombre
+    para cubrir el caso en que Syltek usa 'Padel N' y el scheduler 'Pista N'.
     """
     slots: list[AvailabilitySlot] = []
     duration = timedelta(minutes=phase.match_duration_minutes)
@@ -58,7 +87,7 @@ def build_availability_slots(
 
             day_bookings = [
                 b for b in bookings
-                if b.court_id == court.id
+                if _booking_belongs_to_court(b, court)
                 and b.start_datetime.date() == current
             ]
 
