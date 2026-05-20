@@ -502,8 +502,15 @@ elif page == "import":
                                     _data_rows.append(_cells2)
                             import pandas as _pd2
                             if _data_rows:
-                                _df_diag = _pd2.DataFrame(_data_rows, columns=_hdrs2[:len(_data_rows[0])])
-                                st.dataframe(_df_diag, use_container_width=True)
+                                _df_diag = _pd2.DataFrame(_data_rows, columns=(_hdrs2[:len(_data_rows[0])] if _hdrs2 else None))
+                                # Resumen por grupo
+                                if "Grupo" in _df_diag.columns:
+                                    _vc = _df_diag["Grupo"].value_counts().sort_index()
+                                    st.write(f"**Grupos únicos encontrados:** {sorted(_df_diag['Grupo'].unique().tolist())}")
+                                    st.write(f"**Parejas por grupo:**")
+                                    st.dataframe(_vc.rename("Parejas"), use_container_width=True)
+                                # Tabla completa
+                                st.dataframe(_df_diag, use_container_width=True, height=600)
 
         # ---- Diagnóstico: ver HTML del nivel ----
         with st.expander("🔎 Diagnóstico — ver estructura HTML de un nivel"):
