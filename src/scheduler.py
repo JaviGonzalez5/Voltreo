@@ -417,13 +417,16 @@ class Scheduler:
 
     def schedule(self, matches: list[Match]) -> ScheduleResult:
         """
-        Asigna horarios en hasta 5 pasadas con relajación progresiva:
+        Asigna horarios en hasta 4 pasadas con relajación progresiva:
           Pasada 1 — todas las restricciones activas
           Pasada 2 — relaja separación mínima entre partidos
           Pasada 3 — relaja también el límite de partidos/semana
-          Pasada 4 — relaja también la disponibilidad declarada de la pareja
-          Pasada 5 — relaja también el cruce de jugadores entre rankings
-        Los partidos asignados en pasadas 2-5 quedan marcados con una nota
+          Pasada 4 — relaja también el cruce de jugadores entre rankings
+
+        La disponibilidad declarada de la pareja (días/horas en Observaciones)
+        es una restricción DURA que NUNCA se relaja. Si no hay hueco compatible
+        con las disponibilidades de ambas parejas, el partido queda como CONFLICTO.
+        Los partidos asignados en pasadas 2-4 quedan marcados con una nota
         explicativa para que el revisor los identifique en la tabla.
         """
         slots = build_availability_slots(
@@ -471,12 +474,13 @@ class Scheduler:
 
         # ---- Pasadas con relajación progresiva ----
         # (relax_min_days, relax_max_week, relax_availability, relax_cross_player, nota)
+        # IMPORTANTE: relax_availability es siempre False — la disponibilidad
+        # de las parejas es una restricción dura que NUNCA se puede ignorar.
         PASSES = [
             (False, False, False, False, None),
             (True,  False, False, False, "⚠️ Sep. mínima relajada"),
             (True,  True,  False, False, "⚠️ Límite semanal relajado"),
-            (True,  True,  True,  False, "⚠️ Disponibilidad ignorada — revisar"),
-            (True,  True,  True,  True,  "⚠️ Todas restricciones relajadas — revisar"),
+            (True,  True,  False, True,  "⚠️ Cruce jugadores relajado"),
         ]
 
         remaining = list(auto_matches)
@@ -504,13 +508,13 @@ class Scheduler:
             if not remaining:
                 break
 
-        # ---- Conflictos reales (sin solución incluso con todo relajado) ----
+        # ---- Conflictos reales (sin solución respetando disponibilidades) ----
         conflicts: list[Match] = []
         for match in remaining:
             match.status = MatchStatus.CONFLICT
             match.conflict_reason = (
-                "Sin huecos disponibles: no hay suficientes slots en la fase "
-                "para todas las parejas. Amplía el rango de fechas o añade pistas."
+                "Sin huecos compatibles con la disponibilidad de ambas parejas. "
+                "Revisa las Observaciones o amplía el rango de fechas."
             )
             conflicts.append(match)
             conflict_details.append(
