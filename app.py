@@ -1126,16 +1126,41 @@ elif page == "export":
 
     with col1:
         st.subheader("📊 Excel del calendario")
-        if st.button("Generar Excel", type="primary"):
+
+        # ---- Exportar formato tabla (existente) ----
+        if st.button("Generar Excel (tabla)", type="secondary"):
             with st.spinner("Generando Excel..."):
                 path = export_to_excel(result, phase)
             st.success(f"✅ Excel generado: `{path}`")
             with open(path, "rb") as f:
                 st.download_button(
-                    "⬇️ Descargar Excel",
+                    "⬇️ Descargar Excel (tabla)",
                     data=f.read(),
                     file_name=path.name,
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="dl_excel_tabla",
+                )
+
+        st.markdown("---")
+
+        # ---- Exportar formato plantilla del club ----
+        st.markdown("**Formato plantilla del club**")
+        st.caption(
+            "Matriz triangular round-robin por grupo, una hoja por grupo. "
+            "Verde = ya contabilizado · Blanco = programado · Rojo = conflicto."
+        )
+        if st.button("🏆 Generar Excel (plantilla grupos)", type="primary"):
+            with st.spinner("Generando Excel con plantilla del club..."):
+                from src.excel_template_exporter import export_groups_to_template
+                path_tpl = export_groups_to_template(result, phase)
+            st.success(f"✅ Excel de plantilla generado.")
+            with open(path_tpl, "rb") as f:
+                st.download_button(
+                    "⬇️ Descargar plantilla grupos",
+                    data=f.read(),
+                    file_name=path_tpl.name,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="dl_excel_plantilla",
                 )
 
     with col2:
