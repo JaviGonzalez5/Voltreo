@@ -262,10 +262,170 @@ class Scheduler:
         return score
 
     # -------------------------------------------------------------------
-    # Bucle principal
+    # Auxiliar: dificultad de restricción de un partido
+    # -------------------------------------------------------------------
+
+    def _constraint_difficulty(self, match: Match) -> int:
+        """
+        Cuánto de difícil es asignar este partido (mayor = más restrictivo).
+        Los partidos más difíciles se procesan primero para que tengan más
+        opciones de slot disponibles.
+        """
+        score = 0
+        for pair in (match.pair_1, match.pair_2):
+            if pair.available_weekdays:
+                # Menos días disponibles = más difícil
+                score += (7 - len(pair.available_weekdays)) * 20
+            if pair.available_from:
+                # Hora de inicio tardía = menos slots válidos
+                score += pair.available_from.hour * 3
+            if pair.available_until:
+                # Ventana muy estrecha (e.g. solo 1 hora)
+                if pair.available_from:
+                    window_h = pair.available_until.hour - pair.available_from.hour
+                    score += max(0, 4 - window_h) * 10
+        return score
+
+    # -------------------------------------------------------------------
+    # Auxiliar: buscar el mejor slot con flags de relajación
+    # -------------------------------------------------------------------
+
+    def _find_best_slot(
+        self,
+        match: Match,
+        slots: list[AvailabilitySlot],
+        occupied_slots: set,
+        pair_schedule: dict,
+        pair_weekly_count: dict,
+        day_load: dict,
+        court_load: dict,
+        player_day_set: dict,
+        *,
+        relax_min_days: bool = False,
+        relax_max_week: bool = False,
+        relax_availability: bool = False,
+        relax_cross_player: bool = False,
+    ):
+        """
+        Devuelve el AvailabilitySlot con menor penalización, o None si no hay candidatos.
+        Los flags de relajación desactivan restricciones concretas para los re-intentos.
+        """
+        p1_id = match.pair_1.id
+        p2_id = match.pair_2.id
+        player_ids = [
+            match.pair_1.player_1.id, match.pair_1.player_2.id,
+            match.pair_2.player_1.id, match.pair_2.player_2.id,
+        ]
+
+        candidates: list[AvailabilitySlot] = []
+        for slot in slots:
+            cid = slot.court.id
+            d   = slot.date
+            st  = slot.start_time
+            et  = slot.end_time
+
+            # ---- Restricciones FÍSICAS (nunca se relajan) ----
+            if (cid, d, st) in occupied_slots:
+                continue
+            if self._pair_conflicts_existing(p1_id, d, st, et, pair_schedule):
+                continue
+            if self._pair_conflicts_existing(p2_id, d, st, et, pair_schedule):
+                continue
+
+            # ---- Cross-ranking: jugador no juega dos veces el mismo día ----
+            if not relax_cross_player:
+                if any(d in player_day_set[pid] for pid in player_ids):
+                    continue
+
+            # ---- Máximo partidos por semana ----
+            wk = self._week_num(d)
+            if not relax_max_week:
+                if pair_weekly_count[p1_id][wk] >= self.phase.max_matches_per_week:
+                    continue
+                if pair_weekly_count[p2_id][wk] >= self.phase.max_matches_per_week:
+                    continue
+
+            # ---- Separación mínima entre partidos ----
+            if not relax_min_days:
+                if self._violates_min_days(p1_id, d, pair_schedule):
+                    continue
+                if self._violates_min_days(p2_id, d, pair_schedule):
+                    continue
+
+            # ---- Disponibilidad declarada de la pareja ----
+            if not relax_availability:
+                if not self._pair_available(match.pair_1, d, st):
+                    continue
+                if not self._pair_available(match.pair_2, d, st):
+                    continue
+
+            candidates.append(slot)
+
+        if not candidates:
+            return None
+
+        return min(
+            candidates,
+            key=lambda s: self._slot_score(
+                s, p1_id, p2_id, pair_schedule, day_load, court_load,
+                pair_1=match.pair_1, pair_2=match.pair_2,
+            ),
+        )
+
+    # -------------------------------------------------------------------
+    # Auxiliar: aplicar asignación al estado compartido
+    # -------------------------------------------------------------------
+
+    def _apply_assignment(
+        self,
+        match: Match,
+        best: AvailabilitySlot,
+        occupied_slots: set,
+        pair_schedule: dict,
+        pair_weekly_count: dict,
+        day_load: dict,
+        court_load: dict,
+        player_day_set: dict,
+        note: str | None = None,
+    ) -> None:
+        p1_id = match.pair_1.id
+        p2_id = match.pair_2.id
+        player_ids = [
+            match.pair_1.player_1.id, match.pair_1.player_2.id,
+            match.pair_2.player_1.id, match.pair_2.player_2.id,
+        ]
+        match.suggested_date       = best.date
+        match.suggested_start_time = best.start_time
+        match.suggested_end_time   = best.end_time
+        match.court                = best.court
+        match.status               = MatchStatus.SCHEDULED
+        match.conflict_reason      = note
+
+        occupied_slots.add((best.court.id, best.date, best.start_time))
+        pair_schedule[p1_id].append((best.date, best.start_time, best.end_time, best.court.id))
+        pair_schedule[p2_id].append((best.date, best.start_time, best.end_time, best.court.id))
+        pair_weekly_count[p1_id][self._week_num(best.date)] += 1
+        pair_weekly_count[p2_id][self._week_num(best.date)] += 1
+        for pid in player_ids:
+            player_day_set[pid].add(best.date)
+        day_load[best.date]        += 1
+        court_load[best.court.id]  += 1
+
+    # -------------------------------------------------------------------
+    # Bucle principal con relajación progresiva
     # -------------------------------------------------------------------
 
     def schedule(self, matches: list[Match]) -> ScheduleResult:
+        """
+        Asigna horarios en hasta 5 pasadas con relajación progresiva:
+          Pasada 1 — todas las restricciones activas
+          Pasada 2 — relaja separación mínima entre partidos
+          Pasada 3 — relaja también el límite de partidos/semana
+          Pasada 4 — relaja también la disponibilidad declarada de la pareja
+          Pasada 5 — relaja también el cruce de jugadores entre rankings
+        Los partidos asignados en pasadas 2-5 quedan marcados con una nota
+        explicativa para que el revisor los identifique en la tabla.
+        """
         slots = build_availability_slots(
             courts=self.phase.courts,
             phase=self.phase,
@@ -273,116 +433,83 @@ class Scheduler:
         )
         slots.sort(key=lambda s: (s.date, s.start_time, s.court.name))
 
-        # Orden de partidos: mezclar entre grupos pero manteniendo equidad
+        # ---- Ordenar partidos ----
+        # 1. Mezcla aleatoria (determinista con seed) para equidad entre grupos
         shuffled = list(matches)
         self._rng.shuffle(shuffled)
         group_order = list(dict.fromkeys(m.group_id for m in shuffled))
         shuffled.sort(key=lambda m: group_order.index(m.group_id))
+        # 2. Dentro de cada grupo: primero los partidos más difíciles de asignar
+        shuffled.sort(
+            key=lambda m: (group_order.index(m.group_id),
+                           -self._constraint_difficulty(m))
+        )
 
-        # Estado
-        occupied_slots: set[tuple[str, date, time]] = set()
-        pair_schedule: dict[str, list[tuple[date, time, time, str]]] = defaultdict(list)
-        pair_weekly_count: dict[str, dict[int, int]] = defaultdict(lambda: defaultdict(int))
-        day_load: dict[date, int] = defaultdict(int)
-        court_load: dict[str, int] = defaultdict(int)
-        # Jugadores con partido ya asignado ese día (cubre jugadores en varios rankings)
-        player_day_set: dict[str, set[date]] = defaultdict(set)
+        # ---- Estado compartido ----
+        occupied_slots:     set[tuple[str, date, time]]            = set()
+        pair_schedule:      dict[str, list[tuple]]                 = defaultdict(list)
+        pair_weekly_count:  dict[str, dict[int, int]]              = defaultdict(lambda: defaultdict(int))
+        day_load:           dict[date, int]                        = defaultdict(int)
+        court_load:         dict[str, int]                         = defaultdict(int)
+        player_day_set:     dict[str, set[date]]                   = defaultdict(set)
 
-        scheduled: list[Match] = []
-        conflicts: list[Match] = []
+        scheduled:       list[Match]    = []
         conflict_details: list[Conflict] = []
 
-        for match in shuffled:
-            p1_id = match.pair_1.id
-            p2_id = match.pair_2.id
-            # IDs de los 4 jugadores individuales del partido
-            player_ids = [
-                match.pair_1.player_1.id, match.pair_1.player_2.id,
-                match.pair_2.player_1.id, match.pair_2.player_2.id,
-            ]
+        # ---- Pasadas con relajación progresiva ----
+        # (relax_min_days, relax_max_week, relax_availability, relax_cross_player, nota)
+        PASSES = [
+            (False, False, False, False, None),
+            (True,  False, False, False, "⚠️ Sep. mínima relajada"),
+            (True,  True,  False, False, "⚠️ Límite semanal relajado"),
+            (True,  True,  True,  False, "⚠️ Disponibilidad ignorada — revisar"),
+            (True,  True,  True,  True,  "⚠️ Todas restricciones relajadas — revisar"),
+        ]
 
-            # Filtrar candidatos por restricciones duras
-            candidates: list[AvailabilitySlot] = []
-            for slot in slots:
-                cid = slot.court.id
-                d = slot.date
-                st = slot.start_time
-                et = slot.end_time
-
-                if (cid, d, st) in occupied_slots:
-                    continue
-                if self._pair_conflicts_existing(p1_id, d, st, et, pair_schedule):
-                    continue
-                if self._pair_conflicts_existing(p2_id, d, st, et, pair_schedule):
-                    continue
-                # Ningún jugador puede tener dos partidos el mismo día (cross-ranking)
-                if any(d in player_day_set[pid] for pid in player_ids):
-                    continue
-                wk = self._week_num(d)
-                if pair_weekly_count[p1_id][wk] >= self.phase.max_matches_per_week:
-                    continue
-                if pair_weekly_count[p2_id][wk] >= self.phase.max_matches_per_week:
-                    continue
-                if self._violates_min_days(p1_id, d, pair_schedule):
-                    continue
-                if self._violates_min_days(p2_id, d, pair_schedule):
-                    continue
-                # Disponibilidad de la pareja (días y horario de Observaciones)
-                if not self._pair_available(match.pair_1, d, st):
-                    continue
-                if not self._pair_available(match.pair_2, d, st):
-                    continue
-
-                candidates.append(slot)
-
-            if not candidates:
-                match.status = MatchStatus.CONFLICT
-                match.conflict_reason = (
-                    "Sin huecos compatibles: revisa max_matches_per_week, "
-                    "min_days_between_matches, horario y reservas existentes."
+        remaining = list(shuffled)
+        for relax_min, relax_week, relax_avail, relax_cross, note in PASSES:
+            still_remaining: list[Match] = []
+            for match in remaining:
+                best = self._find_best_slot(
+                    match, slots, occupied_slots, pair_schedule,
+                    pair_weekly_count, day_load, court_load, player_day_set,
+                    relax_min_days=relax_min,
+                    relax_max_week=relax_week,
+                    relax_availability=relax_avail,
+                    relax_cross_player=relax_cross,
                 )
-                conflicts.append(match)
-                conflict_details.append(
-                    Conflict.model_construct(
-                        match_id=match.id,
-                        match_label=match.label,
-                        reason=match.conflict_reason,
-                        pair_ids_involved=[p1_id, p2_id],
+                if best is not None:
+                    self._apply_assignment(
+                        match, best, occupied_slots, pair_schedule,
+                        pair_weekly_count, day_load, court_load, player_day_set,
+                        note=note,
                     )
-                )
-                continue
+                    scheduled.append(match)
+                else:
+                    still_remaining.append(match)
+            remaining = still_remaining
+            if not remaining:
+                break
 
-            # Elegir el slot con MENOR penalización
-            best = min(
-                candidates,
-                key=lambda s: self._slot_score(
-                    s, p1_id, p2_id, pair_schedule, day_load, court_load,
-                    pair_1=match.pair_1, pair_2=match.pair_2,
-                ),
+        # ---- Conflictos reales (sin solución incluso con todo relajado) ----
+        conflicts: list[Match] = []
+        for match in remaining:
+            match.status = MatchStatus.CONFLICT
+            match.conflict_reason = (
+                "Sin huecos disponibles: no hay suficientes slots en la fase "
+                "para todas las parejas. Amplía el rango de fechas o añade pistas."
+            )
+            conflicts.append(match)
+            conflict_details.append(
+                Conflict.model_construct(
+                    match_id=match.id,
+                    match_label=match.label,
+                    reason=match.conflict_reason,
+                    pair_ids_involved=[match.pair_1.id, match.pair_2.id],
+                )
             )
 
-            # Asignar
-            match.suggested_date = best.date
-            match.suggested_start_time = best.start_time
-            match.suggested_end_time = best.end_time
-            match.court = best.court
-            match.status = MatchStatus.SCHEDULED
-            match.conflict_reason = None
-
-            occupied_slots.add((best.court.id, best.date, best.start_time))
-            pair_schedule[p1_id].append((best.date, best.start_time, best.end_time, best.court.id))
-            pair_schedule[p2_id].append((best.date, best.start_time, best.end_time, best.court.id))
-            pair_weekly_count[p1_id][self._week_num(best.date)] += 1
-            pair_weekly_count[p2_id][self._week_num(best.date)] += 1
-            for pid in player_ids:
-                player_day_set[pid].add(best.date)
-            day_load[best.date] += 1
-            court_load[best.court.id] += 1
-
-            scheduled.append(match)
-
         courts_used = list({m.court.name for m in scheduled if m.court})
-
         return ScheduleResult.model_construct(
             scheduled=scheduled,
             conflicts=conflicts,
