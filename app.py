@@ -837,19 +837,32 @@ elif page == "import":
                                     st.dataframe(pd.DataFrame(report), use_container_width=True)
 
                             with st.expander("Ver reservas importadas"):
+                                # IMPORTANTE: antes se mostraban y exportaban solo las primeras 100 reservas.
+                                # Para revisar bien pistas libres, necesitamos poder descargar TODAS las reservas
+                                # importadas desde Syltek en el rango de la fase.
                                 rows_imp = [
                                     {
                                         "Pista": b.court_name,
                                         "Fecha": b.start_datetime.strftime("%d/%m/%Y"),
                                         "Inicio": b.start_datetime.strftime("%H:%M"),
                                         "Fin": b.end_datetime.strftime("%H:%M"),
-                                        "Descripción": b.description[:50],
+                                        "Descripción": b.description,
                                     }
-                                    for b in bookings[:100]
+                                    for b in bookings
                                 ]
-                                st.dataframe(pd.DataFrame(rows_imp), use_container_width=True)
-                                if len(bookings) > 100:
-                                    st.caption(f"Mostrando 100 de {len(bookings)} reservas.")
+                                df_imp_all = pd.DataFrame(rows_imp)
+                                st.caption(f"Mostrando {len(df_imp_all)} de {len(bookings)} reservas importadas.")
+                                st.dataframe(df_imp_all, use_container_width=True, height=500)
+                                st.download_button(
+                                    "⬇️ Descargar TODAS las reservas importadas CSV",
+                                    data=df_imp_all.to_csv(index=False).encode("utf-8-sig"),
+                                    file_name=(
+                                        f"reservas_syltek_{phase_tmp.start_date.strftime('%Y%m%d')}_"
+                                        f"{phase_tmp.end_date.strftime('%Y%m%d')}.csv"
+                                    ),
+                                    mime="text/csv",
+                                    key="download_all_syltek_bookings_csv",
+                                )
                         else:
                             st.warning(
                                 "No se encontraron reservas existentes en ese rango de fechas. "
