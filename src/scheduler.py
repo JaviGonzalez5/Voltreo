@@ -453,8 +453,21 @@ class Scheduler:
         court_load:         dict[str, int]                         = defaultdict(int)
         player_day_set:     dict[str, set[date]]                   = defaultdict(set)
 
-        scheduled:       list[Match]    = []
+        scheduled:        list[Match]    = []
         conflict_details: list[Conflict] = []
+
+        # ---- Separar partidos de asignación manual ----
+        # Parejas con "manual_only=True" (ej: Observaciones = "MIRAR MAIL") se
+        # dejan como PENDING para que el usuario los asigne a mano.
+        manual_pending:   list[Match]    = []
+        auto_matches:     list[Match]    = []
+        for m in shuffled:
+            if getattr(m.pair_1, "manual_only", False) or getattr(m.pair_2, "manual_only", False):
+                m.status = MatchStatus.PENDING
+                m.conflict_reason = "📋 Asignación manual — ver Observaciones"
+                manual_pending.append(m)
+            else:
+                auto_matches.append(m)
 
         # ---- Pasadas con relajación progresiva ----
         # (relax_min_days, relax_max_week, relax_availability, relax_cross_player, nota)
@@ -466,7 +479,7 @@ class Scheduler:
             (True,  True,  True,  True,  "⚠️ Todas restricciones relajadas — revisar"),
         ]
 
-        remaining = list(shuffled)
+        remaining = list(auto_matches)
         for relax_min, relax_week, relax_avail, relax_cross, note in PASSES:
             still_remaining: list[Match] = []
             for match in remaining:
@@ -508,6 +521,10 @@ class Scheduler:
                     pair_ids_involved=[match.pair_1.id, match.pair_2.id],
                 )
             )
+
+        # Los partidos manuales se añaden a conflicts para que aparezcan
+        # en la tabla con estado PENDING (el usuario los gestiona a mano)
+        conflicts.extend(manual_pending)
 
         courts_used = list({m.court.name for m in scheduled if m.court})
         return ScheduleResult.model_construct(

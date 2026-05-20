@@ -564,12 +564,15 @@ elif page == "import":
                                 for g in groups_imp:
                                     st.markdown(f"**{g.name}** — {len(g.pairs)} parejas")
                                     for p in g.pairs:
-                                        avail = ""
-                                        if p.available_weekdays:
-                                            avail += ", ".join(day_names[d] for d in p.available_weekdays)
-                                        if p.available_from or p.available_until:
-                                            avail += f"  {p.available_from or '?'} → {p.available_until or '?'}"
-                                        st.write(f"  • {p.display_name}" + (f"  [{avail.strip()}]" if avail.strip() else ""))
+                                        if getattr(p, "manual_only", False):
+                                            st.write(f"  • {p.display_name}  📋 **[ASIGNACIÓN MANUAL]**")
+                                        else:
+                                            avail = ""
+                                            if p.available_weekdays:
+                                                avail += ", ".join(day_names[d] for d in p.available_weekdays)
+                                            if p.available_from or p.available_until:
+                                                avail += f"  {p.available_from or '?'} → {p.available_until or '?'}"
+                                            st.write(f"  • {p.display_name}" + (f"  [{avail.strip()}]" if avail.strip() else ""))
                         else:
                             st.warning(
                                 "No se encontraron grupos. Revisa los IDs de niveles y el número de rotación."

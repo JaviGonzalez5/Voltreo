@@ -839,6 +839,7 @@ def _parse_groups_table(soup: BeautifulSoup, ranking_id: str, level_name: str) -
             availability_notes=obs,
             preferred_weekday=avail["preferred_weekday"],
             preferred_time=avail["preferred_time"],
+            manual_only=avail.get("manual_only", False),
         )
         groups[gid].pairs.append(pair)
 
@@ -949,9 +950,24 @@ def parse_observaciones(text: str) -> dict:
 
     if not text or not text.strip():
         return {"weekdays": [], "available_from": None, "available_until": None,
-                "preferred_weekday": None, "preferred_time": None}
+                "preferred_weekday": None, "preferred_time": None,
+                "manual_only": False}
 
     t = text.upper().strip()
+
+    # -----------------------------------------------------------------------
+    # Detectar texto de asignación manual (ej: "MIRAR MAIL", "PENDIENTE"…)
+    # Si el texto NO contiene ningún día reconocible ni ninguna hora,
+    # se trata de una nota y el partido se deja para asignación manual.
+    # -----------------------------------------------------------------------
+    _has_any_day  = bool(re.search(r"(?<![A-Z])([LMXJVSD])(?![A-Z])", t))
+    _has_any_time = bool(re.search(r"\b\d{4}\b|\+\d{2,4}|\bPF\b", t))
+    if not _has_any_day and not _has_any_time:
+        return {
+            "weekdays": [], "available_from": None, "available_until": None,
+            "preferred_weekday": None, "preferred_time": None,
+            "manual_only": True,
+        }
 
     # Mapa de abreviaturas de días
     DMAP = {"L": 0, "M": 1, "X": 2, "J": 3, "V": 4, "S": 5, "D": 6}
@@ -1086,6 +1102,7 @@ def parse_observaciones(text: str) -> dict:
         "available_until": available_until,
         "preferred_weekday": preferred_weekday,
         "preferred_time": preferred_time,
+        "manual_only": False,
     }
 
 

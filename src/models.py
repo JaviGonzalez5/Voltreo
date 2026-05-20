@@ -60,6 +60,8 @@ class Pair(BaseModel):
     # Pista fija: día y hora preferidos (PF X2030 → miércoles 20:30)
     preferred_weekday: Optional[int] = None   # 0=Lun … 6=Dom
     preferred_time: Optional[time] = None     # hora exacta preferida
+    # Si True, el scheduler NO asigna horario automáticamente (p.ej. "MIRAR MAIL")
+    manual_only: bool = False
 
     @property
     def display_name(self) -> str:
