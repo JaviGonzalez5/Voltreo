@@ -278,15 +278,15 @@ class Scheduler:
                     score += w.same_court_penalty
 
         # Penalización por carga del día y de la pista (preferimos repartir)
-        score += day_load[slot.date] * w.day_load_penalty
-        score += court_load[court_id] * w.court_load_penalty
+        score += day_load.get(slot.date, 0) * w.day_load_penalty
+        score += court_load.get(court_id, 0) * w.court_load_penalty
 
         # Penalizaciones GLOBALES: evitan que todos los partidos se amontonen
         # en la misma hora/día aunque sea la primera vez de cada pareja.
         if hour_load is not None:
-            score += hour_load[hour_b] * w.global_hour_penalty
+            score += hour_load.get(hour_b, 0) * w.global_hour_penalty
         if weekday_load is not None:
-            score += weekday_load[weekday] * w.global_weekday_penalty
+            score += weekday_load.get(weekday, 0) * w.global_weekday_penalty
 
         # Bonus leve por programar pronto en la fase (resta puntuación)
         days_offset = (slot.date - self.phase.start_date).days
