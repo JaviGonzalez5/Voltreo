@@ -55,6 +55,23 @@ def validate_schedule(
     if not scheduled:
         return violations
 
+    # ----------------------------------------------------------------
+    # 0. Partidos en sábado/domingo (nunca deben existir)
+    # ----------------------------------------------------------------
+    for m in scheduled:
+        wd = m.suggested_date.weekday()
+        if wd >= 5:
+            violations.append({
+                "type": "weekend_match",
+                "severity": "error",
+                "description": (
+                    f"{m.label}: partido el {WEEKDAY_ES[wd]} "
+                    f"{m.suggested_date.strftime('%d/%m/%Y')} — el ranking solo es L-V"
+                ),
+                "matches": [m],
+                "pair_names": [m.pair_1.display_name, m.pair_2.display_name],
+            })
+
     # Índices auxiliares
     pair_matches: dict[str, list[Match]] = defaultdict(list)
     player_day: dict[tuple, list[Match]] = defaultdict(list)   # (player_id, date) → matches
@@ -141,28 +158,46 @@ def validate_schedule(
 
     # ----------------------------------------------------------------
     # 4. Disponibilidad: franja horaria
+    # available_until = hora máxima de INICIO (inclusiva) → st > until es violación
     # ----------------------------------------------------------------
     for m in scheduled:
         st = m.suggested_start_time
+        wd = m.suggested_date.weekday()
         for pair in (m.pair_1, m.pair_2):
-            if pair.available_from and st < pair.available_from:
+            # Determinar ventana efectiva para este día
+            pdw = getattr(pair, "per_day_windows", {})
+            if pdw and wd in pdw:
+                win   = pdw[wd]
+                wfrom = win.get("from")
+                wuntil = win.get("until")
+            else:
+                wfrom  = pair.available_from
+                wuntil = pair.available_until
+
+            # PF override: si coincide con preferred_weekday+preferred_time, no reportar
+            pw = getattr(pair, "preferred_weekday", None)
+            pt = getattr(pair, "preferred_time", None)
+            if pw is not None and pt is not None and wd == pw and st == pt:
+                continue
+
+            if wfrom and st < wfrom:
                 violations.append({
                     "type": "availability_time_early",
                     "severity": "warning",
                     "description": (
                         f"{pair.display_name}: partido a las {st.strftime('%H:%M')} "
-                        f"pero disponible desde {pair.available_from.strftime('%H:%M')}"
+                        f"pero disponible desde {wfrom.strftime('%H:%M')}"
                     ),
                     "matches": [m],
                     "pair_names": [pair.display_name],
                 })
-            if pair.available_until and st >= pair.available_until:
+            if wuntil and st > wuntil:
                 violations.append({
                     "type": "availability_time_late",
                     "severity": "warning",
                     "description": (
                         f"{pair.display_name}: partido a las {st.strftime('%H:%M')} "
-                        f"pero disponible solo hasta {pair.available_until.strftime('%H:%M')}"
+                        f"pero disponible solo hasta {wuntil.strftime('%H:%M')} (inclusivo)"
                     ),
                     "matches": [m],
                     "pair_names": [pair.display_name],

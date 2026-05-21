@@ -81,6 +81,11 @@ def build_availability_slots(
     current = phase.start_date
 
     while current <= phase.end_date:
+        # ── El ranking solo se juega de lunes a viernes
+        if current.weekday() >= 5:
+            current += timedelta(days=1)
+            continue
+
         for court in courts:
             if not court.active:
                 continue
@@ -178,18 +183,49 @@ class Scheduler:
 
     @staticmethod
     def _pair_available(pair, d: date, st: time) -> bool:
-        """Comprueba si la pareja está disponible ese día y hora según sus Observaciones."""
+        """
+        Comprueba si la pareja está disponible ese día y hora según sus Observaciones.
+
+        Lógica:
+        1. PF override: si el slot coincide con preferred_weekday + preferred_time → siempre OK.
+        2. Días disponibles: si hay lista y el weekday no está → NO.
+        3. Per-day window: si hay ventana para ese día, aplicarla.
+        4. Fallback global: available_from / available_until.
+        Nota: available_until es hora máxima de INICIO (inclusiva) → st > until bloquea.
+        """
         from .models import Pair as PairModel
         if not isinstance(pair, PairModel):
             return True
-        # Días de la semana
-        if pair.available_weekdays and d.weekday() not in pair.available_weekdays:
+
+        wd = d.weekday()
+
+        # ── PF override: la hora de pista fija siempre es válida
+        pw = getattr(pair, "preferred_weekday", None)
+        pt = getattr(pair, "preferred_time", None)
+        if pw is not None and pt is not None and wd == pw and st == pt:
+            return True
+
+        # ── Días de la semana
+        if pair.available_weekdays and wd not in pair.available_weekdays:
             return False
-        # Hora mínima
+
+        # ── Ventana por día (tiene prioridad sobre global)
+        pdw = getattr(pair, "per_day_windows", {})
+        if pdw and wd in pdw:
+            win = pdw[wd]
+            wf  = win.get("from")
+            wu  = win.get("until")
+            if wf is not None and st < wf:
+                return False
+            # until es hora máxima de INICIO inclusiva → solo bloquea si st > until
+            if wu is not None and st > wu:
+                return False
+            return True
+
+        # ── Ventana global
         if pair.available_from and st < pair.available_from:
             return False
-        # Hora máxima
-        if pair.available_until and st >= pair.available_until:
+        if pair.available_until and st > pair.available_until:
             return False
         return True
 
@@ -216,6 +252,8 @@ class Scheduler:
         pair_schedule: dict[str, list[tuple[date, time, time, str]]],
         day_load: dict[date, int],
         court_load: dict[str, int],
+        hour_load: dict[int, int] | None = None,
+        weekday_load: dict[int, int] | None = None,
         pair_1=None,
         pair_2=None,
     ) -> float:
@@ -242,6 +280,13 @@ class Scheduler:
         # Penalización por carga del día y de la pista (preferimos repartir)
         score += day_load[slot.date] * w.day_load_penalty
         score += court_load[court_id] * w.court_load_penalty
+
+        # Penalizaciones GLOBALES: evitan que todos los partidos se amontonen
+        # en la misma hora/día aunque sea la primera vez de cada pareja.
+        if hour_load is not None:
+            score += hour_load[hour_b] * w.global_hour_penalty
+        if weekday_load is not None:
+            score += weekday_load[weekday] * w.global_weekday_penalty
 
         # Bonus leve por programar pronto en la fase (resta puntuación)
         days_offset = (slot.date - self.phase.start_date).days
@@ -300,6 +345,8 @@ class Scheduler:
         day_load: dict,
         court_load: dict,
         player_day_set: dict,
+        hour_load: dict | None = None,
+        weekday_load: dict | None = None,
         *,
         relax_min_days: bool = False,
         relax_max_week: bool = False,
@@ -307,8 +354,13 @@ class Scheduler:
         relax_cross_player: bool = False,
     ):
         """
-        Devuelve el AvailabilitySlot con menor penalización, o None si no hay candidatos.
-        Los flags de relajación desactivan restricciones concretas para los re-intentos.
+        Devuelve el mejor AvailabilitySlot (o None si no hay candidatos).
+
+        Variedad controlada y reproducible:
+        · Los candidatos se ordenan por score (menor = mejor).
+        · Se elige aleatoriamente entre los top-N con el RNG semillado del scheduler,
+          lo que da variedad real pero resultados reproducibles con la misma seed.
+        · N viene de BalanceWeights.top_candidates_pool (por defecto 6).
         """
         p1_id = match.pair_1.id
         p2_id = match.pair_2.id
@@ -324,7 +376,7 @@ class Scheduler:
             st  = slot.start_time
             et  = slot.end_time
 
-            # ---- Restricciones FÍSICAS (nunca se relajan) ----
+            # ── Restricciones FÍSICAS (nunca se relajan)
             if (cid, d, st) in occupied_slots:
                 continue
             if self._pair_conflicts_existing(p1_id, d, st, et, pair_schedule):
@@ -332,12 +384,12 @@ class Scheduler:
             if self._pair_conflicts_existing(p2_id, d, st, et, pair_schedule):
                 continue
 
-            # ---- Cross-ranking: jugador no juega dos veces el mismo día ----
+            # ── Cross-ranking: jugador no juega dos veces el mismo día
             if not relax_cross_player:
                 if any(d in player_day_set[pid] for pid in player_ids):
                     continue
 
-            # ---- Máximo partidos por semana ----
+            # ── Máximo partidos por semana (restricción dura, nunca se relaja)
             wk = self._week_num(d)
             if not relax_max_week:
                 if pair_weekly_count[p1_id][wk] >= self.phase.max_matches_per_week:
@@ -345,14 +397,14 @@ class Scheduler:
                 if pair_weekly_count[p2_id][wk] >= self.phase.max_matches_per_week:
                     continue
 
-            # ---- Separación mínima entre partidos ----
+            # ── Separación mínima entre partidos
             if not relax_min_days:
                 if self._violates_min_days(p1_id, d, pair_schedule):
                     continue
                 if self._violates_min_days(p2_id, d, pair_schedule):
                     continue
 
-            # ---- Disponibilidad declarada de la pareja ----
+            # ── Disponibilidad declarada (NUNCA se relaja — relax_availability siempre False)
             if not relax_availability:
                 if not self._pair_available(match.pair_1, d, st):
                     continue
@@ -364,13 +416,17 @@ class Scheduler:
         if not candidates:
             return None
 
-        return min(
-            candidates,
-            key=lambda s: self._slot_score(
+        # ── Ordenar por score y elegir aleatoriamente entre los top-N
+        def _score(s):
+            return self._slot_score(
                 s, p1_id, p2_id, pair_schedule, day_load, court_load,
+                hour_load=hour_load, weekday_load=weekday_load,
                 pair_1=match.pair_1, pair_2=match.pair_2,
-            ),
-        )
+            )
+
+        candidates.sort(key=_score)
+        pool_size = min(getattr(self.weights, "top_candidates_pool", 6), len(candidates))
+        return self._rng.choice(candidates[:pool_size])
 
     # -------------------------------------------------------------------
     # Auxiliar: aplicar asignación al estado compartido
@@ -386,6 +442,8 @@ class Scheduler:
         day_load: dict,
         court_load: dict,
         player_day_set: dict,
+        hour_load: dict | None = None,
+        weekday_load: dict | None = None,
         note: str | None = None,
     ) -> None:
         p1_id = match.pair_1.id
@@ -410,6 +468,12 @@ class Scheduler:
             player_day_set[pid].add(best.date)
         day_load[best.date]        += 1
         court_load[best.court.id]  += 1
+        if hour_load is not None:
+            hour_load[self._hour_bucket(best.start_time)] = \
+                hour_load.get(self._hour_bucket(best.start_time), 0) + 1
+        if weekday_load is not None:
+            weekday_load[best.date.weekday()] = \
+                weekday_load.get(best.date.weekday(), 0) + 1
 
     # -------------------------------------------------------------------
     # Bucle principal con relajación progresiva
@@ -417,16 +481,18 @@ class Scheduler:
 
     def schedule(self, matches: list[Match]) -> ScheduleResult:
         """
-        Asigna horarios en hasta 4 pasadas con relajación progresiva:
+        Asigna horarios en hasta 3 pasadas con relajación progresiva:
           Pasada 1 — todas las restricciones activas
           Pasada 2 — relaja separación mínima entre partidos
-          Pasada 3 — relaja también el límite de partidos/semana
-          Pasada 4 — relaja también el cruce de jugadores entre rankings
+          Pasada 3 — relaja también el cruce de jugadores entre rankings
 
-        La disponibilidad declarada de la pareja (días/horas en Observaciones)
-        es una restricción DURA que NUNCA se relaja. Si no hay hueco compatible
-        con las disponibilidades de ambas parejas, el partido queda como CONFLICTO.
-        Los partidos asignados en pasadas 2-4 quedan marcados con una nota
+        Restricciones que NUNCA se relajan (reglas duras):
+          · Disponibilidad declarada de la pareja (días/horas en Observaciones)
+          · Máximo 1 partido por pareja y semana
+          · No hay partidos en sábado ni domingo (filtrado antes de generar slots)
+
+        Si no hay hueco que respete estas reglas, el partido queda como CONFLICTO.
+        Los partidos asignados en pasadas 2-3 quedan marcados con una nota
         explicativa para que el revisor los identifique en la tabla.
         """
         slots = build_availability_slots(
@@ -436,7 +502,7 @@ class Scheduler:
         )
         slots.sort(key=lambda s: (s.date, s.start_time, s.court.name))
 
-        # ---- Ordenar partidos ----
+        # ── Ordenar partidos
         # 1. Mezcla aleatoria (determinista con seed) para equidad entre grupos
         shuffled = list(matches)
         self._rng.shuffle(shuffled)
@@ -448,20 +514,21 @@ class Scheduler:
                            -self._constraint_difficulty(m))
         )
 
-        # ---- Estado compartido ----
+        # ── Estado compartido
         occupied_slots:     set[tuple[str, date, time]]            = set()
         pair_schedule:      dict[str, list[tuple]]                 = defaultdict(list)
         pair_weekly_count:  dict[str, dict[int, int]]              = defaultdict(lambda: defaultdict(int))
         day_load:           dict[date, int]                        = defaultdict(int)
         court_load:         dict[str, int]                         = defaultdict(int)
         player_day_set:     dict[str, set[date]]                   = defaultdict(set)
+        # Cargas globales para reparto de horarios y días de semana
+        hour_load:    dict[int, int] = {}
+        weekday_load: dict[int, int] = {}
 
         scheduled:        list[Match]    = []
         conflict_details: list[Conflict] = []
 
-        # ---- Separar partidos de asignación manual ----
-        # Parejas con "manual_only=True" (ej: Observaciones = "MIRAR MAIL") se
-        # dejan como PENDING para que el usuario los asigne a mano.
+        # ── Separar partidos de asignación manual
         manual_pending:   list[Match]    = []
         auto_matches:     list[Match]    = []
         for m in shuffled:
@@ -472,15 +539,14 @@ class Scheduler:
             else:
                 auto_matches.append(m)
 
-        # ---- Pasadas con relajación progresiva ----
+        # ── Pasadas con relajación progresiva
         # (relax_min_days, relax_max_week, relax_availability, relax_cross_player, nota)
-        # IMPORTANTE: relax_availability es siempre False — la disponibilidad
-        # de las parejas es una restricción dura que NUNCA se puede ignorar.
+        # · relax_availability = SIEMPRE False (disponibilidad es restricción dura)
+        # · relax_max_week     = SIEMPRE False (máx 1 partido/semana es restricción dura)
         PASSES = [
             (False, False, False, False, None),
             (True,  False, False, False, "⚠️ Sep. mínima relajada"),
-            (True,  True,  False, False, "⚠️ Límite semanal relajado"),
-            (True,  True,  False, True,  "⚠️ Cruce jugadores relajado"),
+            (True,  False, False, True,  "⚠️ Cruce jugadores relajado"),
         ]
 
         remaining = list(auto_matches)
@@ -490,6 +556,7 @@ class Scheduler:
                 best = self._find_best_slot(
                     match, slots, occupied_slots, pair_schedule,
                     pair_weekly_count, day_load, court_load, player_day_set,
+                    hour_load, weekday_load,
                     relax_min_days=relax_min,
                     relax_max_week=relax_week,
                     relax_availability=relax_avail,
@@ -499,6 +566,7 @@ class Scheduler:
                     self._apply_assignment(
                         match, best, occupied_slots, pair_schedule,
                         pair_weekly_count, day_load, court_load, player_day_set,
+                        hour_load, weekday_load,
                         note=note,
                     )
                     scheduled.append(match)

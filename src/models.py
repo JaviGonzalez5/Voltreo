@@ -54,9 +54,13 @@ class Pair(BaseModel):
     group_id: Optional[str] = None
     # Disponibilidad de la pareja (extraída de Observaciones en Syltek)
     available_weekdays: list[int] = Field(default_factory=list)  # 0=Lun … 6=Dom, vacío=cualquier día
-    available_from: Optional[time] = None     # hora mínima de juego para esta pareja
-    available_until: Optional[time] = None    # hora máxima
+    available_from: Optional[time] = None     # hora mínima global (si no hay per_day_windows)
+    available_until: Optional[time] = None    # hora máxima de INICIO (inclusiva) global
     availability_notes: str = ""              # texto original de Observaciones
+    # Ventanas por día: {weekday_int: {"from": time|None, "until": time|None}}
+    # "until" = hora máxima de INICIO permitida (inclusiva). None = sin límite.
+    # Cuando está relleno, tiene prioridad sobre available_from/available_until globales.
+    per_day_windows: dict = Field(default_factory=dict)
     # Pista fija: día y hora preferidos (PF X2030 → miércoles 20:30)
     preferred_weekday: Optional[int] = None   # 0=Lun … 6=Dom
     preferred_time: Optional[time] = None     # hora exacta preferida
@@ -179,6 +183,14 @@ class BalanceWeights(BaseModel):
     court_load_penalty: float = 1.0       # cuanto más cargada está la pista, peor
     early_day_bonus: float = 0.5          # leve preferencia por programar pronto en la fase
     preferred_slot_bonus: float = 25.0    # fuerte preferencia por día+hora de pista fija (PF)
+    # Penalizaciones GLOBALES: evitan que todos los partidos se acumulen en
+    # la misma hora / día de la semana aunque sea la primera vez de la pareja.
+    global_hour_penalty: float = 5.0      # penaliza horas del día ya muy ocupadas globalmente
+    global_weekday_penalty: float = 4.0   # penaliza días de semana ya muy ocupados globalmente
+    # Aleatoriedad controlada (reproducible con la semilla del scheduler):
+    # se elige al azar entre los N mejores candidatos para dar variedad.
+    # 1 = siempre el mejor (sin variedad). 6 = buena variedad con calidad.
+    top_candidates_pool: int = 6
 
 
 class RankingPhase(BaseModel):

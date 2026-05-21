@@ -313,7 +313,7 @@ if page == "config":
 
         match_duration = st.slider("Duración del partido (min)", 60, 120, 90, step=30)
         n_courts = st.slider("Número de pistas disponibles", 1, 12, 4)
-        max_per_week = st.slider("Máx. partidos por pareja/semana", 1, 5, 2)
+        max_per_week = st.slider("Máx. partidos por pareja/semana", 1, 5, 1)
         min_days_between = st.slider(
             "Mín. días entre partidos de una misma pareja",
             0, 7, 2,
@@ -361,6 +361,9 @@ if page == "config":
                         court_load_penalty=1.0,
                         early_day_bonus=0.5,
                         preferred_slot_bonus=25.0,
+                        global_hour_penalty=5.0,
+                        global_weekday_penalty=4.0,
+                        top_candidates_pool=6,
                     ),
                 )
                 st.session_state.phase = phase
@@ -809,20 +812,42 @@ elif page == "import":
                             st.success(
                                 f"✅ {len(bookings)} reservas existentes importadas. El planificador las respetará."
                             )
-                            with st.expander("Ver reservas importadas"):
-                                rows_imp = [
-                                    {
-                                        "Pista": b.court_name,
-                                        "Fecha": b.start_datetime.strftime("%d/%m/%Y"),
-                                        "Inicio": b.start_datetime.strftime("%H:%M"),
-                                        "Fin": b.end_datetime.strftime("%H:%M"),
-                                        "Descripción": b.description[:50],
-                                    }
-                                    for b in bookings[:100]
-                                ]
-                                st.dataframe(pd.DataFrame(rows_imp), use_container_width=True)
-                                if len(bookings) > 100:
-                                    st.caption(f"Mostrando 100 de {len(bookings)} reservas.")
+                            # CSV de TODAS las reservas (sin límite)
+                            rows_all = [
+                                {
+                                    "Pista": b.court_name,
+                                    "Fecha": b.start_datetime.strftime("%d/%m/%Y"),
+                                    "Día": ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"][b.start_datetime.weekday()],
+                                    "Inicio": b.start_datetime.strftime("%H:%M"),
+                                    "Fin": b.end_datetime.strftime("%H:%M"),
+                                    "Descripción": b.description[:80] if b.description else "",
+                                }
+                                for b in bookings
+                            ]
+                            df_all_bk = pd.DataFrame(rows_all)
+                            csv_all = df_all_bk.to_csv(index=False, encoding="utf-8")
+                            st.download_button(
+                                f"⬇️ Descargar TODAS las reservas ({len(bookings)}) — CSV",
+                                data=csv_all,
+                                file_name="reservas_syltek_completo.csv",
+                                mime="text/csv",
+                            )
+                            # Vista previa (primeras 200 para rendimiento)
+                            PREVIEW_LIMIT = 200
+                            with st.expander(
+                                f"Ver reservas importadas"
+                                f"{' (primeras ' + str(PREVIEW_LIMIT) + ' de ' + str(len(bookings)) + ')' if len(bookings) > PREVIEW_LIMIT else ''}"
+                            ):
+                                st.dataframe(
+                                    pd.DataFrame(rows_all[:PREVIEW_LIMIT]),
+                                    use_container_width=True,
+                                )
+                                if len(bookings) > PREVIEW_LIMIT:
+                                    st.caption(
+                                        f"Vista previa: {PREVIEW_LIMIT} de {len(bookings)} reservas. "
+                                        f"Descarga el CSV para verlas todas. "
+                                        f"El scheduler usa **todas** las reservas para bloquear pistas."
+                                    )
                         else:
                             st.warning(
                                 "No se encontraron reservas existentes en ese rango de fechas. "
@@ -1305,6 +1330,7 @@ elif page == "review":
         else:
             # Filtro de tipo
             type_labels = {
+                "weekend_match":           "🔴 Partido en sábado/domingo",
                 "player_double_day":       "🔴 Jugador con 2 partidos mismo día",
                 "court_double_booking":    "🔴 Pista reservada doble",
                 "availability_weekday":    "🟡 Día no disponible",

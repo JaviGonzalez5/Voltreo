@@ -836,6 +836,7 @@ def _parse_groups_table(soup: BeautifulSoup, ranking_id: str, level_name: str) -
             available_weekdays=avail["weekdays"],
             available_from=avail["available_from"],
             available_until=avail["available_until"],
+            per_day_windows=avail.get("per_day_windows", {}),
             availability_notes=obs,
             preferred_weekday=avail["preferred_weekday"],
             preferred_time=avail["preferred_time"],
@@ -929,89 +930,92 @@ def _find_col(headers: list[str], candidates: list[str]) -> Optional[int]:
 def parse_observaciones(text: str) -> dict:
     """
     Parsea el campo Observaciones de Syltek para extraer disponibilidad.
+
     Devuelve {
-      'weekdays': [0..6],
-      'available_from': time|None,
-      'available_until': time|None,
-      'preferred_weekday': int|None,   # pista fija: día preferido
-      'preferred_time': time|None,     # pista fija: hora preferida
+      'weekdays':         [0..6],            # días disponibles (0=Lun…6=Dom)
+      'available_from':   time|None,         # hora mínima global (fallback)
+      'available_until':  time|None,         # hora máxima de INICIO (inclusiva) global
+      'per_day_windows':  {int: {"from":time|None,"until":time|None}},
+      'preferred_weekday': int|None,
+      'preferred_time':    time|None,
+      'manual_only':       bool,
     }
 
-    Ejemplos soportados:
-      L A V 1630 A 2030  →  lunes-viernes, 16:30-20:30
-      L - J 19 a 21      →  lunes-jueves, 19:00-21:00
-      M , J +19-21       →  martes y jueves, 19:00-21:00
-      PF X2030           →  pista fija miércoles 20:30
-      PF J 1930          →  pista fija jueves 19:30
-      L Y X, M, J Y V HASTA LAS 1800  →  L,M,X,J,V hasta 18:00
-      +1930              →  desde las 19:30 cualquier día
+    Semántica clave
+    ─────────────────────────────────────────────────────────────
+    · HORA EXACTA  "L 1930"   → lunes SOLO a las 19:30
+                               (available_from=19:30, available_until=19:30)
+    · DESDE        "L +1930"  → lunes desde 19:30 en adelante
+                               (available_from=19:30, available_until=None)
+    · RANGO        "L 18-2030"→ lunes inicio entre 18:00 y 20:30 (inclusivo)
+                               (available_from=18:00, available_until=20:30)
+    · HASTA        "HASTA LAS 1800" → inicio ≤ 18:00
+    · "available_until" siempre es hora máxima de INICIO (inclusiva).
+      El scheduler usa  st > available_until  para bloquear.
+
+    Casos especiales
+    ─────────────────────────────────────────────────────────────
+    · "J+230"  → autocorregido a  "J+2030"
+    · PF variantes: PF X2030 / PFIJA X 2000H / PF JUE 20:00
+    · PF override: aunque el horario general sea "desde 21:00",
+      el slot PF (ej. X 20:00) siempre queda como ventana válida.
+    · "L-V" sin hora → lunes a viernes, sin restricción horaria.
+    · Días en 3 letras: LUN MAR MIE JUE VIE SAB DOM.
     """
-    from datetime import time as dtime
+    from datetime import time as dtime, timedelta, datetime as _dt2
 
     if not text or not text.strip():
-        return {"weekdays": [], "available_from": None, "available_until": None,
-                "preferred_weekday": None, "preferred_time": None,
-                "manual_only": False}
+        return {
+            "weekdays": [], "available_from": None, "available_until": None,
+            "per_day_windows": {},
+            "preferred_weekday": None, "preferred_time": None,
+            "manual_only": False,
+        }
 
     t = text.upper().strip()
 
-    # -----------------------------------------------------------------------
-    # Detectar texto de asignación manual (ej: "MIRAR MAIL", "PENDIENTE"…)
-    # Si el texto NO contiene ningún día reconocible ni ninguna hora,
-    # se trata de una nota y el partido se deja para asignación manual.
-    # -----------------------------------------------------------------------
+    # ── Autocorrección: "J+230" → "J+2030", "+230" → "+2030"
+    # Horas de 3 dígitos tras "+" → anteponer "2" si empieza por 0-9 y ≤ 959
+    def _fix_3digit_hours(s: str) -> str:
+        def _fix(m):
+            digits = m.group(1)
+            # 3 dígitos como "230" → "2030", "900" → "0900" no es válido; tratar como "2030"
+            if len(digits) == 3:
+                # Posibles: 130=1:30? 200=2:00? 900=9:00? 230=20:30 es lo más frecuente
+                # Si primer dígito es 1-9 y el número ≤ 959 → probable hora media:
+                # "230" más probable es "2030" (20:30) que "2:30"
+                if digits[0] in "123456789" and int(digits) <= 959:
+                    # Insertar "20" prefix solo si parece minutos (último 2 dígitos ≤ 59)
+                    if int(digits[1:]) <= 59:
+                        return m.group(0).replace(digits, "20" + digits[-2:] if digits[0] == "2" else "2" + digits)
+            return m.group(0)
+        return re.sub(r"\+\s*(\d{3})\b", _fix, s)
+
+    t = _fix_3digit_hours(t)
+
+    # ── Normalizar días en 3 letras → 1 letra
+    THREE_LETTER = {
+        "LUN": "L", "MAR": "M", "MIE": "X", "MIÉ": "X", "JUE": "J",
+        "VIE": "V", "SAB": "S", "SÁB": "S", "DOM": "D",
+    }
+    for long, short in THREE_LETTER.items():
+        t = re.sub(r"\b" + long + r"\b", short, t)
+
+    # ── Mapa de abreviaturas de días
+    DMAP = {"L": 0, "M": 1, "X": 2, "J": 3, "V": 4, "S": 5, "D": 6}
+
+    # ── Detectar texto de asignación manual
     _has_any_day  = bool(re.search(r"(?<![A-Z])([LMXJVSD])(?![A-Z])", t))
-    _has_any_time = bool(re.search(r"\b\d{4}\b|\+\d{2,4}|\bPF\b", t))
+    _has_any_time = bool(re.search(r"\b\d{3,4}\b|\+\d{2,4}|\bPF", t))
     if not _has_any_day and not _has_any_time:
         return {
             "weekdays": [], "available_from": None, "available_until": None,
+            "per_day_windows": {},
             "preferred_weekday": None, "preferred_time": None,
             "manual_only": True,
         }
 
-    # Mapa de abreviaturas de días
-    DMAP = {"L": 0, "M": 1, "X": 2, "J": 3, "V": 4, "S": 5, "D": 6}
-
-    weekdays: set[int] = set()
-    preferred_weekday = None
-    preferred_time = None
-
-    # Pista fija: "PF X2030", "PF J 1930", "PF M2100"
-    pf_match = re.search(r"\bPF\s+([LMXJVSD])\s*(\d{3,4})\b", t)
-    if pf_match:
-        preferred_weekday = DMAP.get(pf_match.group(1))
-        h_str = pf_match.group(2)
-        preferred_time = (dtime(int(h_str[:2]), int(h_str[2:])) if len(h_str) == 4
-                          else dtime(int(h_str), 0)) if h_str.isdigit() else None
-
-    # Fin de semana (sin PF de pista fija)
-    if re.search(r"\bFINDE\b|\bFIN\s+DE\s+SEMANA\b", t):
-        weekdays.update([5, 6])
-
-    # Rangos: "L A V", "L - J", "L A J"
-    for m in re.finditer(r"\b([LMXJVSD])\s*(?:\bA\b|-)\s*([LMXJVSD])\b", t):
-        s = DMAP.get(m.group(1))
-        e = DMAP.get(m.group(2))
-        if s is not None and e is not None:
-            weekdays.update(range(s, e + 1) if s <= e else list(range(s, 7)) + list(range(0, e + 1)))
-
-    # Días sueltos: "M , J", "L Y X, M, J Y V"
-    for m in re.finditer(r"(?<![A-Z])([LMXJVSD])(?![A-Z0-9])", t):
-        d = DMAP.get(m.group(1))
-        if d is not None:
-            weekdays.add(d)
-
-    # Patrón día+hora pegados sin espacio: "L1930", "M2100", "J2030"
-    # (la regex de días sueltos los ignora porque el día va seguido de un dígito)
-    for m in re.finditer(r"(?<![A-Z])([LMXJVSD])(\d{4})\b", t):
-        d_code = DMAP.get(m.group(1))
-        if d_code is not None:
-            weekdays.add(d_code)
-
-    # Parsear horas
-    available_from = None
-    available_until = None
-
+    # ── Helpers de tiempo
     def _make_time(h: int, m: int) -> Optional[dtime]:
         try:
             return dtime(h, m) if 0 <= h <= 23 and 0 <= m <= 59 else None
@@ -1022,90 +1026,337 @@ def parse_observaciones(text: str) -> dict:
         s = s.strip()
         if len(s) == 4 and s.isdigit():
             return _make_time(int(s[:2]), int(s[2:]))
+        if len(s) == 3 and s.isdigit():
+            return _make_time(int(s[0]), int(s[1:]))
         if len(s) <= 2 and s.isdigit():
             return _make_time(int(s), 0)
+        # "HH:MM"
+        mm = re.match(r"^(\d{1,2}):(\d{2})$", s)
+        if mm:
+            return _make_time(int(mm.group(1)), int(mm.group(2)))
         return None
 
-    # Negaciones: "L NO", "M NO", etc. — el día aparece explícitamente EXCLUIDO
+    def _parse_time_token(tok: str) -> Optional[dtime]:
+        """Parsea un token de hora: "1930", "19:30", "19", "193021"→19:30."""
+        tok = tok.strip()
+        # 6 dígitos HHMM+SS → tomar primeros 4
+        if len(tok) == 6 and tok.isdigit():
+            tok = tok[:4]
+        return _parse_hhmm(tok)
+
+    # ═══════════════════════════════════════════════════════
+    # PISTA FIJA (PF)
+    # Formatos: PF X2030 / PFIJA X 2000H / PF JUE 20:00 / PF L 20:30
+    # ═══════════════════════════════════════════════════════
+    preferred_weekday: Optional[int] = None
+    preferred_time: Optional[dtime]  = None
+
+    pf_patterns = [
+        # PFIJA / PF seguido de día y hora
+        r"PF(?:IJA|IXA)?\s+([LMXJVSD])\s*([\d:]+)H?",
+        # con hora separada
+        r"PF(?:IJA|IXA)?\s+([LMXJVSD])\s+(\d{3,4})\b",
+    ]
+    for pp in pf_patterns:
+        pm = re.search(pp, t)
+        if pm:
+            preferred_weekday = DMAP.get(pm.group(1))
+            preferred_time = _parse_time_token(pm.group(2))
+            if preferred_weekday is not None and preferred_time is not None:
+                break
+
+    # ═══════════════════════════════════════════════════════
+    # SEGMENTACIÓN POR SEGMENTOS
+    # Dividir el texto en segmentos separados por ; . \n
+    # y procesar cada uno extrayendo (días, ventana horaria).
+    # ═══════════════════════════════════════════════════════
+
+    # Eliminar la parte PF del texto para no confundir el parser
+    t_clean = re.sub(r"PF(?:IJA|IXA)?\s+[LMXJVSD]\s*[\d:H]+", "", t)
+    t_clean = re.sub(r"PF(?:IJA|IXA)?\s+[LMXJVSD]\s+\d{3,4}", "", t_clean)
+    # También eliminar "SAB +XXXX" y "DOM" (fines de semana — filtrados al final)
+    # No los eliminamos para que los días se detecten y luego se filtren
+
+    per_day_windows: dict[int, dict] = {}
+    weekdays_set: set[int] = set()
+
+    def _apply_window(days: list, tf: Optional[dtime], tu: Optional[dtime]) -> None:
+        for d in days:
+            weekdays_set.add(d)
+            per_day_windows[d] = {"from": tf, "until": tu}
+
+    def _parse_segment(seg: str) -> None:
+        """Parsea un segmento de texto y registra ventanas por día."""
+        seg = seg.strip()
+        if not seg:
+            return
+
+        # Extraer días del segmento
+        seg_days: list[int] = []
+
+        # Patrón 1: día+rango inmediato sin espacio "X18-21", "X 18-21"
+        # Captura (día)(hh-hh) o (día)(hhmm-hhmm)
+        day_range_direct = re.findall(
+            r"(?<![A-Z])([LMXJVSD])\s+(\d{2,4})-(\d{2,4})\b", seg
+        )
+        # Patrón 2: día+rango pegado sin espacio (X18-21)
+        day_range_direct2 = re.findall(
+            r"(?<![A-Z])([LMXJVSD])(\d{2,4})-(\d{2,4})\b", seg
+        )
+        # Patrón 3: DÍA HHMM+2dígitos "M193021"
+        day_time_range_6 = re.findall(
+            r"(?<![A-Z])([LMXJVSD])\s*(\d{4})(\d{2})\b", seg
+        )
+        # Patrón 4: DÍA + 4 dígitos exactos (pegado o con espacio) "L1930" "L 1930"
+        day_exact_4 = re.findall(
+            r"(?<![A-Z])([LMXJVSD])\s+(\d{4})\b(?!\s*-)", seg
+        )
+        day_exact_4_nospace = re.findall(
+            r"(?<![A-Z])([LMXJVSD])(\d{4})\b(?!\s*-)", seg
+        )
+        # Patrón 5: rango de días "L-V", "L A V"
+        day_day_ranges = re.findall(
+            r"(?<![A-Z])([LMXJVSD])\s*(?:-|(?:\bA\b))\s*([LMXJVSD])(?![A-Z0-9])", seg
+        )
+
+        handled_days_in_seg: set[int] = set()
+
+        # Patrón 0: DÍA+PLUS "L+1930", "J+2030"  ← ANTES que cualquier otro
+        day_plus_pairs = re.findall(r"(?<![A-Z])([LMXJVSD])\+\s*(\d{2,4})\b", seg)
+        for d_ch, ht in day_plus_pairs:
+            d = DMAP.get(d_ch)
+            tf = _parse_hhmm(ht)
+            if d is not None and tf:
+                _apply_window([d], tf, None)
+                handled_days_in_seg.add(d)
+
+        # Patrón 2b: GRUPO de días con coma/Y seguido de rango "X,J,V 18-21", "J,V 18-20"
+        for grp_m in re.finditer(
+            r"(?<![A-Z])([LMXJVSD](?:\s*[,Y]\s*[LMXJVSD])+)\s+(\d{2,4})-(\d{2,4})\b", seg
+        ):
+            grp_str = grp_m.group(1)
+            tf = _parse_hhmm(grp_m.group(2))
+            tu = _parse_hhmm(grp_m.group(3))
+            if tf and tu:
+                for d_ch in re.findall(r"[LMXJVSD]", grp_str):
+                    d = DMAP.get(d_ch)
+                    if d is not None and d not in handled_days_in_seg:
+                        _apply_window([d], tf, tu)
+                        handled_days_in_seg.add(d)
+
+        # Patrón 2c: GRUPO de días con coma/Y seguido de + hora "L,M +18"
+        for grp_m in re.finditer(
+            r"(?<![A-Z])([LMXJVSD](?:\s*[,Y]\s*[LMXJVSD])+)\s*\+\s*(\d{2,4})\b", seg
+        ):
+            grp_str = grp_m.group(1)
+            tf = _parse_hhmm(grp_m.group(2))
+            if tf:
+                for d_ch in re.findall(r"[LMXJVSD]", grp_str):
+                    d = DMAP.get(d_ch)
+                    if d is not None and d not in handled_days_in_seg:
+                        _apply_window([d], tf, None)
+                        handled_days_in_seg.add(d)
+
+        # Procesar DÍA+RANGO (más específico primero)
+        for d_ch, h1, h2 in day_range_direct + day_range_direct2:
+            d = DMAP.get(d_ch)
+            tf = _parse_hhmm(h1)
+            tu = _parse_hhmm(h2)
+            if d is not None and tf and tu:
+                _apply_window([d], tf, tu)
+                handled_days_in_seg.add(d)
+
+        # Procesar DÍA+6dígitos "M193021" → M 19:30-21:00
+        for d_ch, h4, h2 in day_time_range_6:
+            d  = DMAP.get(d_ch)
+            tf = _parse_hhmm(h4)
+            tu = _make_time(int(h2), 0)
+            if d is not None and tf and tu and d not in handled_days_in_seg:
+                _apply_window([d], tf, tu)
+                handled_days_in_seg.add(d)
+
+        # Procesar DÍA+4dígitos exacto
+        for d_ch, h4 in day_exact_4 + day_exact_4_nospace:
+            d  = DMAP.get(d_ch)
+            tt = _parse_hhmm(h4)
+            if d is not None and tt and d not in handled_days_in_seg:
+                _apply_window([d], tt, tt)  # exacto: from==until
+                handled_days_in_seg.add(d)
+
+        # Extraer días de rangos de días "L-V"
+        for d1_ch, d2_ch in day_day_ranges:
+            s_d = DMAP.get(d1_ch)
+            e_d = DMAP.get(d2_ch)
+            if s_d is not None and e_d is not None:
+                r_days = (list(range(s_d, e_d + 1)) if s_d <= e_d
+                          else list(range(s_d, 7)) + list(range(0, e_d + 1)))
+                for d in r_days:
+                    if d not in handled_days_in_seg:
+                        seg_days.append(d)
+
+        # Días sueltos (no cubiertos por patrones anteriores)
+        for m in re.finditer(r"(?<![A-Z])([LMXJVSD])(?![A-Z0-9-])", seg):
+            d = DMAP.get(m.group(1))
+            if d is not None and d not in handled_days_in_seg:
+                # Asegurarse de que no está cubierto por un rango de días en el segmento
+                in_range = any(
+                    s_d_ch is not None and e_d_ch is not None and
+                    (min(DMAP[s_d_ch], DMAP[e_d_ch]) <= d <= max(DMAP[s_d_ch], DMAP[e_d_ch]))
+                    for s_d_ch, e_d_ch in day_day_ranges
+                    if s_d_ch in DMAP and e_d_ch in DMAP
+                )
+                if not in_range:
+                    seg_days.append(d)
+
+        if not seg_days and not handled_days_in_seg:
+            return  # Segmento sin días reconocibles
+
+        # Extraer ventana de tiempo del segmento (para días aún sin ventana)
+        # Orden de prioridad: + (desde), rango, HASTA, 4 dígitos sueltos
+        tf_seg: Optional[dtime] = None
+        tu_seg: Optional[dtime] = None
+        has_plus = False
+
+        m_plus = re.search(r"\+\s*(\d{2,4})", seg)
+        if m_plus:
+            tf_seg  = _parse_hhmm(m_plus.group(1))
+            has_plus = True
+
+        # Rango de horas global del segmento (sin estar pegado a un día)
+        m_range = re.search(r"(?<![LMXJVSD\d])(\d{2,4})-(\d{2,4})\b", seg)
+        if not has_plus and m_range:
+            _tf = _parse_hhmm(m_range.group(1))
+            _tu = _parse_hhmm(m_range.group(2))
+            if _tf and _tu:
+                tf_seg = _tf
+                tu_seg = _tu
+
+        # "HH A HH" o "HHMM A HHMM"
+        if not has_plus and tf_seg is None:
+            m_range_a = re.search(r"\b(\d{2,4})\s+A\s+(\d{2,4})\b", seg)
+            if m_range_a:
+                _tf = _parse_hhmm(m_range_a.group(1))
+                _tu = _parse_hhmm(m_range_a.group(2))
+                if _tf and _tu:
+                    tf_seg = _tf
+                    tu_seg = _tu
+
+        # HASTA
+        m_hasta = re.search(r"HASTA\s+(?:LAS\s+)?(\d{3,4})", seg)
+        if m_hasta:
+            tu_seg = _parse_hhmm(m_hasta.group(1))
+
+        # COMPLETO
+        if re.search(r"\bCOMPLETO\b", seg):
+            tf_seg = None; tu_seg = None
+
+        # 4 dígitos sueltos como hora única (sin +, sin rango)
+        if tf_seg is None and tu_seg is None and not has_plus:
+            bare_4 = re.findall(r"(?<![LMXJVSD])(?<![0-9])(1[6-9]\d{2}|2[0-2]\d{2})(?!\d)", seg)
+            if bare_4:
+                tf_seg = _parse_hhmm(bare_4[0])
+                tu_seg = tf_seg  # exacto
+
+        # Aplicar ventana a los días no cubiertos por patrones específicos
+        has_global_time = tf_seg is not None or tu_seg is not None or has_plus
+        for d in seg_days:
+            if d not in handled_days_in_seg:
+                if has_global_time:
+                    _apply_window([d], tf_seg, tu_seg)
+                else:
+                    _apply_window([d], None, None)  # sin restricción horaria
+
+    # Dividir en segmentos: por ; . \n y también por SAB/DOM (ya normalizados a S/D)
+    segments = re.split(r"[;.\n]+", t_clean)
+    for seg in segments:
+        _parse_segment(seg.strip())
+
+    # Días sin ventana de tiempo explícita → sin restricción
+    # (ya procesados arriba con _apply_window([d], None, None))
+
+    # ── Negaciones: "L NO"
     negated: set[int] = set()
     for nm in re.finditer(r"(?<![A-Z])([LMXJVSD])\s+NO\b", t):
         d_neg = DMAP.get(nm.group(1))
         if d_neg is not None:
             negated.add(d_neg)
-
     if negated:
-        if not weekdays or weekdays.issubset(negated):
-            # Todos los días encontrados son negados (o no había días positivos)
-            # → significa "todos los días EXCEPTO los negados"
-            weekdays = set(range(7)) - negated
-        else:
-            weekdays -= negated
+        weekdays_set -= negated
+        for d in negated:
+            per_day_windows.pop(d, None)
 
-    # +HHMM, +HHH, +HH  (acepta horas de 2 dígitos como +18, +21)
-    m = re.search(r"\+\s*(\d{2,4})", t)
-    if m:
-        available_from = _parse_hhmm(m.group(1))
+    # ── Fallback global si no hay per_day_windows pero sí días
+    available_from: Optional[dtime]  = None
+    available_until: Optional[dtime] = None
 
-    # "HH:MM A HH:MM" o "HHMM A HHMM" o "HH A HH"
-    m = re.search(r"\b(\d{2,4})\s+A\s+(\d{2,4})\b", t)
-    if m:
-        tf = _parse_hhmm(m.group(1))
-        tu = _parse_hhmm(m.group(2))
-        if tf and (available_from is None):
-            available_from = tf
-        if tu:
-            available_until = tu
+    if per_day_windows:
+        # Derivar from/until globales del conjunto de ventanas (para compatibilidad)
+        all_froms  = [w["from"]  for w in per_day_windows.values() if w["from"]  is not None]
+        all_untils = [w["until"] for w in per_day_windows.values() if w["until"] is not None]
+        if all_froms:
+            available_from  = min(all_froms)
+        if all_untils:
+            available_until = max(all_untils)
+    else:
+        # Sin per_day_windows: intentar parseo global simple
+        m_plus = re.search(r"\+\s*(\d{2,4})", t)
+        if m_plus:
+            available_from = _parse_hhmm(m_plus.group(1))
+        m_range = re.search(r"\b(\d{2,4})\s+A\s+(\d{2,4})\b", t)
+        if m_range:
+            tf = _parse_hhmm(m_range.group(1))
+            tu = _parse_hhmm(m_range.group(2))
+            if tf and available_from is None:
+                available_from = tf
+            if tu:
+                available_until = tu
+        m_hasta = re.search(r"HASTA\s+(?:LAS\s+)?(\d{3,4})", t)
+        if m_hasta and available_until is None:
+            available_until = _parse_hhmm(m_hasta.group(1))
 
-    # "HASTA LAS HHMM" o "HASTA HHMM"
-    m = re.search(r"HASTA\s+(?:LAS\s+)?(\d{3,4})", t)
-    if m and available_until is None:
-        available_until = _parse_hhmm(m.group(1))
+    # ── Si no hay días detectados, es disponibilidad total
+    if not weekdays_set:
+        # Texto tiene hora pero no días → cualquier día laborable (L-V)
+        if available_from or available_until or per_day_windows:
+            weekdays_set = {0, 1, 2, 3, 4}  # L-V
 
-    # Número de 4 dígitos suelto tipo "1930", "1800", "2100"
-    if available_from is None:
-        nums = re.findall(r"\b(1[6-9]\d{2}|2[0-2]\d{2})\b", t)
-        if nums:
-            available_from = _parse_hhmm(nums[0])
+    # ── Filtrar fines de semana (el ranking solo es L-V)
+    weekdays_set = {d for d in weekdays_set if d <= 4}  # 0-4 = L-V
+    for wk_d in (5, 6):
+        per_day_windows.pop(wk_d, None)
 
-    # -----------------------------------------------------------------------
-    # Caso "DÍA HORA" exacto: "L 1930", "M2100", "J 2030"
-    # Si hay exactamente UN día y UNA hora sin rango ("A") ni prefijo "+",
-    # significa "solo puedo jugar ESE día A ESA hora".
-    # → Fijar ventana de 2 horas y marcar como preferred.
-    # -----------------------------------------------------------------------
-    _has_day_range  = bool(re.search(r"[LMXJVSD]\s*(?:\bA\b|-)\s*[LMXJVSD]", t))
-    _has_time_range = bool(re.search(r"\b\d{2,4}\s+A\s+\d{2,4}\b", t))
-    _has_plus       = bool(re.search(r"\+\s*\d{2,4}", t))
+    # ── PF override: si hay preferred_weekday + preferred_time, asegurarse de que
+    #    ese día tiene ventana válida aunque el horario general lo excluyera.
+    if preferred_weekday is not None and preferred_weekday in range(5):
+        weekdays_set.add(preferred_weekday)
+        win = per_day_windows.get(preferred_weekday)
+        if win is None:
+            per_day_windows[preferred_weekday] = {"from": preferred_time, "until": preferred_time}
+        elif preferred_time is not None:
+            # Ampliar ventana para incluir el tiempo PF si estaba fuera
+            wf = win.get("from")
+            wu = win.get("until")
+            if wf and preferred_time < wf:
+                per_day_windows[preferred_weekday]["from"] = preferred_time
+            if wu and preferred_time > wu:
+                per_day_windows[preferred_weekday]["until"] = preferred_time
 
-    if (
-        available_from is not None
-        and available_until is None
-        and len(weekdays) == 1
-        and not _has_day_range
-        and not _has_time_range
-        and not _has_plus
-    ):
-        from datetime import timedelta, datetime as _dt2
-        # Ventana de 30 min: acepta SOLO el slot que empieza exactamente a esa hora.
-        # El siguiente slot posible es mínimo 60 min después (duración mínima),
-        # así que ningún slot posterior puede colarse.
-        _until = (
-            _dt2.combine(_dt2.today().date(), available_from) + timedelta(minutes=30)
-        ).time()
-        available_until = _until
-        # Marcar como preferred (pista fija implícita)
-        if preferred_weekday is None:
-            preferred_weekday = next(iter(weekdays))
-        if preferred_time is None:
-            preferred_time = available_from
+    # ── Inferir preferred si hay hora exacta única (sin PF explícita)
+    if preferred_weekday is None and len(weekdays_set) == 1:
+        d0 = next(iter(weekdays_set))
+        w0 = per_day_windows.get(d0, {})
+        if w0.get("from") is not None and w0.get("from") == w0.get("until"):
+            preferred_weekday = d0
+            preferred_time    = w0["from"]
 
     return {
-        "weekdays": sorted(weekdays),
-        "available_from": available_from,
-        "available_until": available_until,
+        "weekdays":          sorted(weekdays_set),
+        "available_from":    available_from,
+        "available_until":   available_until,
+        "per_day_windows":   per_day_windows,
         "preferred_weekday": preferred_weekday,
-        "preferred_time": preferred_time,
-        "manual_only": False,
+        "preferred_time":    preferred_time,
+        "manual_only":       False,
     }
 
 
