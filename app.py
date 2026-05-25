@@ -6,6 +6,7 @@ from __future__ import annotations
 import re
 import sys
 import io
+import uuid
 from pathlib import Path
 from datetime import date, time, datetime, timedelta
 
@@ -27,6 +28,10 @@ from src.message_generator import generate_all_group_messages, generate_all_pair
 from src.validators import (
     validate_groups_df, validate_bookings_df, validate_phase_dates, validate_groups
 )
+from src.schedule_validator import validate_schedule, validation_summary, SEVERITY_EMOJI
+from src.excel_template_exporter import export_groups_to_template
+from src.scheduler import balance_metrics, pairs_with_most_conflicts
+from src.syltek_connector import SyltekConnector, run_login_check, _parse_occupied_slots
 
 
 # ---------------------------------------------------------------------------
@@ -118,7 +123,7 @@ def _build_calendar_html(matches: list, week_start: "date") -> str:
                 rows.append('<td class="has-match">')
                 for m in ms:
                     color = group_color_map.get(m.group_id, "#1976d2")
-                    is_conf = m.status.value == "conflict"
+                    is_conf = m.status == MatchStatus.CONFLICT
                     card_cls = "pp-card conflict" if is_conf else "pp-card"
                     border_color = "#d32f2f" if is_conf else color
                     bg_color = "#fde8e8" if is_conf else "#e8f4fd"
@@ -151,21 +156,21 @@ def _df_to_groups(df: pd.DataFrame) -> list[Group]:
         if gid not in groups_dict:
             groups_dict[gid] = Group.model_construct(id=gid, name=gname, pairs=[])
         p1 = Player.model_construct(
-            id=str(__import__("uuid").uuid4()),
+            id=str(uuid.uuid4()),
             name=str(row["player1_name"]).strip(),
             surname="",
             email=str(row.get("player1_email", "")).strip() or None,
             phone=str(row.get("player1_phone", "")).strip() or None,
         )
         p2 = Player.model_construct(
-            id=str(__import__("uuid").uuid4()),
+            id=str(uuid.uuid4()),
             name=str(row["player2_name"]).strip(),
             surname="",
             email=str(row.get("player2_email", "")).strip() or None,
             phone=str(row.get("player2_phone", "")).strip() or None,
         )
         pair = Pair.model_construct(
-            id=str(__import__("uuid").uuid4()),
+            id=str(uuid.uuid4()),
             name=str(row["pair_name"]).strip(),
             player_1=p1,
             player_2=p2,
@@ -186,7 +191,7 @@ def _df_to_bookings(df: pd.DataFrame) -> list[Booking]:
     bookings = []
     for _, row in df.iterrows():
         bookings.append(Booking.model_construct(
-            id=str(__import__("uuid").uuid4()),
+            id=str(uuid.uuid4()),
             court_id=str(row["court_id"]).strip(),
             court_name=str(row["court_name"]).strip(),
             start_datetime=pd.to_datetime(row["start_datetime"]).to_pydatetime(),
@@ -288,7 +293,6 @@ if page == "config":
                 st.error("Rellena URL, usuario y contraseña antes de probar.")
             else:
                 with st.spinner("Intentando login... (puede tardar 15–30 segundos)"):
-                    from src.syltek_connector import run_login_check
                     ok, msg = run_login_check(syltek_url, syltek_user, syltek_pass)
                 if ok:
                     st.success(f"✅ {msg}")
@@ -526,7 +530,6 @@ elif page == "import":
                     level_ids = []
 
                 if level_ids:
-                    from src.syltek_connector import SyltekConnector
                     conn_grp = SyltekConnector(
                         url=syl_imp_url, user=syl_imp_user, password=syl_imp_pass, dry_run=True
                     )
@@ -589,7 +592,6 @@ elif page == "import":
                 if not syl_imp_url or not syl_imp_user or not syl_imp_pass:
                     st.error("Rellena URL, usuario y contraseña.")
                 else:
-                    from src.syltek_connector import SyltekConnector
                     _conn2 = SyltekConnector(url=syl_imp_url, user=syl_imp_user, password=syl_imp_pass, dry_run=True)
                     ok2, _msg2 = _conn2.login()
                     if not ok2:
@@ -636,7 +638,6 @@ elif page == "import":
                 if not syl_imp_url or not syl_imp_user or not syl_imp_pass:
                     st.error("Rellena URL, usuario y contraseña.")
                 else:
-                    from src.syltek_connector import SyltekConnector
                     _conn_d = SyltekConnector(url=syl_imp_url, user=syl_imp_user, password=syl_imp_pass, dry_run=True)
                     ok_d, msg_d = _conn_d.login()
                     if not ok_d:
@@ -707,8 +708,7 @@ elif page == "import":
                         st.error("Rellena URL, usuario y contraseña en la sección superior.")
                     else:
                         import base64 as _b64
-                        from src.syltek_connector import SyltekConnector
-                        conn_diag = SyltekConnector(
+                            conn_diag = SyltekConnector(
                             url=syl_imp_url, user=syl_imp_user, password=syl_imp_pass, dry_run=True
                         )
                         ok_d, msg_d = conn_diag.login()
@@ -744,8 +744,7 @@ elif page == "import":
 
                                 # 3) Probar el nuevo parser directamente (pasamos HTML crudo)
                                 st.markdown("**Resultado del parser de reservas:**")
-                                from src.syltek_connector import _parse_occupied_slots as _pos
-                                parsed_bk = _pos(r_diag.text, diag_date)
+                                            parsed_bk = _parse_occupied_slots(r_diag.text, diag_date)
                                 # Mostrar siempre el objeto timetable JS (primeros 4000 chars)
                                 raw_d = r_diag.text
                                 m_tt = re.search(r'var\s+timetable\s*=\s*\{', raw_d)
@@ -775,7 +774,6 @@ elif page == "import":
                 if not syl_imp_url or not syl_imp_user or not syl_imp_pass:
                     st.error("Rellena URL, usuario y contraseña en la sección superior.")
                 else:
-                    from src.syltek_connector import SyltekConnector
                     conn_bk = SyltekConnector(
                         url=syl_imp_url, user=syl_imp_user, password=syl_imp_pass, dry_run=True
                     )
@@ -882,6 +880,7 @@ elif page == "generate":
             st.session_state.matches_generated = True
             st.session_state.matches_scheduled = False
             st.session_state.schedule_result = None
+            st.session_state.pop("schedule_violations", None)
             st.success(f"✅ {len(matches)} enfrentamientos generados.")
 
         # Desglose de grupos y parejas
@@ -906,7 +905,6 @@ elif page == "generate":
                 st.session_state.matches = result.scheduled + result.conflicts
 
                 # Ejecutar validación automáticamente
-                from src.schedule_validator import validate_schedule, validation_summary
                 violations = validate_schedule(result, phase)
                 st.session_state["schedule_violations"] = violations
 
@@ -923,7 +921,6 @@ elif page == "generate":
             st.markdown("---")
             if st.button("📥 Exportar Excel (plantilla grupos)", type="secondary"):
                 with st.spinner("Generando Excel..."):
-                    from src.excel_template_exporter import export_groups_to_template
                     _path_xls = export_groups_to_template(
                         st.session_state.schedule_result, phase
                     )
@@ -950,13 +947,8 @@ elif page == "generate":
 
                 # ---- Panel rápido de validación ----
                 violations = st.session_state.get("schedule_violations")
-                if violations is None and st.session_state.matches_scheduled:
-                    from src.schedule_validator import validate_schedule, validation_summary
-                    violations = validate_schedule(result, phase)
-                    st.session_state["schedule_violations"] = violations
 
                 if violations is not None:
-                    from src.schedule_validator import validation_summary, SEVERITY_EMOJI
                     vs = validation_summary(violations)
                     st.markdown("**Validación del calendario:**")
                     vc1, vc2, vc3 = st.columns(3)
@@ -978,12 +970,35 @@ elif page == "generate":
 
         # Filtros globales (aplican a ambas vistas)
         fc1, fc2, fc3 = st.columns(3)
-        group_names = list({m.group_name for m in st.session_state.matches})
+
+        # These derived collections are rebuilt only when matches change, not on every render.
+        # They are keyed by the number of matches so a reschedule invalidates the cache.
+        _cache_key = len(st.session_state.matches)
+        if st.session_state.get("_filter_cache_key") != _cache_key:
+            _matches = st.session_state.matches
+            st.session_state["_filter_cache_key"] = _cache_key
+            st.session_state["_group_names"] = sorted({m.group_name for m in _matches})
+            st.session_state["_pair_names"] = sorted(
+                {m.pair_1.display_name for m in _matches} | {m.pair_2.display_name for m in _matches}
+            )
+            st.session_state["_match_id_to_obj"] = {m.id: m for m in _matches}
+            _court_name_to_obj: dict = {}
+            for c in (st.session_state.courts or []):
+                _court_name_to_obj[c.name] = c
+            for m in _matches:
+                if m.court and m.court.name not in _court_name_to_obj:
+                    _court_name_to_obj[m.court.name] = m.court
+            st.session_state["_court_name_to_obj"] = _court_name_to_obj
+
+        group_names = st.session_state["_group_names"]
+        pair_names  = st.session_state["_pair_names"]
+        match_id_to_obj    = st.session_state["_match_id_to_obj"]
+        court_name_to_obj  = st.session_state["_court_name_to_obj"]
+        court_names = sorted(court_name_to_obj.keys())
+
         sel_group = fc1.multiselect("Filtrar por grupo", group_names, default=group_names)
         status_opts = [s.value for s in MatchStatus]
         sel_status = fc2.multiselect("Estado", status_opts, default=status_opts)
-        pair_names = list({m.pair_1.display_name for m in st.session_state.matches} |
-                          {m.pair_2.display_name for m in st.session_state.matches})
         sel_pair = fc3.multiselect("Pareja (contiene)", pair_names, default=[])
 
         filtered = [
@@ -995,16 +1010,6 @@ elif page == "generate":
 
         # Índice de IDs para poder mapear filas editadas → objetos Match
         filtered_ids = [m.id for m in filtered]
-        match_id_to_obj = {m.id: m for m in st.session_state.matches}
-
-        # Construir lookup de pistas disponibles
-        court_name_to_obj: dict = {}
-        for c in (st.session_state.courts or []):
-            court_name_to_obj[c.name] = c
-        for m in st.session_state.matches:
-            if m.court and m.court.name not in court_name_to_obj:
-                court_name_to_obj[m.court.name] = m.court
-        court_names = sorted(court_name_to_obj.keys())
 
         view_tab1, view_tab2 = st.tabs(["📋 Tabla", "📅 Vista calendario"])
 
@@ -1164,7 +1169,7 @@ elif page == "generate":
                     ws = week_starts[sel_week_idx]
                     we = ws + timedelta(days=6)
                     week_ms = [m for m in scheduled_filtered if ws <= m.suggested_date <= we]
-                    conflicts_week = [m for m in week_ms if m.status.value == "conflict"]
+                    conflicts_week = [m for m in week_ms if m.status == MatchStatus.CONFLICT]
                     st.markdown(
                         f"**{len(week_ms)} partidos** esta semana"
                         + (f" · ⚠️ {len(conflicts_week)} conflictos" if conflicts_week else " · ✅ sin conflictos")
@@ -1244,7 +1249,6 @@ elif page == "export":
         )
         if st.button("🏆 Generar Excel (plantilla grupos)", type="primary"):
             with st.spinner("Generando Excel con plantilla del club..."):
-                from src.excel_template_exporter import export_groups_to_template
                 path_tpl = export_groups_to_template(result, phase)
             st.success(f"✅ Excel de plantilla generado.")
             with open(path_tpl, "rb") as f:
@@ -1308,7 +1312,6 @@ elif page == "review":
 
     # ---- Validación post-asignación ----
     st.subheader("🔎 Validación del calendario")
-    from src.schedule_validator import validate_schedule, validation_summary, SEVERITY_EMOJI
 
     if st.button("🔄 Ejecutar validación completa", type="primary"):
         violations = validate_schedule(result, phase)
@@ -1416,7 +1419,6 @@ elif page == "review":
 
         # Balanceo: franja horaria y día de la semana
         st.subheader("⚖️ Balanceo del calendario")
-        from src.scheduler import balance_metrics
         bm = balance_metrics(result)
         bc1, bc2 = st.columns(2)
         with bc1:
@@ -1449,7 +1451,6 @@ elif page == "review":
     # Parejas con más conflictos
     if result.conflict_details:
         st.subheader("👥 Parejas con más conflictos")
-        from src.scheduler import pairs_with_most_conflicts
         from collections import defaultdict
         pair_map: dict[str, str] = {}
         for g in phase.groups:
@@ -1470,7 +1471,6 @@ elif page == "review":
 elif page == "syltek":
     st.title("🔗 Publicar en Syltek")
 
-    from src.syltek_connector import SyltekConnector, run_login_check
 
     # Estado de sesión Syltek
     if "syltek_logged_in" not in st.session_state:

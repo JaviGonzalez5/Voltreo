@@ -71,6 +71,9 @@ def _align(h: str = "center", v: str = "center", wrap: bool = False) -> Alignmen
     return Alignment(horizontal=h, vertical=v, wrap_text=wrap)
 
 
+_SORT_FALLBACK = 9999  # Sentinel: ordena items sin número al final
+
+
 def _is_pf_match(match: Match) -> bool:
     """True si alguna de las parejas tiene PF y el partido coincide con ella."""
     for pair in (match.pair_1, match.pair_2):
@@ -85,6 +88,31 @@ def _is_pf_match(match: Match) -> bool:
         if day_ok and time_ok:
             return True
     return False
+
+
+def _court_label(court) -> str:
+    """Extrae etiqueta corta de pista: 'Pista 1' → 'P1', 'Padel 2' → 'P2'."""
+    if not court:
+        return ""
+    nums = re.findall(r"\d+", court.name)
+    return f"P{nums[-1]}" if nums else court.name[:4]
+
+
+def _write_header_row(ws, headers: list, widths: list, row: int = 1) -> None:
+    """Escribe una fila de cabecera con estilos estándar y ajusta anchuras de columna."""
+    for ci, (h, w) in enumerate(zip(headers, widths), 1):
+        c = ws.cell(row=row, column=ci, value=h)
+        c.fill = _fill(C_HDR_BG)
+        c.font = Font(bold=True, size=10, color=C_HDR_FG, name="Calibri")
+        c.border = _border()
+        c.alignment = _align("center", "center")
+        ws.column_dimensions[get_column_letter(ci)].width = w
+
+
+def _avail_str(pair) -> str:
+    """Devuelve texto corto de disponibilidad de una pareja."""
+    notes = getattr(pair, "availability_notes", "") or ""
+    return notes[:50] if notes else "(sin restricción)"
 
 
 # ---------------------------------------------------------------------------
@@ -174,10 +202,7 @@ def _write_group_block(ws, group: Group, match_map: dict, start_row: int) -> int
                     hora  = (match.suggested_start_time.strftime("%H:%M")
                              if match.suggested_start_time else "")
                     # Nombre corto de pista: "Pista 1" → "P1", "Padel 2" → "P2"
-                    pista = ""
-                    if match.court and match.court.name:
-                        nums = re.findall(r"\d+", match.court.name)
-                        pista = f"P{nums[-1]}" if nums else match.court.name[:4]
+                    pista = _court_label(match.court)
                     lines = [fecha]
                     if hora:
                         lines.append(hora)
@@ -269,13 +294,7 @@ def _write_sheet_listado(wb: Workbook, result: ScheduleResult) -> None:
     ws.freeze_panes = None
     headers = ["#", "Grupo", "Pareja 1", "Pareja 2", "Fecha", "Día", "Hora", "Pista", "PF"]
     widths  = [4,   28,      26,         26,          13,      7,     7,      10,      5]
-    for ci, (h, w) in enumerate(zip(headers, widths), 1):
-        c = ws.cell(row=1, column=ci, value=h)
-        c.fill = _fill(C_HDR_BG)
-        c.font = Font(bold=True, size=10, color=C_HDR_FG, name="Calibri")
-        c.border = _border()
-        c.alignment = _align("center", "center")
-        ws.column_dimensions[get_column_letter(ci)].width = w
+    _write_header_row(ws, headers, widths)
     ws.row_dimensions[1].height = 18
 
     import datetime as _dt_mod
@@ -286,8 +305,7 @@ def _write_sheet_listado(wb: Workbook, result: ScheduleResult) -> None:
     for row_i, m in enumerate(scheduled, 2):
         is_pf = _is_pf_match(m)
         fill_c = _fill(C_ORANGE if is_pf else C_GREEN)
-        nums = re.findall(r"\d+", m.court.name) if m.court else []
-        pista_str = f"P{nums[-1]}" if nums else (m.court.name if m.court else "")
+        pista_str = _court_label(m.court)
         vals = [
             row_i - 1,
             m.group_name,
@@ -313,19 +331,10 @@ def _write_sheet_sin_hueco(wb: Workbook, result: ScheduleResult) -> None:
     ws.freeze_panes = None
     headers = ["#", "Grupo", "Pareja 1", "Pareja 2", "Razón", "Disp. Pareja 1", "Disp. Pareja 2"]
     widths  = [4,   28,      26,         26,          45,       32,               32]
-    for ci, (h, w) in enumerate(zip(headers, widths), 1):
-        c = ws.cell(row=1, column=ci, value=h)
-        c.fill = _fill(C_HDR_BG)
-        c.font = Font(bold=True, size=10, color=C_HDR_FG, name="Calibri")
-        c.border = _border()
-        c.alignment = _align("center", "center")
-        ws.column_dimensions[get_column_letter(ci)].width = w
+    _write_header_row(ws, headers, widths)
 
     conflicts = [m for m in result.conflicts if m.status == MatchStatus.CONFLICT]
     for row_i, m in enumerate(conflicts, 2):
-        def _avail_str(pair) -> str:
-            notes = getattr(pair, "availability_notes", "") or ""
-            return notes[:50] if notes else "(sin restricción)"
         vals = [
             row_i - 1,
             m.group_name,
@@ -351,13 +360,7 @@ def _write_sheet_auditoria_disp(wb: Workbook, phase: RankingPhase) -> None:
     DAYS = ["L", "M", "X", "J", "V", "S", "D"]
     headers = ["Grupo", "Pareja", "Días", "Desde", "Hasta", "PF Día", "PF Hora", "Notas originales"]
     widths  = [28,      26,       20,      8,       8,       8,        8,         55]
-    for ci, (h, w) in enumerate(zip(headers, widths), 1):
-        c = ws.cell(row=1, column=ci, value=h)
-        c.fill = _fill(C_HDR_BG)
-        c.font = Font(bold=True, size=10, color=C_HDR_FG, name="Calibri")
-        c.border = _border()
-        c.alignment = _align("center", "center")
-        ws.column_dimensions[get_column_letter(ci)].width = w
+    _write_header_row(ws, headers, widths)
 
     row_i = 2
     for group in sorted(phase.groups, key=lambda g: g.name):
@@ -385,13 +388,7 @@ def _write_sheet_pistas_fijas(wb: Workbook, phase: RankingPhase) -> None:
     DAYS_LONG = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
     headers = ["Grupo", "Pareja", "Día PF", "Hora PF", "Notas originales"]
     widths  = [28,      26,       12,       10,         55]
-    for ci, (h, w) in enumerate(zip(headers, widths), 1):
-        c = ws.cell(row=1, column=ci, value=h)
-        c.fill = _fill(C_HDR_BG)
-        c.font = Font(bold=True, size=10, color=C_HDR_FG, name="Calibri")
-        c.border = _border()
-        c.alignment = _align("center", "center")
-        ws.column_dimensions[get_column_letter(ci)].width = w
+    _write_header_row(ws, headers, widths)
 
     row_i = 2
     for group in sorted(phase.groups, key=lambda g: g.name):
@@ -419,13 +416,7 @@ def _write_sheet_reservas_syltek(wb: Workbook, phase: RankingPhase) -> None:
     ws.freeze_panes = None
     headers = ["#", "Pista", "Fecha", "Día", "Inicio", "Fin", "Descripción"]
     widths  = [5,   16,      13,      7,     8,         8,     40]
-    for ci, (h, w) in enumerate(zip(headers, widths), 1):
-        c = ws.cell(row=1, column=ci, value=h)
-        c.fill = _fill(C_HDR_BG)
-        c.font = Font(bold=True, size=10, color=C_HDR_FG, name="Calibri")
-        c.border = _border()
-        c.alignment = _align("center", "center")
-        ws.column_dimensions[get_column_letter(ci)].width = w
+    _write_header_row(ws, headers, widths)
 
     bookings = sorted(
         phase.bookings or [],
@@ -459,13 +450,7 @@ def _write_sheet_resumen_grupos(
     ws.freeze_panes = None
     headers = ["Grupo", "Parejas", "Esperados", "Programados", "Sin hueco", "% Éxito"]
     widths  = [30,      10,        12,           14,            12,          10]
-    for ci, (h, w) in enumerate(zip(headers, widths), 1):
-        c = ws.cell(row=1, column=ci, value=h)
-        c.fill = _fill(C_HDR_BG)
-        c.font = Font(bold=True, size=10, color=C_HDR_FG, name="Calibri")
-        c.border = _border()
-        c.alignment = _align("center", "center")
-        ws.column_dimensions[get_column_letter(ci)].width = w
+    _write_header_row(ws, headers, widths)
 
     sched_by_group: dict[str, int] = defaultdict(int)
     conf_by_group:  dict[str, int] = defaultdict(int)
@@ -519,13 +504,7 @@ def _write_sheet_variedad(wb: Workbook, result: ScheduleResult) -> None:
                "Horas utilizadas", "Pistas utilizadas"]
     widths  = [26,       12,           6,     6,     6,     6,     6,
                30,       24]
-    for ci, (h, w) in enumerate(zip(headers, widths), 1):
-        c = ws.cell(row=1, column=ci, value=h)
-        c.fill = _fill(C_HDR_BG)
-        c.font = Font(bold=True, size=10, color=C_HDR_FG, name="Calibri")
-        c.border = _border()
-        c.alignment = _align("center", "center", wrap=True)
-        ws.column_dimensions[get_column_letter(ci)].width = w
+    _write_header_row(ws, headers, widths)
     ws.row_dimensions[1].height = 28
 
     pair_matches: dict[str, list] = defaultdict(list)
@@ -580,12 +559,12 @@ def _extract_level_name(group_name: str) -> str:
 
 def _level_sort_key(name: str) -> tuple:
     nums = re.findall(r"\d+", name)
-    return (int(nums[0]),) if nums else (999, name)
+    return (int(nums[0]),) if nums else (_SORT_FALLBACK, name)
 
 
 def _group_sort_key(name: str) -> tuple:
     nums = re.findall(r"\d+", name)
-    return (int(nums[-1]),) if nums else (999, name)
+    return (int(nums[-1]),) if nums else (_SORT_FALLBACK, name)
 
 
 def _safe_sheet_name(name: str) -> str:

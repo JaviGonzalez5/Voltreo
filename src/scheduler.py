@@ -49,7 +49,6 @@ def _booking_belongs_to_court(booking: Booking, court: Court) -> bool:
       2. court_name exacto (case-insensitive)
       3. número extraído del nombre  ('Padel 3' ↔ 'Pista 3' → ambos tienen el 3)
     """
-    import re as _re
     # 1. ID exacto
     if booking.court_id == court.id:
         return True
@@ -57,8 +56,8 @@ def _booking_belongs_to_court(booking: Booking, court: Court) -> bool:
     if booking.court_name.strip().lower() == court.name.strip().lower():
         return True
     # 3. Número extraído del nombre
-    b_nums = _re.findall(r"\d+", booking.court_name)
-    c_nums = _re.findall(r"\d+", court.name)
+    b_nums = re.findall(r"\d+", booking.court_name)
+    c_nums = re.findall(r"\d+", court.name)
     if b_nums and c_nums and b_nums[-1] == c_nums[-1]:
         return True
     return False
@@ -80,21 +79,24 @@ def build_availability_slots(
     duration = timedelta(minutes=phase.match_duration_minutes)
     current = phase.start_date
 
+    # Precompute: for each active court, collect its bookings grouped by date.
+    # This replaces an O(bookings * courts * days) scan with a single O(bookings * courts) pass.
+    active_courts = [c for c in courts if c.active]
+    court_day_bookings: dict[str, dict] = {c.id: defaultdict(list) for c in active_courts}
+    for b in bookings:
+        for court in active_courts:
+            if _booking_belongs_to_court(b, court):
+                court_day_bookings[court.id][b.start_datetime.date()].append(b)
+                break  # a booking belongs to at most one court
+
     while current <= phase.end_date:
         # ── El ranking solo se juega de lunes a viernes
         if current.weekday() >= 5:
             current += timedelta(days=1)
             continue
 
-        for court in courts:
-            if not court.active:
-                continue
-
-            day_bookings = [
-                b for b in bookings
-                if _booking_belongs_to_court(b, court)
-                and b.start_datetime.date() == current
-            ]
+        for court in active_courts:
+            day_bookings = court_day_bookings[court.id].get(current, [])
 
             slot_start = _dt(current, phase.day_start_time)
             day_end = _dt(current, phase.day_end_time)
@@ -292,17 +294,20 @@ class Scheduler:
         days_offset = (slot.date - self.phase.start_date).days
         score -= max(0, 30 - days_offset) * (w.early_day_bonus / 30.0)
 
-        # Bonus fuerte si el slot coincide con la pista fija de alguna pareja
+        # Bonus fuerte si el slot coincide con la pista fija de alguna pareja.
+        # Bonus parcial si solo coincide día o solo hora; bonus doble si coincide exacto.
         preferred_bonus = getattr(w, "preferred_slot_bonus", 25.0)
         for pair in (pair_1, pair_2):
             if pair is None:
                 continue
             pw = getattr(pair, "preferred_weekday", None)
             pt = getattr(pair, "preferred_time", None)
-            if pw is not None and slot.date.weekday() == pw:
+            day_match  = pw is not None and slot.date.weekday() == pw
+            time_match = pt is not None and slot.start_time == pt
+            if day_match or time_match:
                 score -= preferred_bonus
-            if pt is not None and slot.start_time == pt:
-                score -= preferred_bonus
+            if day_match and time_match:
+                score -= preferred_bonus  # bonus adicional por coincidencia exacta día+hora
 
         return score
 
@@ -469,11 +474,11 @@ class Scheduler:
         day_load[best.date]        += 1
         court_load[best.court.id]  += 1
         if hour_load is not None:
-            hour_load[self._hour_bucket(best.start_time)] = \
-                hour_load.get(self._hour_bucket(best.start_time), 0) + 1
+            hb = self._hour_bucket(best.start_time)
+            hour_load[hb] = hour_load.get(hb, 0) + 1
         if weekday_load is not None:
-            weekday_load[best.date.weekday()] = \
-                weekday_load.get(best.date.weekday(), 0) + 1
+            wd = best.date.weekday()
+            weekday_load[wd] = weekday_load.get(wd, 0) + 1
 
     # -------------------------------------------------------------------
     # Bucle principal con relajación progresiva
