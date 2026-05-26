@@ -7,6 +7,7 @@ Genera los enfrentamientos round-robin para cada grupo del ranking.
 
 from itertools import combinations
 from typing import Optional
+from uuid import uuid4
 
 from .models import Group, Match, Pair, MatchStatus
 
@@ -35,7 +36,7 @@ def generate_round_robin(group: Group, played_pairs: Optional[set[frozenset[str]
             continue
 
         match = Match.model_construct(
-            id=str(__import__("uuid").uuid4()),
+            id=str(uuid4()),
             group_id=group.id,
             group_name=group.name,
             pair_1=pair_1,

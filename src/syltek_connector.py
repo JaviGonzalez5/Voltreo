@@ -17,6 +17,7 @@ Seguridad:
 import base64
 import logging
 import re
+import uuid as _uuid_mod
 from datetime import date, datetime
 from typing import Optional
 
@@ -607,8 +608,17 @@ def _parse_occupied_slots(raw_html: str, day: date) -> list[Booking]:
     while i < len(raw_html):
         ch = raw_html[i]
         if in_str:
-            if ch == str_char and raw_html[i - 1:i] != "\\":
-                in_str = False
+            # Comprobar si el carácter está escapado.
+            # Contar barras invertidas consecutivas antes del índice actual:
+            # si es impar, el carácter está escapado y no cierra el string.
+            if ch == str_char:
+                num_backslashes = 0
+                j = i - 1
+                while j >= idx and raw_html[j] == "\\":
+                    num_backslashes += 1
+                    j -= 1
+                if num_backslashes % 2 == 0:  # par (o cero) → no está escapado
+                    in_str = False
         else:
             if ch in ('"', "'"):
                 in_str = True
@@ -718,7 +728,7 @@ def _parse_occupied_slots(raw_html: str, day: date) -> list[Booking]:
                 continue
 
             bookings.append(Booking.model_construct(
-                id=str(__import__("uuid").uuid4()),
+                id=str(_uuid_mod.uuid4()),
                 court_id=court_id,
                 court_name=court_name,
                 start_datetime=start_dt,
@@ -755,7 +765,7 @@ def _merge_consecutive_bookings(bookings: list[Booking]) -> list[Booking]:
             if nxt.start_datetime == current.end_datetime:
                 # Extender el bloque actual
                 current = Booking.model_construct(
-                    id=str(__import__("uuid").uuid4()),
+                    id=str(_uuid_mod.uuid4()),
                     court_id=current.court_id,
                     court_name=current.court_name,
                     start_datetime=current.start_datetime,

@@ -122,7 +122,7 @@ def validate_schedule(
     # ----------------------------------------------------------------
     # 2. Doble reserva en la misma pista y hora
     # ----------------------------------------------------------------
-    for (cid, d, t), matches in court_slot.items():
+    for (cid, d, slot_time), matches in court_slot.items():
         if len(matches) > 1:
             court_name = matches[0].court.name if matches[0].court else cid
             violations.append({
@@ -130,7 +130,7 @@ def validate_schedule(
                 "severity": "error",
                 "description": (
                     f"{court_name} tiene {len(matches)} partidos a las "
-                    f"{t.strftime('%H:%M')} del {d.strftime('%d/%m/%Y')}"
+                    f"{slot_time.strftime('%H:%M')} del {d.strftime('%d/%m/%Y')}"
                 ),
                 "matches": matches,
                 "pair_names": [m.label for m in matches],
@@ -213,7 +213,9 @@ def validate_schedule(
             for i in range(len(sorted_m) - 1):
                 diff = (sorted_m[i + 1].suggested_date - sorted_m[i].suggested_date).days
                 if diff < min_days:
-                    pair_name = sorted_m[i].pair_1.display_name if sorted_m[i].pair_1.id == pair_id else sorted_m[i].pair_2.display_name
+                    pair_name = (sorted_m[i].pair_1.display_name
+                                 if sorted_m[i].pair_1.id == pair_id
+                                 else sorted_m[i].pair_2.display_name)
                     violations.append({
                         "type": "min_days_violation",
                         "severity": "warning",

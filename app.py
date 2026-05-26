@@ -1,8 +1,6 @@
 """
 Ranking Padel Automator — Interfaz Streamlit
 """
-from __future__ import annotations
-
 import re
 import sys
 import io
@@ -12,6 +10,9 @@ from datetime import date, time, datetime, timedelta
 
 import pandas as pd
 import streamlit as st
+
+# Raíz del proyecto (resuelve rutas independientemente del cwd del proceso)
+_HERE = Path(__file__).parent
 
 # ---------------------------------------------------------------------------
 # CSS / Tema visual
@@ -450,8 +451,10 @@ def _df_to_groups(df: pd.DataFrame) -> list[Group]:
             available_from=None,
             available_until=None,
             availability_notes="",
+            per_day_windows={},
             preferred_weekday=None,
             preferred_time=None,
+            manual_only=False,
         )
         groups_dict[gid].pairs.append(pair)
     return list(groups_dict.values())
@@ -687,7 +690,7 @@ elif page == "import":
         )
         st.download_button(
             "⬇️ Descargar CSV de ejemplo",
-            data=Path("sample_data/groups_example.csv").read_text(encoding="utf-8"),
+            data=(_HERE / "sample_data" / "groups_example.csv").read_text(encoding="utf-8"),
             file_name="groups_example.csv",
             mime="text/csv",
         )
@@ -732,7 +735,7 @@ elif page == "import":
         st.code("court_id, court_name, start_datetime, end_datetime, description, source", language="text")
         st.download_button(
             "⬇️ Descargar CSV de ejemplo (reservas)",
-            data=Path("sample_data/bookings_example.csv").read_text(encoding="utf-8"),
+            data=(_HERE / "sample_data" / "bookings_example.csv").read_text(encoding="utf-8"),
             file_name="bookings_example.csv",
             mime="text/csv",
         )
@@ -1389,28 +1392,32 @@ elif page == "generate":
                         continue
 
                     user_set_status = False
+                    schedule_fields_changed = False  # fecha, hora o pista
                     for col, new_val in changes.items():
                         if col == "Fecha" and new_val is not None:
-                            from datetime import date as _date
                             if isinstance(new_val, str):
                                 from datetime import datetime as _dt
                                 match_obj.suggested_date = _dt.fromisoformat(new_val).date()
                             else:
                                 match_obj.suggested_date = new_val
+                            schedule_fields_changed = True
                         elif col == "Inicio" and new_val is not None:
                             if isinstance(new_val, str):
                                 parts = new_val.split(":")
                                 match_obj.suggested_start_time = time(int(parts[0]), int(parts[1]))
                             else:
                                 match_obj.suggested_start_time = new_val
+                            schedule_fields_changed = True
                         elif col == "Fin" and new_val is not None:
                             if isinstance(new_val, str):
                                 parts = new_val.split(":")
                                 match_obj.suggested_end_time = time(int(parts[0]), int(parts[1]))
                             else:
                                 match_obj.suggested_end_time = new_val
+                            schedule_fields_changed = True
                         elif col == "Pista" and new_val and new_val in court_name_to_obj:
                             match_obj.court = court_name_to_obj[new_val]
+                            schedule_fields_changed = True
                         elif col == "Estado" and new_val:
                             try:
                                 match_obj.status = MatchStatus(new_val)
@@ -1421,13 +1428,17 @@ elif page == "generate":
                             match_obj.notes = str(new_val or "")
                             match_obj.conflict_reason = None
 
-                    if not user_set_status:
+                    # Solo marcar MANUALLY_MODIFIED si se tocaron campos de programación
+                    # (fecha/hora/pista). Las notas solas no cambian el estado del partido.
+                    if not user_set_status and schedule_fields_changed:
                         match_obj.status = MatchStatus.MANUALLY_MODIFIED
                     changed += 1
 
                 if changed:
                     st.success(f"✅ {changed} partido(s) guardado(s) correctamente.")
                     del st.session_state["matches_editor"]
+                    # Invalidar caché de filtros para reflejar los cambios
+                    st.session_state.pop("_filter_cache_key", None)
                     st.rerun()
 
             st.caption(f"Mostrando {len(filtered)} de {len(st.session_state.matches)} partidos.")
@@ -1735,12 +1746,17 @@ elif page == "review":
     if result.scheduled:
         st.subheader("📆 Partidos por día")
         from collections import Counter
-        day_count = Counter(
-            m.suggested_date.strftime("%A %d/%m") for m in result.scheduled if m.suggested_date
+        # Clave de sort: fecha real (YYYY-MM-DD) para orden cronológico correcto
+        _day_items = sorted(
+            ((m.suggested_date, m.suggested_date.strftime("%a %d/%m"))
+             for m in result.scheduled if m.suggested_date),
         )
+        day_count: dict[str, int] = {}
+        for _d, _label in _day_items:
+            day_count[_label] = day_count.get(_label, 0) + 1
         df_days = pd.DataFrame(
             {"Día": list(day_count.keys()), "Partidos": list(day_count.values())}
-        ).sort_values("Día")
+        )
         st.bar_chart(df_days.set_index("Día"))
 
         # Balanceo: franja horaria y día de la semana
@@ -1907,9 +1923,10 @@ elif page == "syltek":
             for i in range(1, int(n_courts) + 1):
                 manual_courts[f"Padel {i}"] = str(1479 + i)
             st.session_state["syltek_courts"] = manual_courts
-            st.info(
-                "Pistas configuradas con IDs estimados. Si las reservas fallan, "
-                "usa el botón de descubrimiento automático."
+            st.warning(
+                "⚠️ Los IDs asignados (1480, 1481…) son **estimados** para Padelplus. "
+                "Si las reservas fallan con error de pista, usa **🔍 Descubrir pistas automáticamente** "
+                "para obtener los IDs reales de tu instalación."
             )
 
     if st.session_state["syltek_courts"]:
@@ -1978,7 +1995,12 @@ elif page == "syltek":
     if st.button(f"🚀 Publicar {len(scheduled)} partidos en Syltek — {mode_label}", type="primary"):
         url_, user_, pass_ = st.session_state["syltek_credentials"]
         conn = SyltekConnector(url=url_, user=user_, password=pass_, dry_run=dry_run_toggle)
-        conn.login()
+        with st.spinner("Reconectando con Syltek..."):
+            ok_login, msg_login = conn.login()
+        if not ok_login:
+            st.error(f"❌ Sesión expirada o credenciales incorrectas: {msg_login}")
+            st.info("Vuelve al Paso 1 y conéctate de nuevo.")
+            st.stop()
         conn.set_courts(st.session_state["syltek_courts"])
 
         results = []
@@ -1992,17 +2014,21 @@ elif page == "syltek":
                 fail_count += 1
                 continue
 
-            ok, msg = conn.create_booking(
-                booking_date=match.suggested_date,
-                start_hour=match.suggested_start_time.hour,
-                start_minute=match.suggested_start_time.minute,
-                duration_minutes=phase.match_duration_minutes,
-                court_name=match.court.name,
-                pair1_name=match.pair_1.display_name,
-                pair2_name=match.pair_2.display_name,
-                group_name=match.group_name,
-                send_email=send_email,
-            )
+            try:
+                ok, msg = conn.create_booking(
+                    booking_date=match.suggested_date,
+                    start_hour=match.suggested_start_time.hour,
+                    start_minute=match.suggested_start_time.minute,
+                    duration_minutes=phase.match_duration_minutes,
+                    court_name=match.court.name,
+                    pair1_name=match.pair_1.display_name,
+                    pair2_name=match.pair_2.display_name,
+                    group_name=match.group_name,
+                    send_email=send_email,
+                )
+            except Exception as _e_pub:
+                ok, msg = False, str(_e_pub)
+
             results.append({
                 "Partido": match.label,
                 "Estado": "✅ OK" if ok else "❌ Error",

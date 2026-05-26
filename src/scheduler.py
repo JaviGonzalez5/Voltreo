@@ -556,12 +556,13 @@ class Scheduler:
         slots.sort(key=lambda s: (s.date, s.start_time, s.court.name))
 
         # ── Ordenar partidos
-        # 1. Mezcla aleatoria (determinista con seed) para equidad entre grupos
+        # Mezcla aleatoria (determinista con seed) para equidad entre grupos,
+        # luego ordena: primero por grupo, después por dificultad descendente
+        # (los partidos más difíciles de encajar se procesan antes para que
+        # tengan más opciones de slot disponibles).
         shuffled = list(matches)
         self._rng.shuffle(shuffled)
         group_order = list(dict.fromkeys(m.group_id for m in shuffled))
-        shuffled.sort(key=lambda m: group_order.index(m.group_id))
-        # 2. Dentro de cada grupo: primero los partidos más difíciles de asignar
         shuffled.sort(
             key=lambda m: (group_order.index(m.group_id),
                            -self._constraint_difficulty(m))
