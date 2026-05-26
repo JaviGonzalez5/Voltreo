@@ -13,6 +13,276 @@ from datetime import date, time, datetime, timedelta
 import pandas as pd
 import streamlit as st
 
+# ---------------------------------------------------------------------------
+# CSS / Tema visual
+# ---------------------------------------------------------------------------
+
+_CSS = """
+<style>
+/* ── FUENTE Y FONDO GENERAL ─────────────────────────────────────── */
+html, body, [class*="css"] {
+    font-family: "Inter", "Segoe UI", sans-serif;
+}
+.main .block-container {
+    padding-top: 1.8rem;
+    padding-bottom: 2rem;
+    max-width: 1200px;
+}
+
+/* ── SIDEBAR ────────────────────────────────────────────────────── */
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #0b1a2b 0%, #132d4a 100%) !important;
+    border-right: 1px solid #1f3a58 !important;
+}
+[data-testid="stSidebar"] * { color: #cfe0f5 !important; }
+[data-testid="stSidebar"] h1 {
+    color: #ffffff !important;
+    font-size: 1.25rem !important;
+    font-weight: 700 !important;
+    letter-spacing: .03em !important;
+}
+[data-testid="stSidebar"] hr { border-color: #2a4a6b !important; opacity: .6; }
+[data-testid="stSidebar"] [role="radiogroup"] { gap: 3px !important; }
+[data-testid="stSidebar"] label {
+    border-radius: 8px !important;
+    padding: 6px 12px !important;
+    transition: background .15s !important;
+}
+[data-testid="stSidebar"] label:hover {
+    background: rgba(0,200,100,.12) !important;
+}
+[data-testid="stSidebar"] [aria-checked="true"] label {
+    background: rgba(0,200,100,.18) !important;
+    color: #7fffc0 !important;
+    font-weight: 600 !important;
+}
+
+/* ── TÍTULOS DE PÁGINA ──────────────────────────────────────────── */
+.pp-page-title {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    padding: .6rem 0 .8rem 0;
+    border-bottom: 3px solid #00c853;
+    margin-bottom: 1.6rem;
+}
+.pp-page-title .pp-icon {
+    font-size: 2rem;
+    line-height: 1;
+}
+.pp-page-title .pp-text h1 {
+    margin: 0;
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #0b1a2b;
+    line-height: 1.1;
+}
+.pp-page-title .pp-text p {
+    margin: .1rem 0 0 0;
+    font-size: .85rem;
+    color: #6b7f99;
+}
+
+/* ── TARJETAS / SECCIONES ───────────────────────────────────────── */
+.pp-card {
+    background: #fff;
+    border: 1px solid #e0eaf5;
+    border-radius: 14px;
+    padding: 1.2rem 1.4rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 2px 10px rgba(0,0,0,.05);
+}
+.pp-card-title {
+    font-size: .8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: #7f9ab5;
+    margin-bottom: .6rem;
+}
+
+/* ── MÉTRICAS ────────────────────────────────────────────────────── */
+[data-testid="metric-container"] {
+    background: #fff !important;
+    border: 1px solid #e0eaf5 !important;
+    border-radius: 12px !important;
+    padding: 14px 18px !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,.05) !important;
+}
+[data-testid="metric-container"] [data-testid="stMetricValue"] {
+    font-size: 1.9rem !important;
+    font-weight: 700 !important;
+    color: #0b1a2b !important;
+}
+[data-testid="metric-container"] [data-testid="stMetricLabel"] {
+    font-size: .78rem !important;
+    color: #7f9ab5 !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    letter-spacing: .06em !important;
+}
+
+/* ── BOTONES ─────────────────────────────────────────────────────── */
+.stButton > button {
+    border-radius: 9px !important;
+    font-weight: 600 !important;
+    transition: all .18s ease !important;
+}
+.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #00c853 0%, #00897b 100%) !important;
+    color: #fff !important;
+    border: none !important;
+    box-shadow: 0 3px 10px rgba(0,200,83,.28) !important;
+}
+.stButton > button[kind="primary"]:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 18px rgba(0,200,83,.38) !important;
+}
+.stButton > button[kind="secondary"] {
+    border: 1.5px solid #00c853 !important;
+    color: #00874a !important;
+    background: rgba(0,200,83,.04) !important;
+}
+.stButton > button[kind="secondary"]:hover {
+    background: rgba(0,200,83,.10) !important;
+    transform: translateY(-1px) !important;
+}
+
+/* ── TABS ───────────────────────────────────────────────────────── */
+[data-testid="stTabs"] [role="tablist"] {
+    gap: 4px;
+    border-bottom: 2px solid #e0eaf5;
+    padding-bottom: 0;
+}
+[data-testid="stTabs"] button[role="tab"] {
+    border-radius: 8px 8px 0 0 !important;
+    padding: 8px 18px !important;
+    font-weight: 600 !important;
+    font-size: .88rem !important;
+    color: #7f9ab5 !important;
+    background: transparent !important;
+    border: none !important;
+    transition: color .15s !important;
+}
+[data-testid="stTabs"] button[aria-selected="true"] {
+    color: #00874a !important;
+    border-bottom: 2.5px solid #00c853 !important;
+    background: rgba(0,200,83,.05) !important;
+}
+
+/* ── EXPANDERS ──────────────────────────────────────────────────── */
+[data-testid="stExpander"] {
+    border: 1px solid #e0eaf5 !important;
+    border-radius: 10px !important;
+    overflow: hidden !important;
+    box-shadow: none !important;
+}
+[data-testid="stExpander"] summary {
+    font-weight: 600 !important;
+    color: #1b3a58 !important;
+}
+
+/* ── ALERTS ─────────────────────────────────────────────────────── */
+[data-testid="stAlert"] { border-radius: 10px !important; }
+
+/* ── DATAFRAMES ─────────────────────────────────────────────────── */
+[data-testid="stDataFrame"] {
+    border-radius: 10px !important;
+    overflow: hidden !important;
+    box-shadow: 0 1px 5px rgba(0,0,0,.07) !important;
+}
+
+/* ── INPUTS ─────────────────────────────────────────────────────── */
+[data-testid="stTextInput"] input,
+[data-testid="stNumberInput"] input {
+    border-radius: 8px !important;
+}
+
+/* ── PROGRESS ───────────────────────────────────────────────────── */
+[data-testid="stProgress"] > div > div {
+    background: linear-gradient(90deg, #00c853, #00897b) !important;
+    border-radius: 4px !important;
+}
+
+/* ── SIDEBAR STEPPER ────────────────────────────────────────────── */
+.pp-step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    margin: 2px 0;
+    font-size: .85rem;
+}
+.pp-step.done   { color: #7fffc0 !important; }
+.pp-step.active { color: #fff !important; font-weight: 700; background: rgba(0,200,83,.15); }
+.pp-step.todo   { color: #6a8aaa !important; }
+.pp-step .pp-step-dot {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: .75rem;
+    flex-shrink: 0;
+    font-weight: 700;
+}
+.pp-step.done .pp-step-dot   { background: #00c853; color: #fff; }
+.pp-step.active .pp-step-dot { background: #fff; color: #0b1a2b; }
+.pp-step.todo .pp-step-dot   { background: #2a4a6b; color: #6a8aaa; }
+
+/* ── DRY-RUN BADGE ──────────────────────────────────────────────── */
+.pp-badge-safe {
+    display: inline-block;
+    background: rgba(0,200,83,.18);
+    color: #7fffc0 !important;
+    border: 1px solid rgba(0,200,83,.3);
+    border-radius: 20px;
+    padding: 3px 12px;
+    font-size: .78rem;
+    font-weight: 700;
+    margin-top: 6px;
+}
+.pp-badge-live {
+    display: inline-block;
+    background: rgba(244,67,54,.2);
+    color: #ff8a80 !important;
+    border: 1px solid rgba(244,67,54,.3);
+    border-radius: 20px;
+    padding: 3px 12px;
+    font-size: .78rem;
+    font-weight: 700;
+    margin-top: 6px;
+}
+</style>
+"""
+
+
+def _inject_css() -> None:
+    st.markdown(_CSS, unsafe_allow_html=True)
+
+
+def _page_header(icon: str, title: str, subtitle: str = "") -> None:
+    st.markdown(
+        f'<div class="pp-page-title">'
+        f'<div class="pp-icon">{icon}</div>'
+        f'<div class="pp-text"><h1>{title}</h1>'
+        f'{"<p>" + subtitle + "</p>" if subtitle else ""}'
+        f'</div></div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _sidebar_step(label: str, state: str, num: int) -> None:
+    """state: 'done' | 'active' | 'todo'"""
+    dot = "✓" if state == "done" else str(num)
+    st.sidebar.markdown(
+        f'<div class="pp-step {state}">'
+        f'<span class="pp-step-dot">{dot}</span>{label}</div>',
+        unsafe_allow_html=True,
+    )
+
 # Aseguramos que src/ esté en el path
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -82,19 +352,20 @@ def _build_calendar_html(matches: list, week_start: "date") -> str:
 
     css = """
 <style>
-.ppcal{border-collapse:collapse;width:100%;font-family:sans-serif;font-size:12px}
-.ppcal th{background:#1e3a5f;color:#fff;padding:8px 4px;text-align:center;border:1px solid #b0b8c4;white-space:nowrap}
-.ppcal td{padding:3px;border:1px solid #dde3ea;vertical-align:top;background:#fafbfc;min-width:110px}
-.ppcal .time-col{background:#e9eef5;font-weight:600;text-align:center;color:#2c3e50;font-size:13px;padding:6px 8px;white-space:nowrap;width:52px}
+.ppcal{border-collapse:collapse;width:100%;font-family:'Inter','Segoe UI',sans-serif;font-size:12px;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08)}
+.ppcal th{background:linear-gradient(135deg,#0b1a2b,#132d4a);color:#dce8f5;padding:10px 6px;text-align:center;border:1px solid #1f3a58;white-space:nowrap}
+.ppcal td{padding:4px;border:1px solid #e8f0fa;vertical-align:top;background:#fafcff;min-width:110px}
+.ppcal .time-col{background:#f0f5ff;font-weight:700;text-align:center;color:#0b1a2b;font-size:13px;padding:8px;white-space:nowrap;width:52px;border-right:2px solid #e0eaf5}
 .ppcal .has-match{background:#fff}
-.pp-card{border-radius:5px;padding:5px 7px;margin:2px 0;border-left:4px solid #1976d2;background:#e8f4fd;line-height:1.35}
-.pp-card.conflict{background:#fde8e8;border-left-color:#d32f2f}
-.pp-vs{font-weight:700;font-size:11px;color:#1a237e}
-.pp-info{font-size:10px;color:#546e7a;margin-top:1px}
-.pp-court{font-size:10px;font-weight:600;color:#37474f}
-.day-name{font-size:13px;font-weight:700}
-.day-date{font-size:11px;opacity:.85;margin-top:1px}
-.today-hdr{background:#2e7d32 !important}
+.pp-cal-card{border-radius:7px;padding:6px 8px;margin:3px 0;border-left:4px solid #1976d2;background:#edf4fd;line-height:1.4;transition:box-shadow .15s}
+.pp-cal-card:hover{box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.pp-cal-card.conflict{background:#fde8e8;border-left-color:#d32f2f}
+.pp-vs{font-weight:700;font-size:11px;color:#0b1a2b}
+.pp-info{font-size:10px;color:#7f9ab5;margin-top:2px}
+.pp-court{font-size:10px;font-weight:700;color:#00874a}
+.day-name{font-size:13px;font-weight:800;color:#fff}
+.day-date{font-size:10px;opacity:.7;margin-top:2px;color:#b0cce0}
+.today-hdr{background:linear-gradient(135deg,#006633,#00a854) !important}
 </style>"""
 
     today = date.today()
@@ -124,7 +395,7 @@ def _build_calendar_html(matches: list, week_start: "date") -> str:
                 for m in ms:
                     color = group_color_map.get(m.group_id, "#1976d2")
                     is_conf = m.status == MatchStatus.CONFLICT
-                    card_cls = "pp-card conflict" if is_conf else "pp-card"
+                    card_cls = "pp-cal-card conflict" if is_conf else "pp-cal-card"
                     border_color = "#d32f2f" if is_conf else color
                     bg_color = "#fde8e8" if is_conf else "#e8f4fd"
                     court_txt = m.court.name if m.court else "—"
@@ -236,13 +507,21 @@ def init_state():
 
 
 init_state()
+_inject_css()
 
 # ---------------------------------------------------------------------------
 # Sidebar — navegación
 # ---------------------------------------------------------------------------
 
-st.sidebar.title("🎾 Ranking Pádel")
-st.sidebar.markdown("---")
+st.sidebar.markdown(
+    '<div style="text-align:center;padding:1rem 0 .5rem 0">'
+    '<span style="font-size:2.2rem">🎾</span>'
+    '<div style="font-size:1.15rem;font-weight:800;color:#fff;letter-spacing:.02em;margin-top:.3rem">Ranking Pádel</div>'
+    '<div style="font-size:.72rem;color:#7fa8cc;letter-spacing:.08em;text-transform:uppercase">Automator</div>'
+    '</div>',
+    unsafe_allow_html=True,
+)
+st.sidebar.markdown('<hr style="border-color:#2a4a6b;margin:.6rem 0">', unsafe_allow_html=True)
 
 PAGES = {
     "⚙️ Configuración": "config",
@@ -252,31 +531,43 @@ PAGES = {
     "🔍 Revisión": "review",
     "🔗 Publicar en Syltek": "syltek",
 }
-page_label = st.sidebar.radio("Navegación", list(PAGES.keys()))
+page_label = st.sidebar.radio("", list(PAGES.keys()), label_visibility="collapsed")
 page = PAGES[page_label]
 
-dry_run_color = "🟢" if st.session_state.dry_run else "🔴"
-st.sidebar.markdown(f"**Modo:** {dry_run_color} {'DRY-RUN (sin escritura)' if st.session_state.dry_run else 'ESCRITURA REAL'}")
-st.sidebar.markdown("---")
+st.sidebar.markdown('<hr style="border-color:#2a4a6b;margin:.8rem 0 .4rem 0">', unsafe_allow_html=True)
+st.sidebar.markdown(
+    '<div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;color:#4a7a9b;font-weight:700;padding:0 10px .4rem 10px">Progreso</div>',
+    unsafe_allow_html=True,
+)
 
-# Indicadores de estado
-st.sidebar.markdown("**Estado del flujo:**")
-st.sidebar.markdown(f"{'✅' if st.session_state.data_loaded else '⬜'} Datos cargados")
-st.sidebar.markdown(f"{'✅' if st.session_state.matches_generated else '⬜'} Enfrentamientos generados")
-st.sidebar.markdown(f"{'✅' if st.session_state.matches_scheduled else '⬜'} Horarios asignados")
+_s = st.session_state
+_step1 = "done" if _s.phase else ("active" if page == "config" else "todo")
+_step2 = "done" if _s.data_loaded else ("active" if page == "import" else "todo")
+_step3 = "done" if _s.matches_generated else ("active" if page == "generate" else "todo")
+_step4 = "done" if _s.matches_scheduled else ("todo")
+_sidebar_step("Configurar fase", _step1, 1)
+_sidebar_step("Importar datos", _step2, 2)
+_sidebar_step("Generar calendario", _step3, 3)
+_sidebar_step("Asignar horarios", _step4, 4)
+
+st.sidebar.markdown('<hr style="border-color:#2a4a6b;margin:.8rem 0 .4rem 0">', unsafe_allow_html=True)
+_dry = _s.get("dry_run", True)
+_badge_cls = "pp-badge-safe" if _dry else "pp-badge-live"
+_badge_txt = "🔒 DRY-RUN" if _dry else "⚡ ESCRITURA REAL"
+st.sidebar.markdown(f'<div style="padding:0 10px"><span class="{_badge_cls}">{_badge_txt}</span></div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # PÁGINA 1: Configuración
 # ---------------------------------------------------------------------------
 
 if page == "config":
-    st.title("⚙️ Configuración")
+    _page_header("⚙️", "Configuración", "Credenciales de Syltek y parámetros de la fase de ranking")
     st.info("Las credenciales se leen del archivo `.env`. Aquí configuras los parámetros de la fase.")
 
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("Credenciales Syltek")
+        st.markdown('<div class="pp-card-title">Credenciales Syltek</div>', unsafe_allow_html=True)
         syltek_url = st.text_input(
             "URL de Syltek",
             value=settings.syltek_url or "https://padelplus.padelclick.com",
@@ -304,7 +595,7 @@ if page == "config":
                     )
 
     with col2:
-        st.subheader("Parámetros de la fase")
+        st.markdown('<div class="pp-card-title">Parámetros de la fase</div>', unsafe_allow_html=True)
         phase_name = st.text_input("Nombre de la fase", value="Fase 1")
         start_date = st.date_input("Fecha de inicio", value=date.today() + timedelta(days=7))
         end_date = st.date_input("Fecha de fin", value=date.today() + timedelta(days=42))
@@ -380,7 +671,7 @@ if page == "config":
 # ---------------------------------------------------------------------------
 
 elif page == "import":
-    st.title("📥 Importar datos")
+    _page_header("📥", "Importar datos", "Carga grupos, parejas y reservas desde CSV o directamente desde Syltek")
     st.info("Carga grupos y parejas desde CSV. También puedes importar reservas existentes.")
 
     tab1, tab2, tab3 = st.tabs(["👥 Grupos y parejas", "📋 Reservas existentes", "🔌 Desde Syltek"])
@@ -708,7 +999,7 @@ elif page == "import":
                         st.error("Rellena URL, usuario y contraseña en la sección superior.")
                     else:
                         import base64 as _b64
-                            conn_diag = SyltekConnector(
+                        conn_diag = SyltekConnector(
                             url=syl_imp_url, user=syl_imp_user, password=syl_imp_pass, dry_run=True
                         )
                         ok_d, msg_d = conn_diag.login()
@@ -744,7 +1035,7 @@ elif page == "import":
 
                                 # 3) Probar el nuevo parser directamente (pasamos HTML crudo)
                                 st.markdown("**Resultado del parser de reservas:**")
-                                            parsed_bk = _parse_occupied_slots(r_diag.text, diag_date)
+                                parsed_bk = _parse_occupied_slots(r_diag.text, diag_date)
                                 # Mostrar siempre el objeto timetable JS (primeros 4000 chars)
                                 raw_d = r_diag.text
                                 m_tt = re.search(r'var\s+timetable\s*=\s*\{', raw_d)
@@ -857,14 +1148,28 @@ elif page == "import":
 # ---------------------------------------------------------------------------
 
 elif page == "generate":
-    st.title("📅 Generar calendario")
+    _page_header("📅", "Generar calendario", "Crea los enfrentamientos round-robin y asigna horarios automáticamente")
 
     if not st.session_state.data_loaded or not st.session_state.groups:
-        st.warning("Primero debes cargar los datos de grupos en la página **Importar datos**.")
+        st.markdown(
+            '<div style="text-align:center;padding:3rem 1rem;background:#f0f7ff;border-radius:16px;border:2px dashed #b0c8e8">'
+            '<div style="font-size:3rem">📥</div>'
+            '<div style="font-size:1.2rem;font-weight:700;color:#1b3a58;margin:.5rem 0">Sin datos cargados</div>'
+            '<div style="color:#7f9ab5">Ve a <strong>📥 Importar datos</strong> y carga los grupos de ranking primero.</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
         st.stop()
 
     if not st.session_state.phase:
-        st.warning("Primero debes guardar la configuración de fase en **Configuración**.")
+        st.markdown(
+            '<div style="text-align:center;padding:3rem 1rem;background:#fff8f0;border-radius:16px;border:2px dashed #e8c880">'
+            '<div style="font-size:3rem">⚙️</div>'
+            '<div style="font-size:1.2rem;font-weight:700;color:#5a3a00;margin:.5rem 0">Fase no configurada</div>'
+            '<div style="color:#a07040">Ve a <strong>⚙️ Configuración</strong> y guarda los parámetros de la fase primero.</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
         st.stop()
 
     phase: RankingPhase = st.session_state.phase
@@ -872,7 +1177,7 @@ elif page == "generate":
     col1, col2 = st.columns([1, 2])
 
     with col1:
-        st.subheader("Acciones")
+        st.markdown('<div class="pp-card-title">Acciones</div>', unsafe_allow_html=True)
 
         if st.button("⚡ Generar enfrentamientos", type="primary"):
             matches = generate_all_matches(phase.groups)
@@ -935,15 +1240,15 @@ elif page == "generate":
 
     with col2:
         if st.session_state.matches:
-            st.subheader("Resumen")
+            st.markdown('<div class="pp-card-title">Resumen</div>', unsafe_allow_html=True)
             result: ScheduleResult = st.session_state.schedule_result
             if result:
                 m1, m2, m3 = st.columns(3)
-                m1.metric("Programados", result.scheduled_count, delta=None)
-                m2.metric("Conflictos", result.conflict_count,
+                m1.metric("✅ Programados", result.scheduled_count)
+                m2.metric("⚠️ Conflictos", result.conflict_count,
                           delta=f"-{result.conflict_count}" if result.conflict_count else None,
                           delta_color="inverse")
-                m3.metric("Tasa de éxito", f"{result.success_rate:.1f}%")
+                m3.metric("🎯 Tasa de éxito", f"{result.success_rate:.1f}%")
 
                 # ---- Panel rápido de validación ----
                 violations = st.session_state.get("schedule_violations")
@@ -1210,10 +1515,17 @@ elif page == "generate":
 # ---------------------------------------------------------------------------
 
 elif page == "export":
-    st.title("📤 Exportar")
+    _page_header("📤", "Exportar", "Descarga el calendario en Excel o genera mensajes para los jugadores")
 
     if not st.session_state.matches_scheduled:
-        st.warning("Primero genera y asigna los horarios en **Generar calendario**.")
+        st.markdown(
+            '<div style="text-align:center;padding:3rem 1rem;background:#f0f7ff;border-radius:16px;border:2px dashed #b0c8e8">'
+            '<div style="font-size:3rem">📅</div>'
+            '<div style="font-size:1.2rem;font-weight:700;color:#1b3a58;margin:.5rem 0">Calendario no generado</div>'
+            '<div style="color:#7f9ab5">Ve a <strong>📅 Generar calendario</strong> y asigna los horarios primero.</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
         st.stop()
 
     phase: RankingPhase = st.session_state.phase
@@ -1223,7 +1535,10 @@ elif page == "export":
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("📊 Excel del calendario")
+        st.markdown(
+            '<div class="pp-card-title">📊 Excel del calendario</div>',
+            unsafe_allow_html=True,
+        )
 
         # ---- Exportar formato tabla (existente) ----
         if st.button("Generar Excel (tabla)", type="secondary"):
@@ -1261,7 +1576,10 @@ elif page == "export":
                 )
 
     with col2:
-        st.subheader("✉️ Mensajes para jugadores")
+        st.markdown(
+            '<div class="pp-card-title">✉️ Mensajes para jugadores</div>',
+            unsafe_allow_html=True,
+        )
         msg_type = st.radio("Tipo de mensaje", ["Por grupo", "Por pareja"])
         if st.button("Generar mensajes"):
             matches = st.session_state.matches
@@ -1293,22 +1611,29 @@ elif page == "export":
 # ---------------------------------------------------------------------------
 
 elif page == "review":
-    st.title("🔍 Revisión y diagnóstico")
+    _page_header("🔍", "Revisión y diagnóstico", "Valida el calendario generado y analiza conflictos y distribución")
 
     if not st.session_state.schedule_result:
-        st.info("No hay resultado de planificación aún. Genera y asigna horarios primero.")
+        st.markdown(
+            '<div style="text-align:center;padding:3rem 1rem;background:#f0f7ff;border-radius:16px;border:2px dashed #b0c8e8">'
+            '<div style="font-size:3rem">🔍</div>'
+            '<div style="font-size:1.2rem;font-weight:700;color:#1b3a58;margin:.5rem 0">Sin datos para revisar</div>'
+            '<div style="color:#7f9ab5">Ve a <strong>📅 Generar calendario</strong> y asigna los horarios primero.</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
         st.stop()
 
     result: ScheduleResult = st.session_state.schedule_result
     phase: RankingPhase = st.session_state.phase
 
     # Métricas globales
-    st.subheader("Resumen general")
+    st.markdown('<div class="pp-card-title">Resumen general</div>', unsafe_allow_html=True)
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Total partidos", result.total_matches)
-    m2.metric("Programados", result.scheduled_count)
-    m3.metric("Conflictos", result.conflict_count)
-    m4.metric("Éxito", f"{result.success_rate:.1f}%")
+    m1.metric("📋 Total partidos", result.total_matches)
+    m2.metric("✅ Programados", result.scheduled_count)
+    m3.metric("⚠️ Conflictos", result.conflict_count)
+    m4.metric("🎯 Éxito", f"{result.success_rate:.1f}%")
 
     # ---- Validación post-asignación ----
     st.subheader("🔎 Validación del calendario")
@@ -1469,7 +1794,7 @@ elif page == "review":
 # ---------------------------------------------------------------------------
 
 elif page == "syltek":
-    st.title("🔗 Publicar en Syltek")
+    _page_header("🔗", "Publicar en Syltek", "Crea las reservas del ranking directamente en el sistema Syltek")
 
 
     # Estado de sesión Syltek
@@ -1483,7 +1808,14 @@ elif page == "syltek":
     # ----------------------------------------------------------------
     # Paso 1: Conexión
     # ----------------------------------------------------------------
-    st.subheader("Paso 1 — Conectar con Syltek")
+    st.markdown(
+        '<div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.8rem">'
+        '<span style="background:#00c853;color:#fff;border-radius:50%;width:28px;height:28px;'
+        'display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:.9rem;flex-shrink:0">1</span>'
+        '<span style="font-size:1.15rem;font-weight:700;color:#0b1a2b">Conectar con Syltek</span>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
     col_url, col_user = st.columns(2)
     with col_url:
@@ -1532,7 +1864,14 @@ elif page == "syltek":
     # ----------------------------------------------------------------
     # Paso 2: Descubrir pistas
     # ----------------------------------------------------------------
-    st.subheader("Paso 2 — Descubrir pistas disponibles")
+    st.markdown(
+        '<div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.8rem">'
+        '<span style="background:#00c853;color:#fff;border-radius:50%;width:28px;height:28px;'
+        'display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:.9rem;flex-shrink:0">2</span>'
+        '<span style="font-size:1.15rem;font-weight:700;color:#0b1a2b">Descubrir pistas disponibles</span>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
     st.info(
         "Esto conecta al calendario de Syltek y extrae automáticamente "
         "los nombres e IDs de todas las pistas."
@@ -1597,7 +1936,14 @@ elif page == "syltek":
     # ----------------------------------------------------------------
     # Paso 3: Publicar partidos
     # ----------------------------------------------------------------
-    st.subheader("Paso 3 — Crear reservas en Syltek")
+    st.markdown(
+        '<div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.8rem">'
+        '<span style="background:#00c853;color:#fff;border-radius:50%;width:28px;height:28px;'
+        'display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:.9rem;flex-shrink:0">3</span>'
+        '<span style="font-size:1.15rem;font-weight:700;color:#0b1a2b">Crear reservas en Syltek</span>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
     if not st.session_state.matches_scheduled:
         st.warning("Primero genera y asigna horarios en **Generar calendario**.")
