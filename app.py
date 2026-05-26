@@ -20,189 +20,261 @@ _HERE = Path(__file__).parent
 
 _CSS = """
 <style>
-/* ── FUENTE Y FONDO GENERAL ─────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════
+   RANKING PÁDEL AUTOMATOR — Design System v2
+   Paleta: Navy #0b1a2b · Verde #00c853 · Gris claro #f5f8fc
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── BASE ───────────────────────────────────────────────────────── */
 html, body, [class*="css"] {
-    font-family: "Inter", "Segoe UI", sans-serif;
+    font-family: "Inter", "Segoe UI", system-ui, sans-serif;
 }
 .main .block-container {
-    padding-top: 1.8rem;
-    padding-bottom: 2rem;
-    max-width: 1200px;
+    padding-top: 1.6rem;
+    padding-bottom: 2.5rem;
+    max-width: 1240px;
 }
 
 /* ── SIDEBAR ────────────────────────────────────────────────────── */
 [data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #0b1a2b 0%, #132d4a 100%) !important;
-    border-right: 1px solid #1f3a58 !important;
+    background: linear-gradient(175deg, #07111d 0%, #0e243d 60%, #132d4a 100%) !important;
+    border-right: 1px solid #1a3350 !important;
 }
-[data-testid="stSidebar"] * { color: #cfe0f5 !important; }
-[data-testid="stSidebar"] h1 {
-    color: #ffffff !important;
-    font-size: 1.25rem !important;
-    font-weight: 700 !important;
-    letter-spacing: .03em !important;
-}
-[data-testid="stSidebar"] hr { border-color: #2a4a6b !important; opacity: .6; }
-[data-testid="stSidebar"] [role="radiogroup"] { gap: 3px !important; }
+[data-testid="stSidebar"] * { color: #c8dff5 !important; }
+[data-testid="stSidebar"] hr { border-color: #1e3a58 !important; margin: .5rem 0 !important; }
+[data-testid="stSidebar"] [role="radiogroup"] { gap: 2px !important; }
 [data-testid="stSidebar"] label {
-    border-radius: 8px !important;
-    padding: 6px 12px !important;
-    transition: background .15s !important;
+    border-radius: 9px !important;
+    padding: 7px 12px !important;
+    transition: all .15s !important;
+    font-size: .9rem !important;
 }
-[data-testid="stSidebar"] label:hover {
-    background: rgba(0,200,100,.12) !important;
-}
+[data-testid="stSidebar"] label:hover { background: rgba(0,200,100,.13) !important; }
 [data-testid="stSidebar"] [aria-checked="true"] label {
-    background: rgba(0,200,100,.18) !important;
-    color: #7fffc0 !important;
-    font-weight: 600 !important;
+    background: rgba(0,200,100,.2) !important;
+    color: #90ffc8 !important;
+    font-weight: 700 !important;
 }
 
-/* ── TÍTULOS DE PÁGINA ──────────────────────────────────────────── */
+/* ── CABECERA DE PÁGINA ─────────────────────────────────────────── */
 .pp-page-title {
     display: flex;
     align-items: center;
-    gap: .6rem;
-    padding: .6rem 0 .8rem 0;
+    gap: .7rem;
+    padding: .5rem 0 1rem 0;
     border-bottom: 3px solid #00c853;
-    margin-bottom: 1.6rem;
+    margin-bottom: 1.8rem;
 }
-.pp-page-title .pp-icon {
-    font-size: 2rem;
-    line-height: 1;
-}
+.pp-page-title .pp-icon { font-size: 2.1rem; line-height: 1; }
 .pp-page-title .pp-text h1 {
     margin: 0;
-    font-size: 1.75rem;
-    font-weight: 700;
-    color: #0b1a2b;
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: #07111d;
     line-height: 1.1;
+    letter-spacing: -.02em;
 }
 .pp-page-title .pp-text p {
-    margin: .1rem 0 0 0;
-    font-size: .85rem;
-    color: #6b7f99;
+    margin: .25rem 0 0 0;
+    font-size: .88rem;
+    color: #6b82a0;
 }
 
-/* ── TARJETAS / SECCIONES ───────────────────────────────────────── */
-.pp-card {
+/* ── SECCIÓN CON TÍTULO ─────────────────────────────────────────── */
+.pp-section {
     background: #fff;
-    border: 1px solid #e0eaf5;
-    border-radius: 14px;
-    padding: 1.2rem 1.4rem;
-    margin-bottom: 1rem;
-    box-shadow: 0 2px 10px rgba(0,0,0,.05);
+    border: 1px solid #e4edf8;
+    border-radius: 16px;
+    padding: 1.4rem 1.6rem 1.2rem;
+    margin-bottom: 1.2rem;
+    box-shadow: 0 1px 6px rgba(11,26,43,.06), 0 4px 16px rgba(11,26,43,.04);
 }
-.pp-card-title {
-    font-size: .8rem;
-    font-weight: 700;
+.pp-section-title {
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    font-size: .72rem;
+    font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: .08em;
-    color: #7f9ab5;
-    margin-bottom: .6rem;
+    letter-spacing: .1em;
+    color: #8faac8;
+    margin-bottom: 1rem;
+    padding-bottom: .6rem;
+    border-bottom: 1px solid #eef3fa;
 }
+.pp-section-title span { font-size: 1rem; }
 
 /* ── MÉTRICAS ────────────────────────────────────────────────────── */
 [data-testid="metric-container"] {
     background: #fff !important;
-    border: 1px solid #e0eaf5 !important;
-    border-radius: 12px !important;
-    padding: 14px 18px !important;
-    box-shadow: 0 2px 8px rgba(0,0,0,.05) !important;
+    border: 1px solid #e4edf8 !important;
+    border-radius: 14px !important;
+    padding: 16px 20px !important;
+    box-shadow: 0 1px 6px rgba(11,26,43,.06) !important;
+    transition: box-shadow .15s !important;
+}
+[data-testid="metric-container"]:hover {
+    box-shadow: 0 4px 14px rgba(11,26,43,.10) !important;
 }
 [data-testid="metric-container"] [data-testid="stMetricValue"] {
-    font-size: 1.9rem !important;
-    font-weight: 700 !important;
-    color: #0b1a2b !important;
+    font-size: 2rem !important;
+    font-weight: 800 !important;
+    color: #07111d !important;
+    letter-spacing: -.02em !important;
 }
 [data-testid="metric-container"] [data-testid="stMetricLabel"] {
-    font-size: .78rem !important;
-    color: #7f9ab5 !important;
-    font-weight: 600 !important;
+    font-size: .72rem !important;
+    color: #8faac8 !important;
+    font-weight: 700 !important;
     text-transform: uppercase !important;
-    letter-spacing: .06em !important;
+    letter-spacing: .08em !important;
 }
 
 /* ── BOTONES ─────────────────────────────────────────────────────── */
 .stButton > button {
-    border-radius: 9px !important;
-    font-weight: 600 !important;
-    transition: all .18s ease !important;
+    border-radius: 10px !important;
+    font-weight: 700 !important;
+    font-size: .9rem !important;
+    letter-spacing: .01em !important;
+    transition: all .2s ease !important;
+    padding: .45rem 1.2rem !important;
 }
 .stButton > button[kind="primary"] {
-    background: linear-gradient(135deg, #00c853 0%, #00897b 100%) !important;
+    background: linear-gradient(135deg, #00d45a 0%, #00a86b 100%) !important;
     color: #fff !important;
     border: none !important;
-    box-shadow: 0 3px 10px rgba(0,200,83,.28) !important;
+    box-shadow: 0 3px 12px rgba(0,200,83,.30) !important;
 }
 .stButton > button[kind="primary"]:hover {
     transform: translateY(-2px) !important;
-    box-shadow: 0 6px 18px rgba(0,200,83,.38) !important;
+    box-shadow: 0 7px 20px rgba(0,200,83,.42) !important;
 }
+.stButton > button[kind="primary"]:active { transform: translateY(0) !important; }
 .stButton > button[kind="secondary"] {
-    border: 1.5px solid #00c853 !important;
-    color: #00874a !important;
-    background: rgba(0,200,83,.04) !important;
+    border: 1.5px solid #c8dfee !important;
+    color: #1b3a58 !important;
+    background: #fff !important;
 }
 .stButton > button[kind="secondary"]:hover {
-    background: rgba(0,200,83,.10) !important;
+    border-color: #00c853 !important;
+    color: #007a38 !important;
+    background: rgba(0,200,83,.05) !important;
     transform: translateY(-1px) !important;
+}
+/* Botón de descarga */
+[data-testid="stDownloadButton"] button {
+    border-radius: 10px !important;
+    font-weight: 700 !important;
+    background: linear-gradient(135deg, #1565c0, #0d47a1) !important;
+    color: #fff !important;
+    border: none !important;
+    box-shadow: 0 3px 10px rgba(21,101,192,.3) !important;
+}
+[data-testid="stDownloadButton"] button:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 16px rgba(21,101,192,.4) !important;
 }
 
 /* ── TABS ───────────────────────────────────────────────────────── */
 [data-testid="stTabs"] [role="tablist"] {
-    gap: 4px;
-    border-bottom: 2px solid #e0eaf5;
-    padding-bottom: 0;
+    gap: 2px;
+    border-bottom: 2px solid #e4edf8;
+    background: #f5f8fc;
+    border-radius: 10px 10px 0 0;
+    padding: 4px 4px 0;
 }
 [data-testid="stTabs"] button[role="tab"] {
     border-radius: 8px 8px 0 0 !important;
-    padding: 8px 18px !important;
+    padding: 9px 20px !important;
     font-weight: 600 !important;
     font-size: .88rem !important;
     color: #7f9ab5 !important;
     background: transparent !important;
     border: none !important;
-    transition: color .15s !important;
+    transition: all .15s !important;
 }
+[data-testid="stTabs"] button[role="tab"]:hover { color: #1b3a58 !important; }
 [data-testid="stTabs"] button[aria-selected="true"] {
-    color: #00874a !important;
-    border-bottom: 2.5px solid #00c853 !important;
-    background: rgba(0,200,83,.05) !important;
+    color: #007a38 !important;
+    background: #fff !important;
+    border-bottom: 3px solid #00c853 !important;
+    font-weight: 700 !important;
 }
 
 /* ── EXPANDERS ──────────────────────────────────────────────────── */
 [data-testid="stExpander"] {
-    border: 1px solid #e0eaf5 !important;
-    border-radius: 10px !important;
+    border: 1px solid #e4edf8 !important;
+    border-radius: 12px !important;
     overflow: hidden !important;
-    box-shadow: none !important;
+    box-shadow: 0 1px 4px rgba(11,26,43,.05) !important;
 }
 [data-testid="stExpander"] summary {
     font-weight: 600 !important;
     color: #1b3a58 !important;
+    font-size: .92rem !important;
+    padding: .7rem 1rem !important;
 }
+[data-testid="stExpander"] summary:hover { background: #f5f8fc !important; }
 
 /* ── ALERTS ─────────────────────────────────────────────────────── */
-[data-testid="stAlert"] { border-radius: 10px !important; }
+[data-testid="stAlert"] {
+    border-radius: 12px !important;
+    border-width: 1px !important;
+    font-size: .9rem !important;
+}
 
 /* ── DATAFRAMES ─────────────────────────────────────────────────── */
 [data-testid="stDataFrame"] {
-    border-radius: 10px !important;
+    border-radius: 12px !important;
     overflow: hidden !important;
-    box-shadow: 0 1px 5px rgba(0,0,0,.07) !important;
+    box-shadow: 0 1px 6px rgba(11,26,43,.07) !important;
+    border: 1px solid #e4edf8 !important;
 }
 
-/* ── INPUTS ─────────────────────────────────────────────────────── */
+/* ── INPUTS / SLIDERS ───────────────────────────────────────────── */
 [data-testid="stTextInput"] input,
-[data-testid="stNumberInput"] input {
-    border-radius: 8px !important;
+[data-testid="stNumberInput"] input,
+[data-testid="stTextArea"] textarea {
+    border-radius: 9px !important;
+    border-color: #d0e0f0 !important;
+    font-size: .92rem !important;
+}
+[data-testid="stTextInput"] input:focus,
+[data-testid="stNumberInput"] input:focus {
+    border-color: #00c853 !important;
+    box-shadow: 0 0 0 2px rgba(0,200,83,.15) !important;
+}
+[data-testid="stSlider"] [data-baseweb="slider"] div[role="slider"] {
+    background: #00c853 !important;
+    border-color: #00c853 !important;
 }
 
 /* ── PROGRESS ───────────────────────────────────────────────────── */
 [data-testid="stProgress"] > div > div {
-    background: linear-gradient(90deg, #00c853, #00897b) !important;
-    border-radius: 4px !important;
+    background: linear-gradient(90deg, #00d45a, #00897b) !important;
+    border-radius: 6px !important;
+}
+
+/* ── FILE UPLOADER ──────────────────────────────────────────────── */
+[data-testid="stFileUploader"] {
+    border-radius: 12px !important;
+}
+[data-testid="stFileUploaderDropzone"] {
+    border: 2px dashed #c0d8f0 !important;
+    border-radius: 12px !important;
+    background: #f5f8fc !important;
+    transition: all .2s !important;
+}
+[data-testid="stFileUploaderDropzone"]:hover {
+    border-color: #00c853 !important;
+    background: rgba(0,200,83,.04) !important;
+}
+
+/* ── TOGGLES / CHECKBOXES ───────────────────────────────────────── */
+[data-testid="stCheckbox"] label,
+[data-testid="stToggle"] label {
+    font-size: .92rem !important;
+    color: #2c3e50 !important;
 }
 
 /* ── SIDEBAR STEPPER ────────────────────────────────────────────── */
@@ -210,51 +282,85 @@ html, body, [class*="css"] {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 6px 10px;
-    border-radius: 8px;
+    padding: 5px 10px;
+    border-radius: 9px;
     margin: 2px 0;
-    font-size: .85rem;
+    font-size: .84rem;
+    transition: background .15s;
 }
 .pp-step.done   { color: #7fffc0 !important; }
-.pp-step.active { color: #fff !important; font-weight: 700; background: rgba(0,200,83,.15); }
-.pp-step.todo   { color: #6a8aaa !important; }
+.pp-step.active { color: #fff !important; font-weight: 700; background: rgba(0,200,83,.18); }
+.pp-step.todo   { color: #4a6a8a !important; }
 .pp-step .pp-step-dot {
-    width: 20px;
-    height: 20px;
+    width: 22px; height: 22px;
     border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: .75rem;
-    flex-shrink: 0;
-    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .75rem; flex-shrink: 0; font-weight: 700;
 }
 .pp-step.done .pp-step-dot   { background: #00c853; color: #fff; }
-.pp-step.active .pp-step-dot { background: #fff; color: #0b1a2b; }
-.pp-step.todo .pp-step-dot   { background: #2a4a6b; color: #6a8aaa; }
+.pp-step.active .pp-step-dot { background: #fff; color: #07111d; }
+.pp-step.todo .pp-step-dot   { background: #1e3a58; color: #4a6a8a; }
 
-/* ── DRY-RUN BADGE ──────────────────────────────────────────────── */
+/* ── BADGES ─────────────────────────────────────────────────────── */
 .pp-badge-safe {
-    display: inline-block;
-    background: rgba(0,200,83,.18);
+    display: inline-flex; align-items: center; gap: 5px;
+    background: rgba(0,200,83,.15);
     color: #7fffc0 !important;
-    border: 1px solid rgba(0,200,83,.3);
+    border: 1px solid rgba(0,200,83,.25);
     border-radius: 20px;
-    padding: 3px 12px;
-    font-size: .78rem;
-    font-weight: 700;
-    margin-top: 6px;
+    padding: 4px 14px;
+    font-size: .78rem; font-weight: 700;
 }
 .pp-badge-live {
-    display: inline-block;
-    background: rgba(244,67,54,.2);
+    display: inline-flex; align-items: center; gap: 5px;
+    background: rgba(244,67,54,.18);
     color: #ff8a80 !important;
-    border: 1px solid rgba(244,67,54,.3);
+    border: 1px solid rgba(244,67,54,.28);
     border-radius: 20px;
-    padding: 3px 12px;
-    font-size: .78rem;
-    font-weight: 700;
-    margin-top: 6px;
+    padding: 4px 14px;
+    font-size: .78rem; font-weight: 700;
+}
+
+/* ── ESTADO VACÍO ───────────────────────────────────────────────── */
+.pp-empty {
+    text-align: center;
+    padding: 3.5rem 1.5rem;
+    background: #f5f8fc;
+    border-radius: 16px;
+    border: 2px dashed #d0e0f0;
+    margin: 1rem 0;
+}
+.pp-empty .pp-empty-icon { font-size: 3.2rem; margin-bottom: .6rem; }
+.pp-empty .pp-empty-title {
+    font-size: 1.15rem; font-weight: 700;
+    color: #1b3a58; margin-bottom: .4rem;
+}
+.pp-empty .pp-empty-text { font-size: .9rem; color: #7f9ab5; }
+
+/* ── STAT CHIPS (resumen rápido) ────────────────────────────────── */
+.pp-chips { display: flex; flex-wrap: wrap; gap: .5rem; margin: .8rem 0; }
+.pp-chip {
+    display: inline-flex; align-items: center; gap: .3rem;
+    background: #f0f6ff;
+    border: 1px solid #dce8f8;
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: .82rem; font-weight: 600; color: #1b3a58;
+}
+.pp-chip.green  { background:#e8faf0; border-color:#a8e6c0; color:#005a29; }
+.pp-chip.red    { background:#fef0f0; border-color:#f5c0c0; color:#8b0000; }
+.pp-chip.orange { background:#fff5e8; border-color:#f5d9a8; color:#7a4000; }
+
+/* ── CÓDIGO / FORMATO CSV ───────────────────────────────────────── */
+[data-testid="stCode"] {
+    border-radius: 10px !important;
+    font-size: .82rem !important;
+}
+
+/* ── SPINNER ────────────────────────────────────────────────────── */
+[data-testid="stSpinner"] > div {
+    border-color: #00c853 !important;
+    border-right-color: transparent !important;
 }
 </style>
 """
@@ -262,6 +368,35 @@ html, body, [class*="css"] {
 
 def _inject_css() -> None:
     st.markdown(_CSS, unsafe_allow_html=True)
+
+
+def _section_start(icon: str, title: str) -> None:
+    """Inicia un bloque visual con título de sección."""
+    st.markdown(
+        f'<div class="pp-section-title"><span>{icon}</span>{title}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _stat_chips(*chips: tuple[str, str, str]) -> None:
+    """Muestra chips de estadísticas inline. Cada chip: (texto, color, icono)."""
+    parts = "".join(
+        f'<span class="pp-chip {color}">{icon} {text}</span>'
+        for text, color, icon in chips
+    )
+    st.markdown(f'<div class="pp-chips">{parts}</div>', unsafe_allow_html=True)
+
+
+def _empty_state(icon: str, title: str, text: str) -> None:
+    """Muestra un estado vacío con diseño visual."""
+    st.markdown(
+        f'<div class="pp-empty">'
+        f'<div class="pp-empty-icon">{icon}</div>'
+        f'<div class="pp-empty-title">{title}</div>'
+        f'<div class="pp-empty-text">{text}</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def _page_header(icon: str, title: str, subtitle: str = "") -> None:
@@ -281,6 +416,19 @@ def _sidebar_step(label: str, state: str, num: int) -> None:
     st.sidebar.markdown(
         f'<div class="pp-step {state}">'
         f'<span class="pp-step-dot">{dot}</span>{label}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _step_header(num: int, title: str) -> None:
+    """Cabecera numerada de paso en una página (ej. página Syltek)."""
+    st.markdown(
+        f'<div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.8rem">'
+        f'<span style="background:#00c853;color:#fff;border-radius:50%;width:28px;height:28px;'
+        f'display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:.9rem;flex-shrink:0">'
+        f'{num}</span>'
+        f'<span style="font-size:1.1rem;font-weight:700;color:#0b1a2b">{title}</span>'
+        f'</div>',
         unsafe_allow_html=True,
     )
 
@@ -570,7 +718,7 @@ if page == "config":
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown('<div class="pp-card-title">Credenciales Syltek</div>', unsafe_allow_html=True)
+        _section_start("🔌", "Credenciales Syltek")
         syltek_url = st.text_input(
             "URL de Syltek",
             value=settings.syltek_url or "https://padelplus.padelclick.com",
@@ -598,7 +746,7 @@ if page == "config":
                     )
 
     with col2:
-        st.markdown('<div class="pp-card-title">Parámetros de la fase</div>', unsafe_allow_html=True)
+        _section_start("📅", "Parámetros de la fase")
         phase_name = st.text_input("Nombre de la fase", value="Fase 1")
         start_date = st.date_input("Fecha de inicio", value=date.today() + timedelta(days=7))
         end_date = st.date_input("Fecha de fin", value=date.today() + timedelta(days=42))
@@ -713,7 +861,7 @@ elif page == "import":
                 st.success(f"✅ {len(groups)} grupos cargados con {sum(len(g.pairs) for g in groups)} parejas.")
 
         if st.session_state.groups:
-            st.subheader("Vista previa de grupos")
+            _section_start("👥", "Vista previa de grupos")
             for g in st.session_state.groups:
                 with st.expander(f"{g.name} — {len(g.pairs)} parejas"):
                     rows = []
@@ -1155,25 +1303,13 @@ elif page == "generate":
     _page_header("📅", "Generar calendario", "Crea los enfrentamientos round-robin y asigna horarios automáticamente")
 
     if not st.session_state.data_loaded or not st.session_state.groups:
-        st.markdown(
-            '<div style="text-align:center;padding:3rem 1rem;background:#f0f7ff;border-radius:16px;border:2px dashed #b0c8e8">'
-            '<div style="font-size:3rem">📥</div>'
-            '<div style="font-size:1.2rem;font-weight:700;color:#1b3a58;margin:.5rem 0">Sin datos cargados</div>'
-            '<div style="color:#7f9ab5">Ve a <strong>📥 Importar datos</strong> y carga los grupos de ranking primero.</div>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
+        _empty_state("📥", "Sin datos cargados",
+                     "Ve a <strong>📥 Importar datos</strong> y carga los grupos de ranking primero.")
         st.stop()
 
     if not st.session_state.phase:
-        st.markdown(
-            '<div style="text-align:center;padding:3rem 1rem;background:#fff8f0;border-radius:16px;border:2px dashed #e8c880">'
-            '<div style="font-size:3rem">⚙️</div>'
-            '<div style="font-size:1.2rem;font-weight:700;color:#5a3a00;margin:.5rem 0">Fase no configurada</div>'
-            '<div style="color:#a07040">Ve a <strong>⚙️ Configuración</strong> y guarda los parámetros de la fase primero.</div>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
+        _empty_state("⚙️", "Fase no configurada",
+                     "Ve a <strong>⚙️ Configuración</strong> y guarda los parámetros de la fase primero.")
         st.stop()
 
     phase: RankingPhase = st.session_state.phase
@@ -1181,7 +1317,7 @@ elif page == "generate":
     col1, col2 = st.columns([1, 2])
 
     with col1:
-        st.markdown('<div class="pp-card-title">Acciones</div>', unsafe_allow_html=True)
+        _section_start("⚡", "Acciones")
 
         if st.button("⚡ Generar enfrentamientos", type="primary"):
             matches = generate_all_matches(phase.groups)
@@ -1244,7 +1380,7 @@ elif page == "generate":
 
     with col2:
         if st.session_state.matches:
-            st.markdown('<div class="pp-card-title">Resumen</div>', unsafe_allow_html=True)
+            _section_start("📊", "Resumen")
             result: ScheduleResult = st.session_state.schedule_result
             if result:
                 m1, m2, m3 = st.columns(3)
@@ -1275,7 +1411,7 @@ elif page == "generate":
                             st.info(f"ℹ️ {vs['infos']} nota(s) sobre pistas fijas. Ver **🔍 Revisión**.")
 
     if st.session_state.matches:
-        st.subheader("Calendario generado")
+        _section_start("📋", "Calendario generado")
 
         # Filtros globales (aplican a ambas vistas)
         fc1, fc2, fc3 = st.columns(3)
@@ -1530,14 +1666,8 @@ elif page == "export":
     _page_header("📤", "Exportar", "Descarga el calendario en Excel o genera mensajes para los jugadores")
 
     if not st.session_state.matches_scheduled:
-        st.markdown(
-            '<div style="text-align:center;padding:3rem 1rem;background:#f0f7ff;border-radius:16px;border:2px dashed #b0c8e8">'
-            '<div style="font-size:3rem">📅</div>'
-            '<div style="font-size:1.2rem;font-weight:700;color:#1b3a58;margin:.5rem 0">Calendario no generado</div>'
-            '<div style="color:#7f9ab5">Ve a <strong>📅 Generar calendario</strong> y asigna los horarios primero.</div>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
+        _empty_state("📅", "Calendario no generado",
+                     "Ve a <strong>📅 Generar calendario</strong> y asigna los horarios primero.")
         st.stop()
 
     phase: RankingPhase = st.session_state.phase
@@ -1547,10 +1677,7 @@ elif page == "export":
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown(
-            '<div class="pp-card-title">📊 Excel del calendario</div>',
-            unsafe_allow_html=True,
-        )
+        _section_start("📊", "Excel del calendario")
 
         # ---- Exportar formato tabla (existente) ----
         if st.button("Generar Excel (tabla)", type="secondary"):
@@ -1588,10 +1715,7 @@ elif page == "export":
                 )
 
     with col2:
-        st.markdown(
-            '<div class="pp-card-title">✉️ Mensajes para jugadores</div>',
-            unsafe_allow_html=True,
-        )
+        _section_start("✉️", "Mensajes para jugadores")
         msg_type = st.radio("Tipo de mensaje", ["Por grupo", "Por pareja"])
         if st.button("Generar mensajes"):
             matches = st.session_state.matches
@@ -1626,21 +1750,15 @@ elif page == "review":
     _page_header("🔍", "Revisión y diagnóstico", "Valida el calendario generado y analiza conflictos y distribución")
 
     if not st.session_state.schedule_result:
-        st.markdown(
-            '<div style="text-align:center;padding:3rem 1rem;background:#f0f7ff;border-radius:16px;border:2px dashed #b0c8e8">'
-            '<div style="font-size:3rem">🔍</div>'
-            '<div style="font-size:1.2rem;font-weight:700;color:#1b3a58;margin:.5rem 0">Sin datos para revisar</div>'
-            '<div style="color:#7f9ab5">Ve a <strong>📅 Generar calendario</strong> y asigna los horarios primero.</div>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
+        _empty_state("🔍", "Sin datos para revisar",
+                     "Ve a <strong>📅 Generar calendario</strong> y asigna los horarios primero.")
         st.stop()
 
     result: ScheduleResult = st.session_state.schedule_result
     phase: RankingPhase = st.session_state.phase
 
     # Métricas globales
-    st.markdown('<div class="pp-card-title">Resumen general</div>', unsafe_allow_html=True)
+    _section_start("📋", "Resumen general")
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("📋 Total partidos", result.total_matches)
     m2.metric("✅ Programados", result.scheduled_count)
@@ -1648,7 +1766,7 @@ elif page == "review":
     m4.metric("🎯 Éxito", f"{result.success_rate:.1f}%")
 
     # ---- Validación post-asignación ----
-    st.subheader("🔎 Validación del calendario")
+    _section_start("🔎", "Validación del calendario")
 
     if st.button("🔄 Ejecutar validación completa", type="primary"):
         violations = validate_schedule(result, phase)
@@ -1729,7 +1847,7 @@ elif page == "review":
 
     # Conflictos detallados
     if result.conflicts:
-        st.subheader("⚠️ Partidos con conflicto")
+        _section_start("⚠️", "Partidos con conflicto")
         rows_c = [
             {
                 "Grupo": m.group_name,
@@ -1744,7 +1862,7 @@ elif page == "review":
 
     # Distribución por día
     if result.scheduled:
-        st.subheader("📆 Partidos por día")
+        _section_start("📆", "Distribución por día")
         from collections import Counter
         # Clave de sort: fecha real (YYYY-MM-DD) para orden cronológico correcto
         _day_items = sorted(
@@ -1760,7 +1878,7 @@ elif page == "review":
         st.bar_chart(df_days.set_index("Día"))
 
         # Balanceo: franja horaria y día de la semana
-        st.subheader("⚖️ Balanceo del calendario")
+        _section_start("⚖️", "Balanceo del calendario")
         bm = balance_metrics(result)
         bc1, bc2 = st.columns(2)
         with bc1:
@@ -1781,7 +1899,7 @@ elif page == "review":
 
     # Distribución por pista
     if result.courts_used:
-        st.subheader("🏟️ Pistas utilizadas")
+        _section_start("🏟️", "Pistas utilizadas")
         court_count = Counter(
             m.court.name for m in result.scheduled if m.court
         )
@@ -1792,7 +1910,7 @@ elif page == "review":
 
     # Parejas con más conflictos
     if result.conflict_details:
-        st.subheader("👥 Parejas con más conflictos")
+        _section_start("👥", "Parejas con más conflictos")
         from collections import defaultdict
         pair_map: dict[str, str] = {}
         for g in phase.groups:
@@ -1825,14 +1943,7 @@ elif page == "syltek":
     # ----------------------------------------------------------------
     # Paso 1: Conexión
     # ----------------------------------------------------------------
-    st.markdown(
-        '<div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.8rem">'
-        '<span style="background:#00c853;color:#fff;border-radius:50%;width:28px;height:28px;'
-        'display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:.9rem;flex-shrink:0">1</span>'
-        '<span style="font-size:1.15rem;font-weight:700;color:#0b1a2b">Conectar con Syltek</span>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+    _step_header(1, "Conectar con Syltek")
 
     col_url, col_user = st.columns(2)
     with col_url:
@@ -1881,14 +1992,7 @@ elif page == "syltek":
     # ----------------------------------------------------------------
     # Paso 2: Descubrir pistas
     # ----------------------------------------------------------------
-    st.markdown(
-        '<div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.8rem">'
-        '<span style="background:#00c853;color:#fff;border-radius:50%;width:28px;height:28px;'
-        'display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:.9rem;flex-shrink:0">2</span>'
-        '<span style="font-size:1.15rem;font-weight:700;color:#0b1a2b">Descubrir pistas disponibles</span>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+    _step_header(2, "Descubrir pistas disponibles")
     st.info(
         "Esto conecta al calendario de Syltek y extrae automáticamente "
         "los nombres e IDs de todas las pistas."
@@ -1954,14 +2058,7 @@ elif page == "syltek":
     # ----------------------------------------------------------------
     # Paso 3: Publicar partidos
     # ----------------------------------------------------------------
-    st.markdown(
-        '<div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.8rem">'
-        '<span style="background:#00c853;color:#fff;border-radius:50%;width:28px;height:28px;'
-        'display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:.9rem;flex-shrink:0">3</span>'
-        '<span style="font-size:1.15rem;font-weight:700;color:#0b1a2b">Crear reservas en Syltek</span>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+    _step_header(3, "Crear reservas en Syltek")
 
     if not st.session_state.matches_scheduled:
         st.warning("Primero genera y asigna horarios en **Generar calendario**.")
@@ -2051,7 +2148,7 @@ elif page == "syltek":
 
     # Mostrar resultados anteriores
     if st.session_state["syltek_publish_results"]:
-        st.subheader("Resultados")
+        _section_start("📊", "Resultados de publicación")
         df_res = pd.DataFrame(st.session_state["syltek_publish_results"])
         st.dataframe(df_res, use_container_width=True)
 
