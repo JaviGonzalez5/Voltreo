@@ -95,16 +95,19 @@ def build_availability_slots(
     para cubrir el caso en que Syltek usa 'Padel N' y el scheduler 'Pista N'.
 
     pf_patterns: conjunto de (weekday, start_time) de pistas fijas conocidas.
-    Los slots que coincidan con una PF se generan SIEMPRE, aunque haya una reserva
-    en Syltek — esa reserva ES la reserva periódica de la pista fija y no debe
-    impedir que el scheduler asigne ahí el partido de ranking correspondiente.
+    Para estas franjas se aplican dos tratamientos:
+      1. Si la hora PF cae en la rejilla estándar (múltiplo de duration desde
+         day_start_time): se genera aunque haya una reserva Syltek (esa reserva
+         ES la reserva periódica de la PF y no bloquea el slot).
+      2. Si la hora PF NO cae en la rejilla estándar (p.ej. PF 19:30 con rejilla
+         16:00-17:30-19:00-20:30): se añade un slot extra a esa hora exacta en
+         todas las pistas activas, ignorando reservas (misma lógica que caso 1).
     """
     slots: list[AvailabilitySlot] = []
     duration = timedelta(minutes=phase.match_duration_minutes)
     current = phase.start_date
 
     # Precompute: for each active court, collect its bookings grouped by date.
-    # This replaces an O(bookings * courts * days) scan with a single O(bookings * courts) pass.
     active_courts = [c for c in courts if c.active]
     court_day_bookings: dict[str, dict] = {c.id: defaultdict(list) for c in active_courts}
     for b in bookings:
@@ -112,6 +115,30 @@ def build_availability_slots(
             if _booking_belongs_to_court(b, court):
                 court_day_bookings[court.id][b.start_datetime.date()].append(b)
                 break  # a booking belongs to at most one court
+
+    # Calcular qué horas PF caen FUERA de la rejilla estándar y deben añadirse
+    # como slots extra.  Usamos una fecha ficticia para aritmética de tiempos.
+    _dummy = datetime(2000, 1, 3)  # lunes arbitrario
+    _standard_times: set[time] = set()
+    _t = _dummy.replace(hour=phase.day_start_time.hour, minute=phase.day_start_time.minute,
+                        second=0, microsecond=0)
+    _day_end_dt = _dummy.replace(hour=phase.day_end_time.hour, minute=phase.day_end_time.minute,
+                                 second=0, microsecond=0)
+    while _t + duration <= _day_end_dt:
+        _standard_times.add(_t.time())
+        _t += duration
+
+    # extra_pf: {weekday → [time, ...]} para horas PF fuera de rejilla
+    extra_pf: dict[int, list[time]] = defaultdict(list)
+    if pf_patterns:
+        for pf_wd, pf_t in pf_patterns:
+            if pf_t in _standard_times:
+                continue  # ya se genera en el bucle estándar
+            # Comprobar que el slot cabe dentro del día
+            pf_start_dt = _dummy.replace(hour=pf_t.hour, minute=pf_t.minute,
+                                         second=0, microsecond=0)
+            if pf_start_dt + duration <= _day_end_dt and pf_t >= phase.day_start_time:
+                extra_pf[pf_wd].append(pf_t)
 
     while current <= phase.end_date:
         # ── El ranking solo se juega de lunes a viernes
@@ -124,14 +151,13 @@ def build_availability_slots(
             day_bookings = court_day_bookings[court.id].get(current, [])
 
             slot_start = _dt(current, phase.day_start_time)
-            day_end = _dt(current, phase.day_end_time)
+            day_end    = _dt(current, phase.day_end_time)
 
+            # ── Slots de la rejilla estándar ──────────────────────────────
             while slot_start + duration <= day_end:
                 slot_end = slot_start + duration
 
-                # Comprobar si es un slot de pista fija (PF).
-                # Si lo es, lo incluimos siempre: la reserva que aparece en Syltek
-                # a esa hora ES la reserva periódica de la PF, no un bloqueo externo.
+                # PF alineadas con la rejilla: no bloquear aunque haya reserva
                 is_pf_slot = (
                     pf_patterns is not None
                     and (wd, slot_start.time()) in pf_patterns
@@ -154,6 +180,19 @@ def build_availability_slots(
                         )
                     )
                 slot_start += duration
+
+            # ── Slots extra para PF fuera de la rejilla estándar ─────────
+            # Se generan siempre (la reserva Syltek a esa hora es la propia PF)
+            for pf_t in extra_pf.get(wd, []):
+                pf_end = (_dt(current, pf_t) + duration).time()
+                slots.append(
+                    AvailabilitySlot(
+                        court=court,
+                        date=current,
+                        start_time=pf_t,
+                        end_time=pf_end,
+                    )
+                )
 
         current += timedelta(days=1)
 
