@@ -11,6 +11,8 @@ Asigna horarios a los partidos pendientes respetando:
 from collections import defaultdict
 from datetime import date, time, datetime, timedelta
 import random
+import re
+import unicodedata
 
 from .models import (
     Match,
@@ -36,6 +38,22 @@ def _dt(d: date, t: time) -> datetime:
 def _overlaps(s1: datetime, e1: datetime, s2: datetime, e2: datetime) -> bool:
     """True si los dos intervalos se solapan (excluyendo contacto en los extremos)."""
     return s1 < e2 and s2 < e1
+
+
+def _player_natural_key(player) -> str:
+    """
+    Clave normalizada para identificar al mismo jugador físico en distintos grupos.
+
+    El mismo jugador puede aparecer con UUIDs diferentes en cada nivel de ranking.
+    Esta función devuelve un nombre completo en minúsculas y sin acentos,
+    lo que permite detectar colisiones cross-ranking en `player_day_set`.
+    Fallback al UUID si el nombre está vacío.
+    """
+    raw = f"{player.name} {getattr(player, 'surname', '')}".strip().lower()
+    # Quitar acentos para matching robusto (García == Garcia)
+    nfkd = unicodedata.normalize("NFKD", raw)
+    key = "".join(c for c in nfkd if not unicodedata.combining(c))
+    return key or player.id
 
 
 def _booking_belongs_to_court(booking: Booking, court: Court) -> bool:
@@ -309,6 +327,19 @@ class Scheduler:
             if day_match and time_match:
                 score -= preferred_bonus  # bonus adicional por coincidencia exacta día+hora
 
+        # Penalizar horas tardías del día.
+        # Hace que el scheduler prefiera la primera hora disponible de la pareja
+        # en lugar de repartir uniformemente hasta las 22:30.
+        # Escala lineal: 0 en day_start_time → late_hour_penalty * 12 en day_end_time.
+        late_penalty = getattr(w, "late_hour_penalty", 2.5)
+        if late_penalty > 0:
+            day_start_min = self.phase.day_start_time.hour * 60 + self.phase.day_start_time.minute
+            day_end_min   = self.phase.day_end_time.hour * 60 + self.phase.day_end_time.minute
+            slot_min      = slot.start_time.hour * 60 + slot.start_time.minute
+            hour_range    = max(day_end_min - day_start_min, 1)
+            hour_fraction = (slot_min - day_start_min) / hour_range  # [0.0 … 1.0]
+            score += hour_fraction * late_penalty * 12.0
+
         return score
 
     # -------------------------------------------------------------------
@@ -365,13 +396,17 @@ class Scheduler:
         · Los candidatos se ordenan por score (menor = mejor).
         · Se elige aleatoriamente entre los top-N con el RNG semillado del scheduler,
           lo que da variedad real pero resultados reproducibles con la misma seed.
-        · N viene de BalanceWeights.top_candidates_pool (por defecto 6).
+        · N viene de BalanceWeights.top_candidates_pool (por defecto 4).
         """
         p1_id = match.pair_1.id
         p2_id = match.pair_2.id
-        player_ids = [
-            match.pair_1.player_1.id, match.pair_1.player_2.id,
-            match.pair_2.player_1.id, match.pair_2.player_2.id,
+        # Usar clave por nombre normalizado para detectar el mismo jugador
+        # en distintos grupos (mismo jugador físico → misma clave cross-ranking).
+        player_keys = [
+            _player_natural_key(match.pair_1.player_1),
+            _player_natural_key(match.pair_1.player_2),
+            _player_natural_key(match.pair_2.player_1),
+            _player_natural_key(match.pair_2.player_2),
         ]
 
         candidates: list[AvailabilitySlot] = []
@@ -391,7 +426,7 @@ class Scheduler:
 
             # ── Cross-ranking: jugador no juega dos veces el mismo día
             if not relax_cross_player:
-                if any(d in player_day_set[pid] for pid in player_ids):
+                if any(d in player_day_set[pk] for pk in player_keys):
                     continue
 
             # ── Máximo partidos por semana (restricción dura, nunca se relaja)
@@ -453,9 +488,11 @@ class Scheduler:
     ) -> None:
         p1_id = match.pair_1.id
         p2_id = match.pair_2.id
-        player_ids = [
-            match.pair_1.player_1.id, match.pair_1.player_2.id,
-            match.pair_2.player_1.id, match.pair_2.player_2.id,
+        player_keys = [
+            _player_natural_key(match.pair_1.player_1),
+            _player_natural_key(match.pair_1.player_2),
+            _player_natural_key(match.pair_2.player_1),
+            _player_natural_key(match.pair_2.player_2),
         ]
         match.suggested_date       = best.date
         match.suggested_start_time = best.start_time
@@ -469,8 +506,8 @@ class Scheduler:
         pair_schedule[p2_id].append((best.date, best.start_time, best.end_time, best.court.id))
         pair_weekly_count[p1_id][self._week_num(best.date)] += 1
         pair_weekly_count[p2_id][self._week_num(best.date)] += 1
-        for pid in player_ids:
-            player_day_set[pid].add(best.date)
+        for pk in player_keys:
+            player_day_set[pk].add(best.date)
         day_load[best.date]        += 1
         court_load[best.court.id]  += 1
         if hour_load is not None:

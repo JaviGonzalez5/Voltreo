@@ -187,10 +187,14 @@ class BalanceWeights(BaseModel):
     # la misma hora / día de la semana aunque sea la primera vez de la pareja.
     global_hour_penalty: float = 5.0      # penaliza horas del día ya muy ocupadas globalmente
     global_weekday_penalty: float = 4.0   # penaliza días de semana ya muy ocupados globalmente
+    # Penalización por hora tardía: cuanto más tarde en el día, más se penaliza el slot.
+    # Hace que el scheduler prefiera 18:00 sobre 21:30 cuando ambas están disponibles.
+    # Escala: 0 = sin preferencia horaria; 2.5 = penalización notable (~30 puntos a las 22:30).
+    late_hour_penalty: float = 2.5
     # Aleatoriedad controlada (reproducible con la semilla del scheduler):
     # se elige al azar entre los N mejores candidatos para dar variedad.
-    # 1 = siempre el mejor (sin variedad). 6 = buena variedad con calidad.
-    top_candidates_pool: int = 6
+    # 1 = siempre el mejor (sin variedad). 4 = buena variedad respetando preferencias.
+    top_candidates_pool: int = 4
 
 
 class RankingPhase(BaseModel):

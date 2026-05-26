@@ -658,7 +658,8 @@ if page == "config":
                         preferred_slot_bonus=25.0,
                         global_hour_penalty=5.0,
                         global_weekday_penalty=4.0,
-                        top_candidates_pool=6,
+                        late_hour_penalty=2.5,
+                        top_candidates_pool=4,
                     ),
                 )
                 st.session_state.phase = phase
