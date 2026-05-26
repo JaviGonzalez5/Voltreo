@@ -237,5 +237,49 @@ def export_to_excel(
     ws_r.column_dimensions["A"].width = 22
     ws_r.column_dimensions["B"].width = 30
 
+    # ------------------------------------------------------------------ #
+    # 6. Para Jugadores (vista limpia: sin pista ni columnas internas)
+    # ------------------------------------------------------------------ #
+    ws_p = wb.create_sheet("Para Jugadores")
+    player_cols = ["Fecha", "Hora", "Nivel", "Grupo", "Pareja 1", "Pareja 2"]
+    for col, h in enumerate(player_cols, start=1):
+        cell = ws_p.cell(row=1, column=col, value=h)
+        cell.font = Font(bold=True, color="FFFFFF", size=11)
+        cell.fill = _header_fill()
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border = _thin_border()
+    ws_p.row_dimensions[1].height = 22
+
+    # Mapa group_id → nivel (usa group.level si existe, si no el nombre del grupo)
+    level_map = {g.id: (g.level or g.name) for g in phase.groups}
+
+    scheduled_only = sorted(
+        result.scheduled,
+        key=lambda m: (
+            m.suggested_date or datetime.max.date(),
+            m.suggested_start_time or datetime.max.time(),
+            m.group_name,
+        ),
+    )
+    for i, match in enumerate(scheduled_only, start=2):
+        row_vals = [
+            match.suggested_date.strftime("%d/%m/%Y") if match.suggested_date else "",
+            match.suggested_start_time.strftime("%H:%M") if match.suggested_start_time else "",
+            level_map.get(match.group_id, match.group_name),
+            match.group_name,
+            match.pair_1.display_name,
+            match.pair_2.display_name,
+        ]
+        bg = PatternFill("solid", fgColor=COLOR_LIGHT_GRAY if i % 2 == 0 else COLOR_WHITE)
+        for col, val in enumerate(row_vals, start=1):
+            cell = ws_p.cell(row=i, column=col, value=val)
+            cell.fill = bg
+            cell.alignment = Alignment(horizontal="left", vertical="center")
+            cell.border = _thin_border()
+            cell.font = Font(size=10)
+
+    _autofit_columns(ws_p)
+    _freeze_and_filter(ws_p, len(player_cols))
+
     wb.save(output_path)
     return output_path

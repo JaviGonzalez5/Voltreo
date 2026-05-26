@@ -445,7 +445,8 @@ from src.scheduler import Scheduler
 from src.excel_exporter import export_to_excel
 from src.message_generator import generate_all_group_messages, generate_all_pair_messages
 from src.validators import (
-    validate_groups_df, validate_bookings_df, validate_phase_dates, validate_groups
+    validate_groups_df, validate_bookings_df, validate_phase_dates,
+    validate_groups, issues_summary,
 )
 from src.schedule_validator import validate_schedule, validation_summary, SEVERITY_EMOJI
 from src.excel_template_exporter import export_groups_to_template
@@ -1314,6 +1315,26 @@ elif page == "generate":
 
     phase: RankingPhase = st.session_state.phase
 
+    # ── Panel de calidad de datos (errores/avisos antes de generar)
+    _dq_issues = validate_groups(phase.groups)
+    _dq_summary = issues_summary(_dq_issues)
+    if _dq_issues:
+        _sev_icon = {"error": "🔴", "warning": "🟡", "info": "🔵"}
+        with st.expander(
+            f"{'🔴 Problemas en los datos' if _dq_summary['errors'] else '🟡 Avisos de datos'} "
+            f"— {_dq_summary['errors']} error(es), {_dq_summary['warnings']} aviso(s), "
+            f"{_dq_summary['infos']} info",
+            expanded=_dq_summary["errors"] > 0,
+        ):
+            for _iss in _dq_issues:
+                _icon = _sev_icon.get(_iss["severity"], "🔵")
+                st.markdown(f"{_icon} {_iss['message']}")
+        if _dq_summary["errors"] > 0:
+            st.error(
+                f"⛔ Hay {_dq_summary['errors']} error(es) en los datos. "
+                "Corrígelos en el CSV antes de generar el calendario."
+            )
+
     col1, col2 = st.columns([1, 2])
 
     with col1:
@@ -1716,31 +1737,111 @@ elif page == "export":
 
     with col2:
         _section_start("✉️", "Mensajes para jugadores")
-        msg_type = st.radio("Tipo de mensaje", ["Por grupo", "Por pareja"])
-        if st.button("Generar mensajes"):
+
+        msg_type = st.radio("Tipo de mensaje", ["Por grupo", "Por pareja"], horizontal=True)
+        include_court = st.checkbox("Incluir nombre de pista", value=True)
+
+        with st.expander("✏️ Personalizar texto del mensaje", expanded=False):
+            _def_intro_g = (
+                "Hola a todos,\n\n"
+                "Os dejamos los partidos programados para esta fase del ranking."
+            )
+            _def_intro_p = "Hola {pair_name},\n\nAquí tenéis vuestros partidos del ranking:"
+            _def_outro = (
+                "Por favor, revisad cualquier incidencia con {club_name}.\n\n"
+                "¡Muchos ánimos y mucho pádel!\n\n– {club_name}"
+            )
+            _def_outro_p = "Ante cualquier duda, contactad con {club_name}.\n\n¡Mucha suerte!\n– {club_name}"
+
+            st.caption(
+                "Puedes usar `{club_name}` y `{group_name}` / `{pair_name}` como variables."
+            )
+            intro_default = _def_intro_g if msg_type == "Por grupo" else _def_intro_p
+            outro_default = _def_outro if msg_type == "Por grupo" else _def_outro_p
+            custom_intro = st.text_area(
+                "Texto de introducción", value=intro_default, height=100,
+                key=f"custom_intro_{msg_type}",
+            )
+            custom_outro = st.text_area(
+                "Texto de cierre", value=outro_default, height=100,
+                key=f"custom_outro_{msg_type}",
+            )
+
+        if st.button("✉️ Generar mensajes", type="primary"):
+            import zipfile, io
             matches = st.session_state.matches
             if msg_type == "Por grupo":
-                msgs = generate_all_group_messages(phase.groups, matches, club_name)
+                msgs = generate_all_group_messages(
+                    phase.groups, matches, club_name,
+                    intro_text=custom_intro, outro_text=custom_outro,
+                    include_court=include_court,
+                )
+                # ZIP con todos los mensajes
+                _zip_buf = io.BytesIO()
+                with zipfile.ZipFile(_zip_buf, "w", zipfile.ZIP_DEFLATED) as _zf:
+                    for gid, txt in msgs.items():
+                        _zf.writestr(f"mensaje_{gid}.txt", txt.encode("utf-8"))
+                st.download_button(
+                    "⬇️ Descargar todos los mensajes (.zip)",
+                    data=_zip_buf.getvalue(),
+                    file_name="mensajes_grupos.zip",
+                    mime="application/zip",
+                    key="dl_all_groups_zip",
+                )
                 for gid, txt in msgs.items():
                     group = next((g for g in phase.groups if g.id == gid), None)
                     label = group.name if group else gid
-                    with st.expander(f"Mensaje — {label}"):
-                        st.text_area("", txt, height=300, key=f"msg_g_{gid}")
+                    n_matches = sum(
+                        1 for m in matches
+                        if m.group_id == gid and m.status == MatchStatus.SCHEDULED
+                    )
+                    with st.expander(f"📧 {label} — {n_matches} partido(s)"):
+                        st.code(txt, language=None)
                         st.download_button(
-                            "⬇️ Descargar .txt",
-                            data=txt,
+                            "⬇️ .txt",
+                            data=txt.encode("utf-8"),
                             file_name=f"mensaje_{label}.txt",
+                            mime="text/plain",
                             key=f"dl_g_{gid}",
                         )
             else:
-                msgs = generate_all_pair_messages(phase.groups, matches, club_name)
+                msgs = generate_all_pair_messages(
+                    phase.groups, matches, club_name,
+                    intro_text=custom_intro, outro_text=custom_outro,
+                    include_court=include_court,
+                )
+                # ZIP con todos los mensajes
+                import zipfile, io as _io
+                _zip_buf2 = _io.BytesIO()
+                with zipfile.ZipFile(_zip_buf2, "w", zipfile.ZIP_DEFLATED) as _zf2:
+                    for pid, txt in msgs.items():
+                        _zf2.writestr(f"mensaje_{pid}.txt", txt.encode("utf-8"))
+                st.download_button(
+                    "⬇️ Descargar todos los mensajes (.zip)",
+                    data=_zip_buf2.getvalue(),
+                    file_name="mensajes_parejas.zip",
+                    mime="application/zip",
+                    key="dl_all_pairs_zip",
+                )
                 for pid, txt in msgs.items():
                     pair = next(
                         (p for g in phase.groups for p in g.pairs if p.id == pid), None
                     )
                     label = pair.display_name if pair else pid
-                    with st.expander(f"Mensaje — {label}"):
-                        st.text_area("", txt, height=300, key=f"msg_p_{pid}")
+                    n_matches = sum(
+                        1 for m in matches
+                        if (m.pair_1.id == pid or m.pair_2.id == pid)
+                        and m.status == MatchStatus.SCHEDULED
+                    )
+                    with st.expander(f"📧 {label} — {n_matches} partido(s)"):
+                        st.code(txt, language=None)
+                        st.download_button(
+                            "⬇️ .txt",
+                            data=txt.encode("utf-8"),
+                            file_name=f"mensaje_{label}.txt",
+                            mime="text/plain",
+                            key=f"dl_p_{pid}",
+                        )
 
 # ---------------------------------------------------------------------------
 # PÁGINA 5: Revisión

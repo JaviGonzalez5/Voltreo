@@ -58,8 +58,10 @@ class TestBuildAvailabilitySlots:
     def test_slots_generated(self):
         phase = make_phase(n_courts=2, n_days=1)
         slots = build_availability_slots(phase.courts, phase, bookings=[])
-        # 16:00–22:30 con bloques de 90min = 4 bloques por pista × 2 pistas
-        assert len(slots) == 8
+        # 16:00–22:30 con step de 30min, partidos de 90min:
+        # último inicio válido = 21:00 (21:00+90min = 22:30 ≤ 22:30)
+        # slots por pista: 16:00,16:30,...,21:00 = 11 × 2 pistas = 22
+        assert len(slots) == 22
 
     def test_booking_blocks_slot(self):
         phase = make_phase(n_courts=1, n_days=1)
@@ -70,8 +72,9 @@ class TestBuildAvailabilitySlots:
             end_datetime=__import__("datetime").datetime(2025, 6, 2, 17, 30),
         )
         slots = build_availability_slots(phase.courts, phase, bookings=[booking])
-        # El primer bloque está bloqueado, quedan 3
-        assert len(slots) == 3
+        # Booking 16:00-17:30 bloquea slots 16:00, 16:30, 17:00 (overlap estricto).
+        # Slot 17:30 no solapa (17:30 < 17:30 es False). Quedan 11 - 3 = 8.
+        assert len(slots) == 8
 
 
 class TestScheduler:

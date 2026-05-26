@@ -611,13 +611,36 @@ class Scheduler:
         # luego ordena: primero por grupo, después por dificultad descendente
         # (los partidos más difíciles de encajar se procesan antes para que
         # tengan más opciones de slot disponibles).
+        # ── Ordenar partidos con equidad entre grupos.
+        #
+        # En lugar de procesar todos los partidos de un grupo antes de pasar
+        # al siguiente (lo que deja a los últimos grupos con los peores huecos),
+        # se intercalan los grupos: cada grupo cede un partido por turno.
+        #
+        # Dentro de cada grupo los partidos se ordenan por dificultad descendente
+        # (los más difíciles de encajar primero) para maximizar la tasa de éxito.
+        # El orden entre grupos es aleatorio (determinista con la seed) para que
+        # ningún grupo tenga ventaja sistemática sobre otro.
         shuffled = list(matches)
         self._rng.shuffle(shuffled)
-        group_order = list(dict.fromkeys(m.group_id for m in shuffled))
-        shuffled.sort(
-            key=lambda m: (group_order.index(m.group_id),
-                           -self._constraint_difficulty(m))
-        )
+
+        # Agrupar por group_id conservando el orden aleatorio de los grupos
+        _group_buckets: dict[str, list[Match]] = {}
+        for m in shuffled:
+            _group_buckets.setdefault(m.group_id, []).append(m)
+
+        # Ordenar dentro de cada grupo: más difíciles primero
+        for bucket in _group_buckets.values():
+            bucket.sort(key=lambda m: -self._constraint_difficulty(m))
+
+        # Intercalar: un partido por grupo en cada ronda (round-robin entre grupos)
+        _group_lists = list(_group_buckets.values())
+        interleaved: list[Match] = []
+        max_len = max((len(g) for g in _group_lists), default=0)
+        for i in range(max_len):
+            for g_list in _group_lists:
+                if i < len(g_list):
+                    interleaved.append(g_list[i])
 
         # ── Estado compartido
         occupied_slots:     set[tuple[str, date, time]]            = set()
@@ -636,7 +659,7 @@ class Scheduler:
         # ── Separar partidos de asignación manual
         manual_pending:   list[Match]    = []
         auto_matches:     list[Match]    = []
-        for m in shuffled:
+        for m in interleaved:
             if getattr(m.pair_1, "manual_only", False) or getattr(m.pair_2, "manual_only", False):
                 m.status = MatchStatus.PENDING
                 m.conflict_reason = "📋 Asignación manual — ver Observaciones"

@@ -30,6 +30,11 @@ ENV/
 # Exports y debug (opcionales: comenta si quieres versionar exports)
 exports/*
 !exports/.gitkeep
+
+# Archivos Excel generados (output)
+output/*.xlsx
+output/*.xls
+test_template.xlsx
 debug/screenshots/*
 !debug/screenshots/.gitkeep
 debug/html/*
