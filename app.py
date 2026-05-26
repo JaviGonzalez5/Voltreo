@@ -1768,9 +1768,22 @@ elif page == "review":
     # ---- Validación post-asignación ----
     _section_start("🔎", "Validación del calendario")
 
+    _n_scheduled = len([m for m in result.scheduled if m.suggested_date and m.suggested_start_time])
+    st.caption(f"Se validarán {_n_scheduled} partidos programados de {result.total_matches} totales.")
+
     if st.button("🔄 Ejecutar validación completa", type="primary"):
-        violations = validate_schedule(result, phase)
-        st.session_state["schedule_violations"] = violations
+        if _n_scheduled == 0:
+            st.warning("No hay partidos programados con fecha y hora asignadas. Genera el calendario primero.")
+        else:
+            try:
+                with st.spinner("Validando calendario..."):
+                    violations = validate_schedule(result, phase)
+                st.session_state["schedule_violations"] = violations
+                st.rerun()
+            except Exception as _val_err:
+                st.error(f"❌ Error durante la validación: {_val_err}")
+                import traceback
+                st.code(traceback.format_exc(), language="text")
 
     violations = st.session_state.get("schedule_violations")
     if violations is None:
