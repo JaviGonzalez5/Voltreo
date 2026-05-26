@@ -85,6 +85,7 @@ def build_availability_slots(
     courts: list[Court],
     phase: RankingPhase,
     bookings: list[Booking],
+    pf_patterns: "frozenset[tuple[int, time]] | None" = None,
 ) -> list[AvailabilitySlot]:
     """
     Genera todos los huecos disponibles en cada pista para cada día de la fase,
@@ -92,6 +93,11 @@ def build_availability_slots(
 
     Las reservas se asocian a pistas por ID, nombre exacto o número del nombre
     para cubrir el caso en que Syltek usa 'Padel N' y el scheduler 'Pista N'.
+
+    pf_patterns: conjunto de (weekday, start_time) de pistas fijas conocidas.
+    Los slots que coincidan con una PF se generan SIEMPRE, aunque haya una reserva
+    en Syltek — esa reserva ES la reserva periódica de la pista fija y no debe
+    impedir que el scheduler asigne ahí el partido de ranking correspondiente.
     """
     slots: list[AvailabilitySlot] = []
     duration = timedelta(minutes=phase.match_duration_minutes)
@@ -113,6 +119,7 @@ def build_availability_slots(
             current += timedelta(days=1)
             continue
 
+        wd = current.weekday()
         for court in active_courts:
             day_bookings = court_day_bookings[court.id].get(current, [])
 
@@ -121,10 +128,22 @@ def build_availability_slots(
 
             while slot_start + duration <= day_end:
                 slot_end = slot_start + duration
-                blocked = any(
-                    _overlaps(slot_start, slot_end, b.start_datetime, b.end_datetime)
-                    for b in day_bookings
+
+                # Comprobar si es un slot de pista fija (PF).
+                # Si lo es, lo incluimos siempre: la reserva que aparece en Syltek
+                # a esa hora ES la reserva periódica de la PF, no un bloqueo externo.
+                is_pf_slot = (
+                    pf_patterns is not None
+                    and (wd, slot_start.time()) in pf_patterns
                 )
+                if is_pf_slot:
+                    blocked = False
+                else:
+                    blocked = any(
+                        _overlaps(slot_start, slot_end, b.start_datetime, b.end_datetime)
+                        for b in day_bookings
+                    )
+
                 if not blocked:
                     slots.append(
                         AvailabilitySlot(
@@ -376,6 +395,10 @@ class Scheduler:
                 if pair.available_from:
                     window_h = pair.available_until.hour - pair.available_from.hour
                     score += max(0, 4 - window_h) * 10
+            # Pista fija: el slot exacto (día+hora) es crítico → máxima prioridad
+            if (getattr(pair, "preferred_weekday", None) is not None
+                    and getattr(pair, "preferred_time", None) is not None):
+                score += 80
         return score
 
     # -------------------------------------------------------------------
@@ -394,6 +417,7 @@ class Scheduler:
         player_day_set: dict,
         hour_load: dict | None = None,
         weekday_load: dict | None = None,
+        pf_slot_to_pairs: "dict[tuple[int, time], set[str]] | None" = None,
         *,
         relax_min_days: bool = False,
         relax_max_week: bool = False,
@@ -434,6 +458,16 @@ class Scheduler:
                 continue
             if self._pair_conflicts_existing(p2_id, d, st, et, pair_schedule):
                 continue
+
+            # ── Reserva de slot PF: si la franja es PF de otra pareja, no usarla.
+            # Esto garantiza que ningún partido ocupe la franja fija de una pareja
+            # ajena antes de que esa pareja haya podido usarla.
+            if pf_slot_to_pairs:
+                slot_key = (d.weekday(), st)
+                if slot_key in pf_slot_to_pairs:
+                    owners = pf_slot_to_pairs[slot_key]
+                    if p1_id not in owners and p2_id not in owners:
+                        continue
 
             # ── Cross-ranking: jugador no juega dos veces el mismo día
             if not relax_cross_player:
@@ -548,10 +582,25 @@ class Scheduler:
         Los partidos asignados en pasadas 2-3 quedan marcados con una nota
         explicativa para que el revisor los identifique en la tabla.
         """
+        # ── Mapa de Pistas Fijas: (weekday, time) → conjunto de pair_ids propietarios.
+        # Se usa en dos lugares:
+        #   1. build_availability_slots: incluye los slots PF aunque estén en bookings
+        #      (la reserva de Syltek a esa hora ES la reserva periódica de la PF).
+        #   2. _find_best_slot: evita que otros partidos ocupen esa franja antes que su dueño.
+        pf_slot_to_pairs: dict[tuple[int, time], set[str]] = defaultdict(set)
+        for g in self.phase.groups:
+            for p in g.pairs:
+                pw = getattr(p, "preferred_weekday", None)
+                pt = getattr(p, "preferred_time", None)
+                if pw is not None and pt is not None:
+                    pf_slot_to_pairs[(pw, pt)].add(p.id)
+        pf_patterns: "frozenset[tuple[int, time]]" = frozenset(pf_slot_to_pairs.keys())
+
         slots = build_availability_slots(
             courts=self.phase.courts,
             phase=self.phase,
             bookings=self.phase.bookings,
+            pf_patterns=pf_patterns if pf_patterns else None,
         )
         slots.sort(key=lambda s: (s.date, s.start_time, s.court.name))
 
@@ -611,6 +660,7 @@ class Scheduler:
                     match, slots, occupied_slots, pair_schedule,
                     pair_weekly_count, day_load, court_load, player_day_set,
                     hour_load, weekday_load,
+                    pf_slot_to_pairs=pf_slot_to_pairs if pf_slot_to_pairs else None,
                     relax_min_days=relax_min,
                     relax_max_week=relax_week,
                     relax_availability=relax_avail,
