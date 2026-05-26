@@ -287,30 +287,41 @@ class Scheduler:
         weekday = slot.date.weekday()
         court_id = slot.court.id
 
+        # Leer pesos con fallback defensivo:
+        # model_construct() puede omitir campos si la fase viene de session state antiguo.
+        same_hour_w    = getattr(w, "same_hour_penalty",    10.0)
+        same_wd_w      = getattr(w, "same_weekday_penalty",  6.0)
+        same_court_w   = getattr(w, "same_court_penalty",    2.0)
+        day_load_w     = getattr(w, "day_load_penalty",      1.5)
+        court_load_w   = getattr(w, "court_load_penalty",    1.0)
+        early_day_w    = getattr(w, "early_day_bonus",       0.5)
+        global_hour_w  = getattr(w, "global_hour_penalty",   5.0)
+        global_wd_w    = getattr(w, "global_weekday_penalty", 4.0)
+
         # Penalizaciones por repetición para AMBAS parejas
         for pid in (p1_id, p2_id):
             for ps_date, ps_start, _ps_end, ps_court in pair_schedule[pid]:
                 if self._hour_bucket(ps_start) == hour_b:
-                    score += w.same_hour_penalty
+                    score += same_hour_w
                 if ps_date.weekday() == weekday:
-                    score += w.same_weekday_penalty
+                    score += same_wd_w
                 if ps_court == court_id:
-                    score += w.same_court_penalty
+                    score += same_court_w
 
         # Penalización por carga del día y de la pista (preferimos repartir)
-        score += day_load.get(slot.date, 0) * w.day_load_penalty
-        score += court_load.get(court_id, 0) * w.court_load_penalty
+        score += day_load.get(slot.date, 0) * day_load_w
+        score += court_load.get(court_id, 0) * court_load_w
 
         # Penalizaciones GLOBALES: evitan que todos los partidos se amontonen
         # en la misma hora/día aunque sea la primera vez de cada pareja.
         if hour_load is not None:
-            score += hour_load.get(hour_b, 0) * w.global_hour_penalty
+            score += hour_load.get(hour_b, 0) * global_hour_w
         if weekday_load is not None:
-            score += weekday_load.get(weekday, 0) * w.global_weekday_penalty
+            score += weekday_load.get(weekday, 0) * global_wd_w
 
         # Bonus leve por programar pronto en la fase (resta puntuación)
         days_offset = (slot.date - self.phase.start_date).days
-        score -= max(0, 30 - days_offset) * (w.early_day_bonus / 30.0)
+        score -= max(0, 30 - days_offset) * (early_day_w / 30.0)
 
         # Bonus fuerte si el slot coincide con la pista fija de alguna pareja.
         # Bonus parcial si solo coincide día o solo hora; bonus doble si coincide exacto.
