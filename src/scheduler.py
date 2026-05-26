@@ -417,7 +417,6 @@ class Scheduler:
         player_day_set: dict,
         hour_load: dict | None = None,
         weekday_load: dict | None = None,
-        pf_slot_to_pairs: "dict[tuple[int, time], set[str]] | None" = None,
         *,
         relax_min_days: bool = False,
         relax_max_week: bool = False,
@@ -458,16 +457,6 @@ class Scheduler:
                 continue
             if self._pair_conflicts_existing(p2_id, d, st, et, pair_schedule):
                 continue
-
-            # ── Reserva de slot PF: si la franja es PF de otra pareja, no usarla.
-            # Esto garantiza que ningún partido ocupe la franja fija de una pareja
-            # ajena antes de que esa pareja haya podido usarla.
-            if pf_slot_to_pairs:
-                slot_key = (d.weekday(), st)
-                if slot_key in pf_slot_to_pairs:
-                    owners = pf_slot_to_pairs[slot_key]
-                    if p1_id not in owners and p2_id not in owners:
-                        continue
 
             # ── Cross-ranking: jugador no juega dos veces el mismo día
             if not relax_cross_player:
@@ -582,25 +571,27 @@ class Scheduler:
         Los partidos asignados en pasadas 2-3 quedan marcados con una nota
         explicativa para que el revisor los identifique en la tabla.
         """
-        # ── Mapa de Pistas Fijas: (weekday, time) → conjunto de pair_ids propietarios.
-        # Se usa en dos lugares:
-        #   1. build_availability_slots: incluye los slots PF aunque estén en bookings
-        #      (la reserva de Syltek a esa hora ES la reserva periódica de la PF).
-        #   2. _find_best_slot: evita que otros partidos ocupen esa franja antes que su dueño.
-        pf_slot_to_pairs: dict[tuple[int, time], set[str]] = defaultdict(set)
+        # ── Franjas de Pistas Fijas: (weekday, time) de todas las parejas con PF.
+        # Estas franjas se incluyen en los slots disponibles aunque haya una reserva
+        # de Syltek — esa reserva ES la reserva periódica de la PF, no un bloqueo.
+        # La asignación concreta se gestiona por scoring + prioridad:
+        #   · _constraint_difficulty: partidos con PF se procesan primero.
+        #   · preferred_slot_bonus: puntuación fuerte hacia el slot exacto.
+        # Si la otra pareja no tiene disponibilidad en ese slot, el scheduler
+        # asignará el partido en otro hueco sin forzar la PF.
+        pf_patterns: set[tuple[int, time]] = set()
         for g in self.phase.groups:
             for p in g.pairs:
                 pw = getattr(p, "preferred_weekday", None)
                 pt = getattr(p, "preferred_time", None)
                 if pw is not None and pt is not None:
-                    pf_slot_to_pairs[(pw, pt)].add(p.id)
-        pf_patterns: "frozenset[tuple[int, time]]" = frozenset(pf_slot_to_pairs.keys())
+                    pf_patterns.add((pw, pt))
 
         slots = build_availability_slots(
             courts=self.phase.courts,
             phase=self.phase,
             bookings=self.phase.bookings,
-            pf_patterns=pf_patterns if pf_patterns else None,
+            pf_patterns=frozenset(pf_patterns) if pf_patterns else None,
         )
         slots.sort(key=lambda s: (s.date, s.start_time, s.court.name))
 
@@ -660,7 +651,6 @@ class Scheduler:
                     match, slots, occupied_slots, pair_schedule,
                     pair_weekly_count, day_load, court_load, player_day_set,
                     hour_load, weekday_load,
-                    pf_slot_to_pairs=pf_slot_to_pairs if pf_slot_to_pairs else None,
                     relax_min_days=relax_min,
                     relax_max_week=relax_week,
                     relax_availability=relax_avail,
