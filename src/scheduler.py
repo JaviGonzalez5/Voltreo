@@ -40,6 +40,10 @@ def _overlaps(s1: datetime, e1: datetime, s2: datetime, e2: datetime) -> bool:
     return s1 < e2 and s2 < e1
 
 
+# Granularidad de inicio de slots: cada 30 min → 17:00, 17:30, 18:00, 18:30, …
+_SLOT_STEP = timedelta(minutes=30)
+
+
 def _player_natural_key(player) -> str:
     """
     Clave normalizada para identificar al mismo jugador físico en distintos grupos.
@@ -88,20 +92,19 @@ def build_availability_slots(
     pf_patterns: "frozenset[tuple[int, time]] | None" = None,
 ) -> list[AvailabilitySlot]:
     """
-    Genera todos los huecos disponibles en cada pista para cada día de la fase,
-    divididos en bloques de match_duration_minutes, respetando las reservas existentes.
+    Genera todos los huecos disponibles en cada pista para cada día de la fase.
+
+    Los slots se generan con granularidad de 30 minutos (_SLOT_STEP), de modo que
+    un partido puede comenzar a las 17:00, 17:30, 18:00, 18:30, 19:00, 19:30, …
+    Cada slot tiene duración match_duration_minutes (p.ej. 90 min).
 
     Las reservas se asocian a pistas por ID, nombre exacto o número del nombre
     para cubrir el caso en que Syltek usa 'Padel N' y el scheduler 'Pista N'.
 
     pf_patterns: conjunto de (weekday, start_time) de pistas fijas conocidas.
-    Para estas franjas se aplican dos tratamientos:
-      1. Si la hora PF cae en la rejilla estándar (múltiplo de duration desde
-         day_start_time): se genera aunque haya una reserva Syltek (esa reserva
-         ES la reserva periódica de la PF y no bloquea el slot).
-      2. Si la hora PF NO cae en la rejilla estándar (p.ej. PF 19:30 con rejilla
-         16:00-17:30-19:00-20:30): se añade un slot extra a esa hora exacta en
-         todas las pistas activas, ignorando reservas (misma lógica que caso 1).
+    Los slots que coincidan con una PF se generan aunque haya una reserva en
+    Syltek — esa reserva ES la reserva periódica de la PF y no debe bloquear
+    el slot de ranking.
     """
     slots: list[AvailabilitySlot] = []
     duration = timedelta(minutes=phase.match_duration_minutes)
@@ -116,30 +119,6 @@ def build_availability_slots(
                 court_day_bookings[court.id][b.start_datetime.date()].append(b)
                 break  # a booking belongs to at most one court
 
-    # Calcular qué horas PF caen FUERA de la rejilla estándar y deben añadirse
-    # como slots extra.  Usamos una fecha ficticia para aritmética de tiempos.
-    _dummy = datetime(2000, 1, 3)  # lunes arbitrario
-    _standard_times: set[time] = set()
-    _t = _dummy.replace(hour=phase.day_start_time.hour, minute=phase.day_start_time.minute,
-                        second=0, microsecond=0)
-    _day_end_dt = _dummy.replace(hour=phase.day_end_time.hour, minute=phase.day_end_time.minute,
-                                 second=0, microsecond=0)
-    while _t + duration <= _day_end_dt:
-        _standard_times.add(_t.time())
-        _t += duration
-
-    # extra_pf: {weekday → [time, ...]} para horas PF fuera de rejilla
-    extra_pf: dict[int, list[time]] = defaultdict(list)
-    if pf_patterns:
-        for pf_wd, pf_t in pf_patterns:
-            if pf_t in _standard_times:
-                continue  # ya se genera en el bucle estándar
-            # Comprobar que el slot cabe dentro del día
-            pf_start_dt = _dummy.replace(hour=pf_t.hour, minute=pf_t.minute,
-                                         second=0, microsecond=0)
-            if pf_start_dt + duration <= _day_end_dt and pf_t >= phase.day_start_time:
-                extra_pf[pf_wd].append(pf_t)
-
     while current <= phase.end_date:
         # ── El ranking solo se juega de lunes a viernes
         if current.weekday() >= 5:
@@ -153,11 +132,11 @@ def build_availability_slots(
             slot_start = _dt(current, phase.day_start_time)
             day_end    = _dt(current, phase.day_end_time)
 
-            # ── Slots de la rejilla estándar ──────────────────────────────
+            # Avanzar de 30 en 30 min; cada slot dura match_duration_minutes
             while slot_start + duration <= day_end:
                 slot_end = slot_start + duration
 
-                # PF alineadas con la rejilla: no bloquear aunque haya reserva
+                # Slots de pista fija: no bloquear aunque haya reserva Syltek
                 is_pf_slot = (
                     pf_patterns is not None
                     and (wd, slot_start.time()) in pf_patterns
@@ -179,20 +158,7 @@ def build_availability_slots(
                             end_time=slot_end.time(),
                         )
                     )
-                slot_start += duration
-
-            # ── Slots extra para PF fuera de la rejilla estándar ─────────
-            # Se generan siempre (la reserva Syltek a esa hora es la propia PF)
-            for pf_t in extra_pf.get(wd, []):
-                pf_end = (_dt(current, pf_t) + duration).time()
-                slots.append(
-                    AvailabilitySlot(
-                        court=court,
-                        date=current,
-                        start_time=pf_t,
-                        end_time=pf_end,
-                    )
-                )
+                slot_start += _SLOT_STEP  # granularidad 30 min
 
         current += timedelta(days=1)
 
@@ -574,7 +540,13 @@ class Scheduler:
         match.status               = MatchStatus.SCHEDULED
         match.conflict_reason      = note
 
-        occupied_slots.add((best.court.id, best.date, best.start_time))
+        # Marcar todos los sub-slots de 30 min que ocupa este partido en la pista,
+        # para que ningún otro partido se solape con él en la misma pista.
+        _t = _dt(best.date, best.start_time)
+        _end = _dt(best.date, best.end_time)
+        while _t < _end:
+            occupied_slots.add((best.court.id, best.date, _t.time()))
+            _t += _SLOT_STEP
         pair_schedule[p1_id].append((best.date, best.start_time, best.end_time, best.court.id))
         pair_schedule[p2_id].append((best.date, best.start_time, best.end_time, best.court.id))
         pair_weekly_count[p1_id][self._week_num(best.date)] += 1
