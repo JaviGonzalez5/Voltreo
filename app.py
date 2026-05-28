@@ -40,29 +40,53 @@ html, body, [class*="css"] {
     background: linear-gradient(175deg, #07111d 0%, #0e243d 60%, #132d4a 100%) !important;
     border-right: 1px solid #1a3350 !important;
 }
-[data-testid="stSidebar"] * { color: #c8dff5 !important; }
+/* Texto general del sidebar — NO aplicar a button ni svg para no corromper iconos */
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] span:not([data-baseweb]),
+[data-testid="stSidebar"] div:not([data-testid="stBaseButton-primary"]):not([data-testid="stBaseButton-secondary"]) > p,
+[data-testid="stSidebar"] label { color: #c8dff5 !important; }
 [data-testid="stSidebar"] hr { border-color: #1e3a58 !important; margin: .5rem 0 !important; }
 
 /* ── Botones dentro del sidebar ─────────────────────────────────── */
 [data-testid="stSidebar"] button {
-    background: rgba(255,255,255,.06) !important;
+    background: rgba(255,255,255,.07) !important;
     color: #c8dff5 !important;
-    border: 1px solid rgba(255,255,255,.10) !important;
-    border-radius: 8px !important;
-    font-size: .85rem !important;
+    border: 1px solid rgba(255,255,255,.13) !important;
+    border-radius: 9px !important;
+    font-size: .86rem !important;
+    font-weight: 600 !important;
     text-align: left !important;
+    transition: all .15s !important;
 }
 [data-testid="stSidebar"] button:hover {
-    background: rgba(0,200,83,.15) !important;
-    border-color: rgba(0,200,83,.35) !important;
+    background: rgba(0,200,83,.16) !important;
+    border-color: rgba(0,200,83,.40) !important;
     color: #90ffc8 !important;
 }
+/* Botón activo (primary) — página actual o acción principal */
 [data-testid="stSidebar"] button[kind="primary"],
 [data-testid="stSidebar"] [data-testid="stBaseButton-primary"] {
     background: rgba(0,200,83,.22) !important;
-    color: #90ffc8 !important;
-    border: 1px solid rgba(0,200,83,.45) !important;
+    color: #7fffc4 !important;
+    border: 1px solid rgba(0,200,83,.50) !important;
     font-weight: 700 !important;
+}
+[data-testid="stSidebar"] button[kind="primary"]:hover,
+[data-testid="stSidebar"] [data-testid="stBaseButton-primary"]:hover {
+    background: rgba(0,200,83,.32) !important;
+    color: #b8ffd8 !important;
+}
+/* Botón de cerrar sesión — rojo suave */
+[data-testid="stSidebar"] button[data-testid="stBaseButton-secondary"]#btn_logout,
+[data-testid="stSidebar"] [data-key="btn_logout"] button {
+    background: rgba(220,53,53,.12) !important;
+    color: #ffaaaa !important;
+    border-color: rgba(220,53,53,.25) !important;
+}
+[data-testid="stSidebar"] [data-key="btn_logout"] button:hover {
+    background: rgba(220,53,53,.25) !important;
+    color: #ffcccc !important;
+    border-color: rgba(220,53,53,.50) !important;
 }
 /* ── Expanders del sidebar ──────────────────────────────────────── */
 [data-testid="stSidebar"] [data-testid="stExpander"] {
@@ -788,6 +812,8 @@ def init_state():
         "tournament": None,
         # Navegación
         "_nav_page": "club_config",
+        # Flag de carga desde DB — se resetea en logout para que recargue al volver a entrar
+        "_db_phase_loaded": False,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -816,13 +842,14 @@ if _db_ok:
                 _row = _db.get_active_phase(_cid_load)
                 if _row:
                     _loaded_phase, _loaded_result = phase_from_db(_row)
-                    st.session_state.phase = _loaded_phase
-                    st.session_state["db_phase_id"] = _row["id"]
-                    if _loaded_phase.groups:
-                        st.session_state.groups = list(_loaded_phase.groups)
-                        st.session_state.data_loaded = True
-                    if _loaded_phase.bookings:
-                        st.session_state.bookings = list(_loaded_phase.bookings)
+                    if _loaded_phase is not None:
+                        st.session_state.phase = _loaded_phase
+                        st.session_state["db_phase_id"] = _row["id"]
+                        if _loaded_phase.groups:
+                            st.session_state.groups = list(_loaded_phase.groups)
+                            st.session_state.data_loaded = True
+                        if _loaded_phase.bookings:
+                            st.session_state.bookings = list(_loaded_phase.bookings)
                     if _loaded_result:
                         st.session_state.schedule_result = _loaded_result
                         st.session_state.matches_scheduled = True
@@ -908,10 +935,12 @@ _R_STEPS = [
     ("import",   "Importar datos",     "Sube grupos, parejas y reservas",      _s.data_loaded),
     ("generate", "Generar calendario", "Crea los partidos automáticamente",    _s.matches_generated),
     ("export",   "Exportar",           "Excel, mensajes WhatsApp y más",       _s.matches_scheduled),
-    ("review",   "Revisión",           "Comprueba conflictos y ajustes",       _s.matches_scheduled),
+    ("review",   "Revisión",           "Comprueba conflictos y ajustes",       _s.matches_scheduled and _s.get("schedule_violations") is not None),
     ("syltek",   "Publicar en Syltek", "Reserva pistas automáticamente",       False),
 ]
 _R_KEYS   = [k for k, *_ in _R_STEPS]
+# Etiquetas estables: siempre "N. Nombre" — el ✅ se muestra solo si el paso está hecho
+# Usamos índice numérico fijo para evitar ValueError cuando cambia el estado del paso
 _R_LABELS = [
     f"{'✅' if d else str(i)+'.'} {l}"
     for i, (k, l, h, d) in enumerate(_R_STEPS, 1)
@@ -924,6 +953,7 @@ with st.sidebar.expander("📊  RANKING", expanded=_IS_RANKING):
         "nav_ranking",
         _R_LABELS,
         index=_r_default_idx,
+        key="radio_ranking",
         label_visibility="hidden",
     )
     if _IS_RANKING:
@@ -931,21 +961,23 @@ with st.sidebar.expander("📊  RANKING", expanded=_IS_RANKING):
         if _r_hint:
             st.caption(f"💡 {_r_hint}")
 
-# Navegar solo cuando el usuario eligió algo distinto al paso actual
-if _r_sel != _R_LABELS[_r_default_idx]:
-    st.session_state["_nav_page"] = _R_KEYS[_R_LABELS.index(_r_sel)]
+# Navegar por índice (no por etiqueta) para evitar ValueError cuando el label cambia al completar un paso
+_r_sel_idx = _R_LABELS.index(_r_sel) if _r_sel in _R_LABELS else _r_default_idx
+if _r_sel_idx != _r_default_idx:
+    st.session_state["_nav_page"] = _R_KEYS[_r_sel_idx]
     st.rerun()
 
 st.sidebar.markdown('<hr style="border-color:#1e3a58;margin:.6rem 0">', unsafe_allow_html=True)
 
 # ── TORNEOS ────────────────────────────────────────────────────────────────
 _T_OBJ = _s.get("tournament")
+_T_SCHED = getattr(_T_OBJ, "scheduled_count", 0) if _T_OBJ is not None else 0
 _T_STEPS = [
     ("t_config",   "Configurar torneo",   "Nombre, categoría, formato y pistas",  _T_OBJ is not None),
-    ("t_pairs",    "Añadir parejas",      "Registra las parejas participantes",    _T_OBJ is not None and len(_T_OBJ.pairs) > 0),
-    ("t_generate", "Generar estructura",  "Crea grupos y/o cuadro",                _T_OBJ is not None and len(_T_OBJ.matches) > 0),
-    ("t_schedule", "Asignar horarios",    "Planificación automática",              _T_OBJ is not None and _T_OBJ.scheduled_count > 0),
-    ("t_export",   "Exportar",            "Descarga el Excel del torneo",          _T_OBJ is not None and _T_OBJ.scheduled_count > 0),
+    ("t_pairs",    "Añadir parejas",      "Registra las parejas participantes",    _T_OBJ is not None and len(getattr(_T_OBJ, "pairs", [])) > 0),
+    ("t_generate", "Generar estructura",  "Crea grupos y/o cuadro",                _T_OBJ is not None and len(getattr(_T_OBJ, "matches", [])) > 0),
+    ("t_schedule", "Asignar horarios",    "Planificación automática",              _T_SCHED > 0),
+    ("t_export",   "Exportar",            "Descarga el Excel del torneo",          _T_SCHED > 0),
 ]
 _T_KEYS   = [k for k, *_ in _T_STEPS]
 _T_LABELS = [
@@ -960,6 +992,7 @@ with st.sidebar.expander("🏆  TORNEOS", expanded=_IS_TOURNAMENT):
         "nav_torneos",
         _T_LABELS,
         index=_t_default_idx,
+        key="radio_torneos",
         label_visibility="hidden",
     )
     if _IS_TOURNAMENT:
@@ -967,8 +1000,9 @@ with st.sidebar.expander("🏆  TORNEOS", expanded=_IS_TOURNAMENT):
         if _t_hint:
             st.caption(f"💡 {_t_hint}")
 
-if _t_sel != _T_LABELS[_t_default_idx]:
-    st.session_state["_nav_page"] = _T_KEYS[_T_LABELS.index(_t_sel)]
+_t_sel_idx = _T_LABELS.index(_t_sel) if _t_sel in _T_LABELS else _t_default_idx
+if _t_sel_idx != _t_default_idx:
+    st.session_state["_nav_page"] = _T_KEYS[_t_sel_idx]
     st.rerun()
 
 # ── Admin ──────────────────────────────────────────────────────────────────
@@ -997,7 +1031,7 @@ st.sidebar.markdown(f'<div style="padding:0 10px"><span class="{_badge_cls}">{_b
 def _t_header(step_num: int, step_title: str, step_hint: str) -> None:
     import datetime as _dt_mod
     t = st.session_state.get("tournament")
-    if t and t.is_top:
+    if t and getattr(t, "is_top", False):
         _cat_html = ""
         if t.category:
             _cls = {"masculino":"t-cat-masc","femenino":"t-cat-fem","mixto":"t-cat-mix"}[t.category.value]
@@ -2158,6 +2192,11 @@ elif page == "export":
 
     phase: RankingPhase = st.session_state.phase
     result: ScheduleResult = st.session_state.schedule_result
+
+    if phase is None or result is None:
+        _empty_state("⚠️", "Datos de fase no disponibles",
+                     "Recarga la página o vuelve a configurar la fase.")
+        st.stop()
     club_name = st.session_state.get("club_name", "El Club")
 
     col1, col2 = st.columns(2)
@@ -2313,6 +2352,7 @@ elif page == "export":
 # ---------------------------------------------------------------------------
 
 elif page == "review":
+    from collections import Counter  # necesario en todo el bloque review
     _page_header("🔍", "Revisión y diagnóstico", "Valida el calendario generado y analiza conflictos y distribución")
 
     if not st.session_state.schedule_result:
@@ -2442,7 +2482,6 @@ elif page == "review":
     # Distribución por día
     if result.scheduled:
         _section_start("📆", "Distribución por día")
-        from collections import Counter
         # Clave de sort: fecha real (YYYY-MM-DD) para orden cronológico correcto
         _day_items = sorted(
             ((m.suggested_date, m.suggested_date.strftime("%a %d/%m"))
@@ -2542,7 +2581,7 @@ elif page == "syltek":
 
     dry_run_toggle = st.toggle(
         "Modo seguro (DRY-RUN) — simula las reservas sin crearlas de verdad",
-        value=True,
+        value=st.session_state.get("dry_run", True),
         key="syl_dry_run",
     )
     if not dry_run_toggle:
@@ -2744,7 +2783,7 @@ elif page == "t_config":
     _section_start("⭐", "Tipo de torneo")
     t_is_top = st.toggle(
         "🏆 **Torneo TOP** — máximo nivel y visibilidad",
-        value=t.is_top if t else False,
+        value=getattr(t, "is_top", False) if t else False,
         help="Los Torneos TOP tienen diseño premium dorado.",
     )
     if t_is_top:
@@ -3151,7 +3190,7 @@ elif page == "t_export":
             _sub_txt = t.subcategory.label if t.subcategory else "Abierta"
             _r_data = [
                 ("Torneo",       t.name),
-                ("TOP",          "⭐ SÍ" if t.is_top else "No"),
+                ("TOP",          "⭐ SÍ" if getattr(t, "is_top", False) else "No"),
                 ("Categoría",    _cat_txt),
                 ("Subcategoría", _sub_txt),
                 ("Sede",         t.location or "—"),
