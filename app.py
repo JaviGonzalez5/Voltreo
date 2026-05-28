@@ -567,6 +567,22 @@ hr { border-color: #edf2fa !important; }
     border-color: #00c853 !important;
     border-right-color: transparent !important;
 }
+[data-testid="stExpander"] summary::before {
+    content: ">";
+    color: #7f9ab5;
+    font-weight: 900;
+    font-size: .78rem;
+    margin-right: .5rem;
+}
+[data-testid="stExpander"] details[open] summary::before {
+    content: "v";
+}
+[data-testid="stExpander"] summary > span > span:first-child,
+[data-testid="stExpander"] summary [data-testid="stIconMaterial"] {
+    display: none !important;
+    visibility: hidden !important;
+    width: 0 !important;
+}
 
 /* Comercial polish: ocultar chrome de Streamlit y estabilizar navegación */
 #MainMenu,
@@ -598,8 +614,8 @@ header[data-testid="stHeader"] * {
     padding-right: 3rem !important;
 }
 [data-testid="stSidebar"] {
-    min-width: 282px !important;
-    max-width: 282px !important;
+    min-width: 306px !important;
+    max-width: 306px !important;
     background: #07121f !important;
 }
 [data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
@@ -711,6 +727,75 @@ header[data-testid="stHeader"] * {
     text-transform: uppercase;
     font-weight: 800;
     padding: .7rem .8rem .2rem;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] {
+    background: rgba(255,255,255,.035) !important;
+    border: 1px solid rgba(255,255,255,.08) !important;
+    border-radius: 10px !important;
+    overflow: hidden !important;
+    margin: .25rem .12rem .5rem !important;
+    box-shadow: none !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary {
+    background: rgba(255,255,255,.045) !important;
+    color: #e8f4ff !important;
+    border-radius: 10px !important;
+    padding: .7rem .78rem !important;
+    font-size: .84rem !important;
+    font-weight: 800 !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary::before {
+    content: ">";
+    color: #8fb0cd;
+    font-weight: 900;
+    font-size: .78rem;
+    margin-right: .5rem;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] details[open] summary::before {
+    content: "v";
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary > span > span:first-child,
+[data-testid="stSidebar"] [data-testid="stExpander"] summary [data-testid="stIconMaterial"] {
+    display: none !important;
+    visibility: hidden !important;
+    width: 0 !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary:hover {
+    background: rgba(255,255,255,.075) !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary svg {
+    color: #8fb0cd !important;
+    fill: #8fb0cd !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stVerticalBlock"] {
+    gap: .3rem !important;
+    padding: .35rem .35rem .55rem !important;
+}
+.pp-flow-meta {
+    color: #7592ae;
+    font-size: .72rem;
+    line-height: 1.35;
+    padding: .15rem .35rem .35rem;
+}
+.pp-step-help {
+    background: rgba(0,196,122,.10);
+    border: 1px solid rgba(0,196,122,.18);
+    color: #bff3df;
+    border-radius: 8px;
+    padding: .6rem .7rem;
+    font-size: .76rem;
+    line-height: 1.38;
+    margin-top: .25rem;
+}
+.pp-step-help strong {
+    display: block;
+    color: #ffffff;
+    font-size: .72rem;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    margin-bottom: .18rem;
 }
 .pp-user-card,
 .pp-empty-club {
@@ -959,6 +1044,31 @@ def _sidebar_button(label: str, target: str, current_page: str, key: str) -> Non
         type="primary" if current_page == target else "secondary",
     ):
         _nav_to(target)
+
+
+def _sidebar_workflow(title: str, steps: list[tuple[str, str, str, bool]], current_page: str, key_prefix: str, expanded: bool) -> None:
+    done_count = sum(1 for _, _, _, done in steps if done)
+    current_hint = next((hint for step_key, _, hint, _ in steps if step_key == current_page), "")
+    with st.sidebar.expander(f"{title} · {done_count}/{len(steps)} pasos", expanded=expanded):
+        st.markdown(
+            '<div class="pp-flow-meta">Flujo guiado paso a paso. Completa cada bloque y continúa con el siguiente.</div>',
+            unsafe_allow_html=True,
+        )
+        for idx, (step_key, label, hint, done) in enumerate(steps, 1):
+            marker = "OK" if done else f"{idx:02d}"
+            button_label = f"{marker}  {label}"
+            if st.button(
+                button_label,
+                key=f"{key_prefix}_{step_key}",
+                use_container_width=True,
+                type="primary" if current_page == step_key else "secondary",
+            ):
+                _nav_to(step_key)
+        if current_hint:
+            st.markdown(
+                f'<div class="pp-step-help"><strong>Paso actual</strong>{escape(current_hint)}</div>',
+                unsafe_allow_html=True,
+            )
 
 
 def _sidebar_step(label: str, state: str, num: int) -> None:
@@ -1346,14 +1456,6 @@ _R_STEPS = [
 ]
 _IS_RANKING = page in {k for k, *_ in _R_STEPS}
 
-st.sidebar.markdown('<div class="pp-nav-section">Ranking</div>', unsafe_allow_html=True)
-for _ri, (_rk, _rl, _rh, _rd) in enumerate(_R_STEPS, 1):
-    _sidebar_button(_rl, _rk, page, f"nav_r_{_rk}")
-if _IS_RANKING:
-    _r_hint = next((h for k, l, h, d in _R_STEPS if k == page), "")
-    if _r_hint:
-        st.sidebar.caption(_r_hint)
-
 _T_OBJ   = _s.get("tournament")
 _T_SCHED = getattr(_T_OBJ, "scheduled_count", 0) if _T_OBJ is not None else 0
 _T_STEPS = [
@@ -1365,13 +1467,9 @@ _T_STEPS = [
 ]
 _IS_TOURNAMENT = page in {k for k, *_ in _T_STEPS}
 
-st.sidebar.markdown('<div class="pp-nav-section">Torneos</div>', unsafe_allow_html=True)
-for _ti, (_tk, _tl, _th, _td) in enumerate(_T_STEPS, 1):
-    _sidebar_button(_tl, _tk, page, f"nav_t_{_tk}")
-if _IS_TOURNAMENT:
-    _t_hint = next((h for k, l, h, d in _T_STEPS if k == page), "")
-    if _t_hint:
-        st.sidebar.caption(_t_hint)
+st.sidebar.markdown('<div class="pp-nav-section">Flujos guiados</div>', unsafe_allow_html=True)
+_sidebar_workflow("Ranking", _R_STEPS, page, "nav_r", expanded=_IS_RANKING)
+_sidebar_workflow("Torneos", _T_STEPS, page, "nav_t", expanded=_IS_TOURNAMENT)
 
 if _db_ok and is_superadmin():
     st.sidebar.markdown('<div class="pp-nav-section">Sistema</div>', unsafe_allow_html=True)
