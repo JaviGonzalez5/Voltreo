@@ -6,8 +6,7 @@ Funciones principales:
   - assign_seeds(pairs, n_seeds) → lista con cabezas de serie asignadas
 """
 
-from itertools import combinations
-from math import ceil, log2
+from math import ceil
 from uuid import uuid4
 
 from .tournament_models import (
@@ -71,32 +70,95 @@ def _group_name(idx: int) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Generación de partidos de grupos
+# Round-robin scheduling (circle method)
+# ---------------------------------------------------------------------------
+
+def _round_robin_rounds(n: int) -> list[list[tuple[int, int]]]:
+    """
+    Devuelve las rondas de un round-robin usando el algoritmo de la ruleta.
+
+    Con N parejas (N par) hay N-1 rondas, cada una con N/2 partidos.
+    Con N impar se añade un BYE (None) y los partidos contra BYE se omiten.
+
+    Retorna: [ [(i,j), ...], ... ]  — índices en la lista de parejas.
+    """
+    teams = list(range(n))
+    if n % 2 == 1:
+        teams.append(None)   # BYE
+    half = len(teams) // 2
+    rounds: list[list[tuple[int, int]]] = []
+    for _ in range(len(teams) - 1):
+        round_pairs = []
+        for k in range(half):
+            t1 = teams[k]
+            t2 = teams[len(teams) - 1 - k]
+            if t1 is not None and t2 is not None:
+                round_pairs.append((t1, t2))
+        rounds.append(round_pairs)
+        # Rotar: el primer elemento es fijo, los demás rotan
+        teams = [teams[0]] + [teams[-1]] + teams[1:-1]
+    return rounds
+
+
+# ---------------------------------------------------------------------------
+# Generación de partidos de grupos (en orden de rondas)
 # ---------------------------------------------------------------------------
 
 def _generate_group_matches(groups: list[TournamentGroup]) -> list[TournamentMatch]:
-    """Round-robin completo para cada grupo."""
-    matches: list[TournamentMatch] = []
+    """
+    Round-robin completo para cada grupo usando el algoritmo de la ruleta.
+
+    Los partidos se generan en orden de RONDAS (no en orden de parejas):
+      Ronda 1: P1 vs P4, P2 vs P3  ← todas las parejas juegan a la vez
+      Ronda 2: P1 vs P3, P4 vs P2
+      Ronda 3: P1 vs P2, P3 vs P4
+
+    Esto permite al scheduler asignarlos en paralelo (una pista por partido
+    dentro de cada ronda), distribuyendo la carga de forma equitativa y
+    evitando que una pareja juegue varios partidos seguidos mientras otra espera.
+    """
+    # Generar todos los grupos en sus rondas, luego intercalar ronda a ronda
+    # para que el scheduler reciba los partidos de la ronda 1 de todos los
+    # grupos antes que los de la ronda 2.
+    per_group_rounds: list[list[list[tuple]]] = []
     for group in groups:
-        for i, (p1, p2) in enumerate(combinations(group.pairs, 2), start=1):
-            matches.append(
-                TournamentMatch.model_construct(
-                    id=str(uuid4()),
-                    round=MatchRound.GROUP,
-                    match_number=i,
-                    group_id=group.id,
-                    pair_1=p1,
-                    pair_2=p2,
-                    pair_1_label=p1.display_name,
-                    pair_2_label=p2.display_name,
-                    status=TMatchStatus.PENDING,
-                    match_date=None,
-                    start_time=None,
-                    end_time=None,
-                    court=None,
-                    conflict_reason=None,
+        n = len(group.pairs)
+        rounds = _round_robin_rounds(n)
+        per_group_rounds.append([(group, round_pairs) for round_pairs in rounds])
+
+    # max_rounds = máximo número de rondas entre todos los grupos
+    max_rounds = max((len(gr) for gr in per_group_rounds), default=0)
+
+    matches: list[TournamentMatch] = []
+    global_match_num = 1
+
+    for round_idx in range(max_rounds):
+        for group_rounds in per_group_rounds:
+            if round_idx >= len(group_rounds):
+                continue
+            group, round_pairs = group_rounds[round_idx]
+            for (i, j) in round_pairs:
+                p1 = group.pairs[i]
+                p2 = group.pairs[j]
+                matches.append(
+                    TournamentMatch.model_construct(
+                        id=str(uuid4()),
+                        round=MatchRound.GROUP,
+                        match_number=global_match_num,
+                        group_id=group.id,
+                        pair_1=p1,
+                        pair_2=p2,
+                        pair_1_label=p1.display_name,
+                        pair_2_label=p2.display_name,
+                        status=TMatchStatus.PENDING,
+                        match_date=None,
+                        start_time=None,
+                        end_time=None,
+                        court=None,
+                        conflict_reason=None,
+                    )
                 )
-            )
+                global_match_num += 1
     return matches
 
 
