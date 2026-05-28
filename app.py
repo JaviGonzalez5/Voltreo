@@ -112,30 +112,42 @@ html, body, [class*="css"] {
 [data-testid="stSidebar"] [data-testid="stExpander"] summary svg {
     fill: #a8c8e8 !important;
 }
-/* ── Radio dentro sidebar ───────────────────────────────────────── */
-/* Contenedor del grupo */
-[data-testid="stSidebar"] [data-testid="stExpander"] [role="radiogroup"] {
+/* ── Botones de paso dentro de expanders (RANKING / TORNEOS) ──────── */
+/* Contenedor de botones dentro del expander */
+[data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stVerticalBlock"] {
     gap: 2px !important;
-    padding: 0 0 4px 0 !important;
+    padding: 4px 6px 8px !important;
 }
-/* Cada fila de opción */
-[data-testid="stSidebar"] [data-testid="stExpander"] [role="radiogroup"] label {
+/* Cada botón de paso: estilo neutro (secondary) */
+[data-testid="stSidebar"] [data-testid="stExpander"] button[kind="secondary"],
+[data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stBaseButton-secondary"] {
+    background: transparent !important;
+    border: none !important;
     border-radius: 8px !important;
+    color: #7fa8c8 !important;
+    font-size: .86rem !important;
+    font-weight: 500 !important;
+    text-align: left !important;
     padding: 6px 10px !important;
-    font-size: .87rem !important;
-    color: #8ab0d0 !important;
-    transition: background .12s !important;
-    cursor: pointer !important;
+    height: auto !important;
+    min-height: 0 !important;
 }
-[data-testid="stSidebar"] [data-testid="stExpander"] [role="radiogroup"] label:hover {
-    background: rgba(0,200,100,.13) !important;
+[data-testid="stSidebar"] [data-testid="stExpander"] button[kind="secondary"]:hover,
+[data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stBaseButton-secondary"]:hover {
+    background: rgba(0,200,100,.10) !important;
     color: #c8dff5 !important;
+    border: none !important;
 }
-/* Opción seleccionada */
-[data-testid="stSidebar"] [data-testid="stExpander"] [role="radio"][aria-checked="true"] label {
-    background: rgba(0,200,100,.20) !important;
+/* Paso activo (primary = página actual) */
+[data-testid="stSidebar"] [data-testid="stExpander"] button[kind="primary"],
+[data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stBaseButton-primary"] {
+    background: rgba(0,200,100,.18) !important;
+    border: 1px solid rgba(0,200,100,.35) !important;
+    border-radius: 8px !important;
     color: #7fffc0 !important;
+    font-size: .86rem !important;
     font-weight: 700 !important;
+    text-align: left !important;
 }
 
 /* ── CABECERA DE PÁGINA ─────────────────────────────────────────── */
@@ -938,72 +950,51 @@ _R_STEPS = [
     ("review",   "Revisión",           "Comprueba conflictos y ajustes",       _s.matches_scheduled and _s.get("schedule_violations") is not None),
     ("syltek",   "Publicar en Syltek", "Reserva pistas automáticamente",       False),
 ]
-_R_KEYS   = [k for k, *_ in _R_STEPS]
-# Etiquetas estables: siempre "N. Nombre" — el ✅ se muestra solo si el paso está hecho
-# Usamos índice numérico fijo para evitar ValueError cuando cambia el estado del paso
-_R_LABELS = [
-    f"{'✅' if d else str(i)+'.'} {l}"
-    for i, (k, l, h, d) in enumerate(_R_STEPS, 1)
-]
-_IS_RANKING = page in set(_R_KEYS)
-_r_default_idx = _R_KEYS.index(page) if _IS_RANKING else 0
+_IS_RANKING = page in {k for k, *_ in _R_STEPS}
 
 with st.sidebar.expander("📊  RANKING", expanded=_IS_RANKING):
-    _r_sel = st.radio(
-        "nav_ranking",
-        _R_LABELS,
-        index=_r_default_idx,
-        key="radio_ranking",
-        label_visibility="hidden",
-    )
+    # st.button (SIN prefijo st.sidebar.) se renderiza DENTRO del expander
+    for _ri, (_rk, _rl, _rh, _rd) in enumerate(_R_STEPS, 1):
+        _r_dot  = "✅" if _rd else str(_ri)
+        _r_active = (page == _rk)
+        _r_label  = f"{'✅' if _rd else f'{_ri}.'} {_rl}"
+        if st.button(_r_label, key=f"nav_r_{_rk}",
+                     use_container_width=True,
+                     type="primary" if _r_active else "secondary"):
+            st.session_state["_nav_page"] = _rk
+            st.rerun()
     if _IS_RANKING:
         _r_hint = next((h for k, l, h, d in _R_STEPS if k == page), "")
         if _r_hint:
             st.caption(f"💡 {_r_hint}")
 
-# Navegar por índice (no por etiqueta) para evitar ValueError cuando el label cambia al completar un paso
-_r_sel_idx = _R_LABELS.index(_r_sel) if _r_sel in _R_LABELS else _r_default_idx
-if _r_sel_idx != _r_default_idx:
-    st.session_state["_nav_page"] = _R_KEYS[_r_sel_idx]
-    st.rerun()
-
 st.sidebar.markdown('<hr style="border-color:#1e3a58;margin:.6rem 0">', unsafe_allow_html=True)
 
 # ── TORNEOS ────────────────────────────────────────────────────────────────
-_T_OBJ = _s.get("tournament")
+_T_OBJ   = _s.get("tournament")
 _T_SCHED = getattr(_T_OBJ, "scheduled_count", 0) if _T_OBJ is not None else 0
 _T_STEPS = [
-    ("t_config",   "Configurar torneo",   "Nombre, categoría, formato y pistas",  _T_OBJ is not None),
-    ("t_pairs",    "Añadir parejas",      "Registra las parejas participantes",    _T_OBJ is not None and len(getattr(_T_OBJ, "pairs", [])) > 0),
-    ("t_generate", "Generar estructura",  "Crea grupos y/o cuadro",                _T_OBJ is not None and len(getattr(_T_OBJ, "matches", [])) > 0),
-    ("t_schedule", "Asignar horarios",    "Planificación automática",              _T_SCHED > 0),
-    ("t_export",   "Exportar",            "Descarga el Excel del torneo",          _T_SCHED > 0),
+    ("t_config",   "Configurar torneo",  "Nombre, categoría, formato y pistas",  _T_OBJ is not None),
+    ("t_pairs",    "Añadir parejas",     "Registra las parejas participantes",    _T_OBJ is not None and len(getattr(_T_OBJ, "pairs",    [])) > 0),
+    ("t_generate", "Generar estructura", "Crea grupos y/o cuadro",                _T_OBJ is not None and len(getattr(_T_OBJ, "matches",  [])) > 0),
+    ("t_schedule", "Asignar horarios",   "Planificación automática",              _T_SCHED > 0),
+    ("t_export",   "Exportar",           "Descarga el Excel del torneo",          _T_SCHED > 0),
 ]
-_T_KEYS   = [k for k, *_ in _T_STEPS]
-_T_LABELS = [
-    f"{'✅' if d else str(i)+'.'} {l}"
-    for i, (k, l, h, d) in enumerate(_T_STEPS, 1)
-]
-_IS_TOURNAMENT = page in set(_T_KEYS)
-_t_default_idx = _T_KEYS.index(page) if _IS_TOURNAMENT else 0
+_IS_TOURNAMENT = page in {k for k, *_ in _T_STEPS}
 
 with st.sidebar.expander("🏆  TORNEOS", expanded=_IS_TOURNAMENT):
-    _t_sel = st.radio(
-        "nav_torneos",
-        _T_LABELS,
-        index=_t_default_idx,
-        key="radio_torneos",
-        label_visibility="hidden",
-    )
+    for _ti, (_tk, _tl, _th, _td) in enumerate(_T_STEPS, 1):
+        _t_active = (page == _tk)
+        _t_label  = f"{'✅' if _td else f'{_ti}.'} {_tl}"
+        if st.button(_t_label, key=f"nav_t_{_tk}",
+                     use_container_width=True,
+                     type="primary" if _t_active else "secondary"):
+            st.session_state["_nav_page"] = _tk
+            st.rerun()
     if _IS_TOURNAMENT:
         _t_hint = next((h for k, l, h, d in _T_STEPS if k == page), "")
         if _t_hint:
             st.caption(f"💡 {_t_hint}")
-
-_t_sel_idx = _T_LABELS.index(_t_sel) if _t_sel in _T_LABELS else _t_default_idx
-if _t_sel_idx != _t_default_idx:
-    st.session_state["_nav_page"] = _T_KEYS[_t_sel_idx]
-    st.rerun()
 
 # ── Admin ──────────────────────────────────────────────────────────────────
 if _db_ok and is_superadmin():
@@ -1147,133 +1138,177 @@ if page == "club_config":
 # ---------------------------------------------------------------------------
 
 elif page == "config":
-    _page_header("⚙️", "Configuración", "Credenciales de Syltek y parámetros de la fase de ranking")
-    st.info("Las credenciales se leen del archivo `.env`. Aquí configuras los parámetros de la fase.")
+    _page_header("⚙️", "Configurar fase de ranking",
+                 "Define los parámetros de esta fase: fechas, pistas y horarios de juego")
 
-    col1, col2 = st.columns(2)
+    # Leer datos del club para pre-rellenar valores
+    _cfg_cid      = current_club_id() if _db_ok else None
+    _cfg_club_row = _db.get_club_by_id(_cfg_cid) if (_db_ok and _db and _cfg_cid) else None
+    _cfg_settings = (_cfg_club_row.get("settings") or {}) if _cfg_club_row else {}
+    _cfg_club_name = (_cfg_club_row["name"] if _cfg_club_row else _s.get("club_name", "Mi Club"))
+    _cfg_n_courts_default = int(_cfg_settings.get("num_courts", 4))
+    _cfg_open_default  = _cfg_settings.get("open_time",  "09:00")
+    _cfg_close_default = _cfg_settings.get("close_time", "22:00")
+
+    # Pre-rellenar con valores de la fase existente si hay una guardada
+    _ep = st.session_state.phase  # existing phase
+
+    # ── Fila de estado (si ya hay fase guardada) ───────────────────────────
+    if _ep is not None:
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:.6rem;'
+            f'background:rgba(0,200,83,.08);border:1px solid rgba(0,200,83,.25);'
+            f'border-radius:10px;padding:.6rem 1rem;margin-bottom:1rem">'
+            f'<span style="font-size:1.1rem">✅</span>'
+            f'<span style="font-size:.9rem;color:#00843d;font-weight:600">'
+            f'Fase activa: <strong>{_ep.name}</strong> · '
+            f'{_ep.start_date} → {_ep.end_date} · '
+            f'{len(_ep.courts)} pistas</span></div>',
+            unsafe_allow_html=True,
+        )
+
+    col1, col2 = st.columns([1, 1], gap="large")
 
     with col1:
-        _section_start("🔌", "Credenciales Syltek")
-        syltek_url = st.text_input(
-            "URL de Syltek",
-            value=settings.syltek_url or "https://padelplus.padelclick.com",
-            help="Solo la URL base, sin path. Ej: https://padelplus.padelclick.com",
+        _section_start("📅", "Identificación y fechas")
+        _cfg_phase_name = st.text_input(
+            "Nombre de la fase",
+            value=_ep.name if _ep else "Ranking Primavera 2026",
+            placeholder="Ej: Ranking Primavera 2026",
         )
-        syltek_user = st.text_input("Usuario", value=settings.syltek_user or "")
-        syltek_pass = st.text_input("Contraseña", type="password", value="")
+        _cc1, _cc2 = st.columns(2)
+        with _cc1:
+            _cfg_start = st.date_input("Inicio", value=_ep.start_date if _ep else date.today() + timedelta(days=7))
+        with _cc2:
+            _cfg_end   = st.date_input("Fin",    value=_ep.end_date   if _ep else date.today() + timedelta(days=49))
 
-        dry_run = st.toggle("Modo Dry-Run (sin escritura real)", value=True)
-        st.session_state.dry_run = dry_run
-
-        if st.button("🔌 Comprobar login con Syltek"):
-            if not syltek_url or not syltek_user or not syltek_pass:
-                st.error("Rellena URL, usuario y contraseña antes de probar.")
-            else:
-                with st.spinner("Intentando login... (puede tardar 15–30 segundos)"):
-                    ok, msg = run_login_check(syltek_url, syltek_user, syltek_pass)
-                if ok:
-                    st.success(f"✅ {msg}")
-                else:
-                    st.error(f"❌ {msg}")
-                    st.info(
-                        "Revisa los selectores en `src/syltek_connector.py` "
-                        "y las capturas en `debug/screenshots/`."
-                    )
+        st.markdown("")
+        _section_start("⏰", "Horario de juego")
+        _cfg_open_val  = _ep.day_start_time if _ep else (
+            time(int(_cfg_open_default[:2]),  int(_cfg_open_default[3:5]))
+            if isinstance(_cfg_open_default, str) else time(9, 0)
+        )
+        _cfg_close_val = _ep.day_end_time if _ep else (
+            time(int(_cfg_close_default[:2]), int(_cfg_close_default[3:5]))
+            if isinstance(_cfg_close_default, str) else time(22, 0)
+        )
+        _h1, _h2 = st.columns(2)
+        with _h1:
+            _cfg_start_h = st.time_input("Primera hora de juego", value=_cfg_open_val)
+        with _h2:
+            _cfg_end_h   = st.time_input("Última hora de juego",  value=_cfg_close_val)
+        st.caption("💡 Los partidos se programarán dentro de esta franja horaria.")
 
     with col2:
-        _section_start("📅", "Parámetros de la fase")
-        phase_name = st.text_input("Nombre de la fase", value="Fase 1")
-        start_date = st.date_input("Fecha de inicio", value=date.today() + timedelta(days=7))
-        end_date = st.date_input("Fecha de fin", value=date.today() + timedelta(days=42))
-
-        col2a, col2b = st.columns(2)
-        with col2a:
-            start_hour = st.time_input("Hora mínima de juego", value=time(16, 0))
-        with col2b:
-            end_hour = st.time_input("Hora máxima de juego", value=time(22, 30))
-
-        match_duration = st.slider("Duración del partido (min)", 60, 120, 90, step=30)
-        n_courts = st.slider("Número de pistas disponibles", 1, 12, 4)
-        max_per_week = st.slider("Máx. partidos por pareja/semana", 1, 5, 1)
-        min_days_between = st.slider(
-            "Mín. días entre partidos de una misma pareja",
-            0, 7, 2,
-            help="0 = sin restricción. Evita que una pareja juegue dos días seguidos.",
+        _section_start("🏟️", "Pistas para esta fase")
+        _cfg_n_courts = st.number_input(
+            "Número de pistas disponibles",
+            min_value=1, max_value=30,
+            value=len(_ep.courts) if _ep and _ep.courts else _cfg_n_courts_default,
+            help=f"Tu club tiene {_cfg_n_courts_default} pistas registradas.",
         )
-        seed_enabled = st.checkbox(
-            "Asignación reproducible (semilla fija)",
-            value=True,
-            help="Si está activado, generar el calendario dos veces con la misma config da el mismo resultado.",
+        # Nombres personalizados de pistas
+        _court_names_default = (
+            [c.name for c in _ep.courts] if _ep and _ep.courts else
+            [f"Pista {i}" for i in range(1, int(_cfg_n_courts) + 1)]
         )
-        random_seed_val = st.number_input("Semilla", value=42, step=1) if seed_enabled else None
-        club_name = st.text_input("Nombre del club", value="Mi Club de Pádel")
+        with st.expander("Personalizar nombres de pistas", expanded=False):
+            _court_names = []
+            for _ci in range(int(_cfg_n_courts)):
+                _default_name = _court_names_default[_ci] if _ci < len(_court_names_default) else f"Pista {_ci+1}"
+                _court_names.append(st.text_input(f"Pista {_ci+1}", value=_default_name, key=f"cname_{_ci}"))
 
-        if st.button("💾 Guardar configuración de fase"):
-            errs = validate_phase_dates(start_date, end_date)
-            if errs:
-                for e in errs:
-                    st.error(e)
-            else:
-                from uuid import uuid4 as _uuid4
-                from src.models import BalanceWeights
-                courts = [
-                    Court.model_construct(id=f"court_{i}", name=f"Pista {i}", indoor=False, active=True)
-                    for i in range(1, n_courts + 1)
-                ]
-                phase = RankingPhase.model_construct(
-                    id=str(_uuid4()),
-                    name=phase_name,
-                    start_date=start_date,
-                    end_date=end_date,
-                    courts=courts,
-                    groups=st.session_state.groups,
-                    bookings=st.session_state.bookings,
-                    match_duration_minutes=match_duration,
-                    day_start_time=start_hour,
-                    day_end_time=end_hour,
-                    max_matches_per_week=max_per_week,
-                    min_days_between_matches=min_days_between,
-                    random_seed=int(random_seed_val) if random_seed_val is not None else None,
-                    balance_weights=BalanceWeights.model_construct(
-                        same_hour_penalty=10.0,
-                        same_weekday_penalty=6.0,
-                        same_court_penalty=2.0,
-                        day_load_penalty=1.5,
-                        court_load_penalty=1.0,
-                        early_day_bonus=0.5,
-                        preferred_slot_bonus=25.0,
-                        global_hour_penalty=5.0,
-                        global_weekday_penalty=4.0,
-                        late_hour_penalty=2.5,
-                        top_candidates_pool=4,
-                    ),
+        st.markdown("")
+        _section_start("🎾", "Parámetros de partido")
+        _cfg_duration = st.select_slider(
+            "Duración de cada partido",
+            options=[60, 75, 90, 105, 120],
+            value=_ep.match_duration_minutes if _ep else 90,
+            format_func=lambda x: f"{x} min",
+        )
+        _cfg_max_week = st.slider(
+            "Máx. partidos por pareja / semana", 1, 5,
+            value=getattr(_ep, "max_matches_per_week", 1) if _ep else 1,
+        )
+        _cfg_min_days = st.slider(
+            "Mín. días entre partidos de la misma pareja", 0, 7,
+            value=getattr(_ep, "min_days_between_matches", 2) if _ep else 2,
+            help="0 = sin restricción",
+        )
+
+        with st.expander("⚙️ Opciones avanzadas", expanded=False):
+            _cfg_seed_on = st.checkbox("Resultado reproducible (semilla fija)", value=True)
+            _cfg_seed    = st.number_input("Semilla", value=42, step=1) if _cfg_seed_on else None
+
+    st.divider()
+
+    _save_col, _next_col = st.columns([3, 1])
+    with _save_col:
+        _save_btn = st.button("💾 Guardar configuración de fase", type="primary", use_container_width=True)
+    with _next_col:
+        if st.button("Importar datos →", use_container_width=True, disabled=_ep is None):
+            st.session_state["_nav_page"] = "import"; st.rerun()
+
+    if _save_btn:
+        _errs_phase = validate_phase_dates(_cfg_start, _cfg_end)
+        if _errs_phase:
+            for _e in _errs_phase:
+                st.error(_e)
+        else:
+            from uuid import uuid4 as _uuid4
+            from src.models import BalanceWeights
+            _new_courts = [
+                Court.model_construct(
+                    id=f"court_{i}",
+                    name=_court_names[i-1] if i <= len(_court_names) else f"Pista {i}",
+                    indoor=False, active=True,
                 )
-                st.session_state.phase = phase
-                st.session_state.courts = courts
-                st.session_state["club_name"] = club_name
+                for i in range(1, int(_cfg_n_courts) + 1)
+            ]
+            _new_phase = RankingPhase.model_construct(
+                id=str(_uuid4()),
+                name=_cfg_phase_name,
+                start_date=_cfg_start,
+                end_date=_cfg_end,
+                courts=_new_courts,
+                groups=st.session_state.groups,
+                bookings=st.session_state.bookings,
+                match_duration_minutes=_cfg_duration,
+                day_start_time=_cfg_start_h,
+                day_end_time=_cfg_end_h,
+                max_matches_per_week=_cfg_max_week,
+                min_days_between_matches=_cfg_min_days,
+                random_seed=int(_cfg_seed) if _cfg_seed is not None else None,
+                balance_weights=BalanceWeights.model_construct(
+                    same_hour_penalty=10.0, same_weekday_penalty=6.0,
+                    same_court_penalty=2.0, day_load_penalty=1.5,
+                    court_load_penalty=1.0, early_day_bonus=0.5,
+                    preferred_slot_bonus=25.0, global_hour_penalty=5.0,
+                    global_weekday_penalty=4.0, late_hour_penalty=2.5,
+                    top_candidates_pool=4,
+                ),
+            )
+            st.session_state.phase  = _new_phase
+            st.session_state.courts = _new_courts
+            st.session_state["club_name"] = _cfg_club_name
 
-                # Persistir en Supabase si está configurado
-                if _db_ok and _db is not None:
-                    _cid = current_club_id()
-                    if _cid:
-                        try:
-                            _payload = phase_to_db(phase, _cid, st.session_state.get("db_phase_id"))
-                            _saved = _db.upsert_phase(
-                                club_id=_cid,
-                                name=_payload["name"],
-                                start_date=_payload["start_date"],
-                                end_date=_payload["end_date"],
-                                phase_config=_payload["phase_config"],
-                                groups_data=_payload["groups_data"],
-                                bookings_data=_payload["bookings_data"],
-                                schedule_result=None,
-                                phase_id=_payload["phase_id"],
-                            )
-                            st.session_state["db_phase_id"] = _saved["id"]
-                        except Exception as _e:
-                            st.warning(f"⚠️ No se pudo guardar en BD: {_e}")
-
-                st.success("✅ Configuración guardada.")
+            if _db_ok and _db is not None and _cfg_cid:
+                try:
+                    _payload = phase_to_db(_new_phase, _cfg_cid, st.session_state.get("db_phase_id"))
+                    _saved   = _db.upsert_phase(
+                        club_id=_cfg_cid, name=_payload["name"],
+                        start_date=_payload["start_date"], end_date=_payload["end_date"],
+                        phase_config=_payload["phase_config"], groups_data=_payload["groups_data"],
+                        bookings_data=_payload["bookings_data"], schedule_result=None,
+                        phase_id=_payload["phase_id"],
+                    )
+                    st.session_state["db_phase_id"] = _saved["id"]
+                    st.success(f"✅ Fase **{_cfg_phase_name}** guardada correctamente.")
+                except Exception as _e:
+                    st.warning(f"⚠️ No se pudo guardar en BD: {_e}")
+            else:
+                st.success(f"✅ Fase **{_cfg_phase_name}** guardada en sesión.")
+            st.rerun()
 
 # ---------------------------------------------------------------------------
 # PÁGINA 2: Importar datos
