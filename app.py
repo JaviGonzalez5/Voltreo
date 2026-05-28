@@ -69,33 +69,71 @@ html, body, [class*="css"] {
     background: rgba(255,255,255,.04) !important;
     border: 1px solid rgba(255,255,255,.10) !important;
     border-radius: 10px !important;
-    margin-bottom: 6px !important;
+    margin-bottom: 8px !important;
+    overflow: hidden !important;
 }
 [data-testid="stSidebar"] [data-testid="stExpander"] summary {
-    font-size: .82rem !important;
+    font-size: .80rem !important;
     font-weight: 800 !important;
-    letter-spacing: .06em !important;
+    letter-spacing: .09em !important;
     text-transform: uppercase !important;
-    color: #7fa8cc !important;
-    padding: 8px 12px !important;
+    color: #5a8cb0 !important;
+    padding: 9px 12px !important;
 }
 [data-testid="stSidebar"] [data-testid="stExpander"] summary:hover {
     color: #c8dff5 !important;
+    background: rgba(255,255,255,.04) !important;
+}
+/* Hide empty label rendered by label_visibility="hidden" */
+[data-testid="stSidebar"] [data-testid="stExpander"] .stRadio > label:empty,
+[data-testid="stSidebar"] [data-testid="stExpander"] .stRadio > div:first-child:empty {
+    display: none !important;
+}
+/* No extra padding around the radio inside the expander */
+[data-testid="stSidebar"] [data-testid="stExpander"] .stRadio {
+    padding: 4px 4px 6px !important;
 }
 /* ── Radio dentro sidebar ───────────────────────────────────────── */
-[data-testid="stSidebar"] [role="radiogroup"] { gap: 2px !important; }
-[data-testid="stSidebar"] label {
-    border-radius: 9px !important;
-    padding: 7px 12px !important;
-    transition: all .15s !important;
-    font-size: .9rem !important;
+[data-testid="stSidebar"] [role="radiogroup"] {
+    gap: 1px !important;
+    padding: 2px 0 !important;
 }
-[data-testid="stSidebar"] label:hover { background: rgba(0,200,100,.13) !important; }
-[data-testid="stSidebar"] [aria-checked="true"] label {
-    background: rgba(0,200,100,.2) !important;
-    color: #90ffc8 !important;
+/* Ocultar el círculo nativo del radio */
+[data-testid="stSidebar"] [role="radiogroup"] [data-testid="stMarkdownContainer"] p,
+[data-testid="stSidebar"] [data-baseweb="radio"] > div:first-child {
+    display: none !important;
+}
+[data-testid="stSidebar"] [data-baseweb="radio"] {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    width: 100% !important;
+}
+[data-testid="stSidebar"] [data-baseweb="radio"] label {
+    display: flex !important;
+    align-items: center !important;
+    width: 100% !important;
+    border-radius: 8px !important;
+    padding: 6px 12px !important;
+    cursor: pointer !important;
+    transition: background .13s !important;
+    font-size: .88rem !important;
+    font-weight: 500 !important;
+    color: #8ab0d0 !important;
+    margin: 1px 0 !important;
+}
+[data-testid="stSidebar"] [data-baseweb="radio"] label:hover {
+    background: rgba(0,200,100,.12) !important;
+    color: #c8dff5 !important;
+}
+[data-testid="stSidebar"] [data-baseweb="radio"][aria-checked="true"] label,
+[data-testid="stSidebar"] [data-baseweb="radio"] [aria-checked="true"] ~ label {
+    background: rgba(0,200,100,.18) !important;
+    color: #7fffc0 !important;
     font-weight: 700 !important;
 }
+/* Ocultar el dot del radio nativo */
+[data-testid="stSidebar"] [data-baseweb="radio"] svg { display: none !important; }
 
 /* ── CABECERA DE PÁGINA ─────────────────────────────────────────── */
 .pp-page-title {
@@ -871,37 +909,19 @@ if _db_ok and is_authenticated():
 
 st.sidebar.markdown('<hr style="border-color:#1e3a58;margin:.5rem 0">', unsafe_allow_html=True)
 
-# ── Función de navegación ──────────────────────────────────────────────────
-def _nav(key: str, label: str, done: bool = False, active: bool = False, hint: str = "") -> None:
-    _icon = "✅" if done else ("▶️" if active else "   "  )
-    if st.sidebar.button(
-        f"{_icon} {label}", key=f"nav_{key}",
-        use_container_width=True,
-        type="primary" if active else "secondary",
-    ):
-        st.session_state["_nav_page"] = key
-        st.rerun()
-    if active and hint:
-        st.sidebar.markdown(
-            f'<div style="font-size:.73rem;color:#5a8cb0;padding:1px 4px 6px 14px">'
-            f'💡 {hint}</div>',
-            unsafe_allow_html=True,
-        )
-
-def _section_label(txt: str) -> None:
-    st.sidebar.markdown(
-        f'<div style="font-size:.68rem;font-weight:800;letter-spacing:.12em;'
-        f'text-transform:uppercase;color:#3d6080;padding:8px 10px 4px">{txt}</div>',
-        unsafe_allow_html=True,
-    )
-
 # ── CLUB ───────────────────────────────────────────────────────────────────
-_section_label("🏢 Club")
-_nav("club_config", "Configuración del club",
-     done=bool(_club_name_sidebar), active=(page == "club_config"),
-     hint="Nombre, pistas, horarios y contacto")
+_club_done = bool(_club_name_sidebar)
+_club_icon = "✅" if _club_done else "🏢"
+if st.sidebar.button(
+    f"{_club_icon}  Configuración del club",
+    key="nav_club_config",
+    use_container_width=True,
+    type="primary" if page == "club_config" else "secondary",
+):
+    st.session_state["_nav_page"] = "club_config"
+    st.rerun()
 
-st.sidebar.markdown('<hr style="border-color:#1e3a58;margin:.5rem 0">', unsafe_allow_html=True)
+st.sidebar.markdown('<hr style="border-color:#1e3a58;margin:.6rem 0">', unsafe_allow_html=True)
 
 # ── RANKING ────────────────────────────────────────────────────────────────
 _R_STEPS = [
@@ -912,36 +932,78 @@ _R_STEPS = [
     ("review",   "Revisión",           "Comprueba conflictos y ajustes",       _s.matches_scheduled),
     ("syltek",   "Publicar en Syltek", "Reserva pistas automáticamente",       False),
 ]
-_IS_RANKING = page in {s[0] for s in _R_STEPS}
+_R_KEYS   = [k for k, *_ in _R_STEPS]
+_R_LABELS = [
+    f"{'✅' if d else str(i)+'.'} {l}"
+    for i, (k, l, h, d) in enumerate(_R_STEPS, 1)
+]
+_IS_RANKING = page in set(_R_KEYS)
+_r_default_idx = _R_KEYS.index(page) if _IS_RANKING else 0
 
-_section_label("📊 Ranking")
-with st.sidebar.expander("Ver pasos del ranking →", expanded=_IS_RANKING):
-    for _sk, _sl, _sh, _sd in _R_STEPS:
-        _nav(_sk, f"{'1234567890'[_R_STEPS.index((_sk,_sl,_sh,_sd))]}. {_sl}",
-             done=_sd, active=(page==_sk), hint=_sh)
+with st.sidebar.expander("📊  RANKING", expanded=_IS_RANKING):
+    # st.radio renders INSIDE the expander (no st.sidebar. prefix needed here)
+    _r_sel = st.radio(
+        "Ranking",
+        _R_LABELS,
+        index=_r_default_idx,
+        label_visibility="hidden",
+    )
+    if _IS_RANKING:
+        _r_hint = next((h for k, l, h, d in _R_STEPS if k == page), "")
+        if _r_hint:
+            st.caption(f"💡 {_r_hint}")
 
-st.sidebar.markdown('<hr style="border-color:#1e3a58;margin:.5rem 0">', unsafe_allow_html=True)
+# Navigate only when the user explicitly picked a different step
+if _r_sel != _R_LABELS[_r_default_idx]:
+    st.session_state["_nav_page"] = _R_KEYS[_R_LABELS.index(_r_sel)]
+    st.rerun()
+
+st.sidebar.markdown('<hr style="border-color:#1e3a58;margin:.6rem 0">', unsafe_allow_html=True)
 
 # ── TORNEOS ────────────────────────────────────────────────────────────────
 _T_OBJ = _s.get("tournament")
 _T_STEPS = [
-    ("t_config",   "Configurar torneo",  "Nombre, categoría, formato y pistas",  _T_OBJ is not None),
-    ("t_pairs",    "Añadir parejas",     "Registra las parejas participantes",   _T_OBJ is not None and len(_T_OBJ.pairs) > 0),
-    ("t_generate", "Generar estructura", "Crea grupos y/o cuadro",               _T_OBJ is not None and len(_T_OBJ.matches) > 0),
-    ("t_schedule", "Asignar horarios",   "Planificación automática",             _T_OBJ is not None and _T_OBJ.scheduled_count > 0),
-    ("t_export",   "Exportar",           "Descarga el Excel del torneo",         _T_OBJ is not None and _T_OBJ.scheduled_count > 0),
+    ("t_config",   "Configurar torneo",   "Nombre, categoría, formato y pistas",  _T_OBJ is not None),
+    ("t_pairs",    "Añadir parejas",      "Registra las parejas participantes",    _T_OBJ is not None and len(_T_OBJ.pairs) > 0),
+    ("t_generate", "Generar estructura",  "Crea grupos y/o cuadro",                _T_OBJ is not None and len(_T_OBJ.matches) > 0),
+    ("t_schedule", "Asignar horarios",    "Planificación automática",              _T_OBJ is not None and _T_OBJ.scheduled_count > 0),
+    ("t_export",   "Exportar",            "Descarga el Excel del torneo",          _T_OBJ is not None and _T_OBJ.scheduled_count > 0),
 ]
-_IS_TOURNAMENT = page in {s[0] for s in _T_STEPS}
+_T_KEYS   = [k for k, *_ in _T_STEPS]
+_T_LABELS = [
+    f"{'✅' if d else str(i)+'.'} {l}"
+    for i, (k, l, h, d) in enumerate(_T_STEPS, 1)
+]
+_IS_TOURNAMENT = page in set(_T_KEYS)
+_t_default_idx = _T_KEYS.index(page) if _IS_TOURNAMENT else 0
 
-_section_label("🏆 Torneos")
-with st.sidebar.expander("Ver pasos del torneo →", expanded=_IS_TOURNAMENT):
-    for _i, (_sk, _sl, _sh, _sd) in enumerate(_T_STEPS, 1):
-        _nav(_sk, f"{_i}. {_sl}", done=_sd, active=(page==_sk), hint=_sh)
+with st.sidebar.expander("🏆  TORNEOS", expanded=_IS_TOURNAMENT):
+    _t_sel = st.radio(
+        "Torneos",
+        _T_LABELS,
+        index=_t_default_idx,
+        label_visibility="hidden",
+    )
+    if _IS_TOURNAMENT:
+        _t_hint = next((h for k, l, h, d in _T_STEPS if k == page), "")
+        if _t_hint:
+            st.caption(f"💡 {_t_hint}")
+
+if _t_sel != _T_LABELS[_t_default_idx]:
+    st.session_state["_nav_page"] = _T_KEYS[_T_LABELS.index(_t_sel)]
+    st.rerun()
 
 # ── Admin ──────────────────────────────────────────────────────────────────
 if _db_ok and is_superadmin():
-    st.sidebar.markdown('<hr style="border-color:#1e3a58;margin:.5rem 0">', unsafe_allow_html=True)
-    _nav("admin", "🛠️ Administración", active=(page == "admin"))
+    st.sidebar.markdown('<hr style="border-color:#1e3a58;margin:.6rem 0">', unsafe_allow_html=True)
+    if st.sidebar.button(
+        "🛠️  Administración",
+        key="nav_admin",
+        use_container_width=True,
+        type="primary" if page == "admin" else "secondary",
+    ):
+        st.session_state["_nav_page"] = "admin"
+        st.rerun()
 
 # ── Badge Dry-Run ──────────────────────────────────────────────────────────
 st.sidebar.markdown('<hr style="border-color:#1e3a58;margin:.8rem 0 .4rem">', unsafe_allow_html=True)
