@@ -84,56 +84,31 @@ html, body, [class*="css"] {
     color: #c8dff5 !important;
     background: rgba(255,255,255,.04) !important;
 }
-/* Hide empty label rendered by label_visibility="hidden" */
-[data-testid="stSidebar"] [data-testid="stExpander"] .stRadio > label:empty,
-[data-testid="stSidebar"] [data-testid="stExpander"] .stRadio > div:first-child:empty {
-    display: none !important;
-}
-/* No extra padding around the radio inside the expander */
-[data-testid="stSidebar"] [data-testid="stExpander"] .stRadio {
-    padding: 4px 4px 6px !important;
-}
 /* ── Radio dentro sidebar ───────────────────────────────────────── */
-[data-testid="stSidebar"] [role="radiogroup"] {
-    gap: 1px !important;
-    padding: 2px 0 !important;
+/* Contenedor del grupo */
+[data-testid="stSidebar"] [data-testid="stExpander"] [role="radiogroup"] {
+    gap: 2px !important;
+    padding: 0 0 4px 0 !important;
 }
-/* Ocultar el círculo nativo del radio */
-[data-testid="stSidebar"] [role="radiogroup"] [data-testid="stMarkdownContainer"] p,
-[data-testid="stSidebar"] [data-baseweb="radio"] > div:first-child {
-    display: none !important;
-}
-[data-testid="stSidebar"] [data-baseweb="radio"] {
-    background: transparent !important;
-    border: none !important;
-    padding: 0 !important;
-    width: 100% !important;
-}
-[data-testid="stSidebar"] [data-baseweb="radio"] label {
-    display: flex !important;
-    align-items: center !important;
-    width: 100% !important;
+/* Cada fila de opción */
+[data-testid="stSidebar"] [data-testid="stExpander"] [role="radiogroup"] label {
     border-radius: 8px !important;
-    padding: 6px 12px !important;
-    cursor: pointer !important;
-    transition: background .13s !important;
-    font-size: .88rem !important;
-    font-weight: 500 !important;
+    padding: 6px 10px !important;
+    font-size: .87rem !important;
     color: #8ab0d0 !important;
-    margin: 1px 0 !important;
+    transition: background .12s !important;
+    cursor: pointer !important;
 }
-[data-testid="stSidebar"] [data-baseweb="radio"] label:hover {
-    background: rgba(0,200,100,.12) !important;
+[data-testid="stSidebar"] [data-testid="stExpander"] [role="radiogroup"] label:hover {
+    background: rgba(0,200,100,.13) !important;
     color: #c8dff5 !important;
 }
-[data-testid="stSidebar"] [data-baseweb="radio"][aria-checked="true"] label,
-[data-testid="stSidebar"] [data-baseweb="radio"] [aria-checked="true"] ~ label {
-    background: rgba(0,200,100,.18) !important;
+/* Opción seleccionada */
+[data-testid="stSidebar"] [data-testid="stExpander"] [role="radio"][aria-checked="true"] label {
+    background: rgba(0,200,100,.20) !important;
     color: #7fffc0 !important;
     font-weight: 700 !important;
 }
-/* Ocultar el dot del radio nativo */
-[data-testid="stSidebar"] [data-baseweb="radio"] svg { display: none !important; }
 
 /* ── CABECERA DE PÁGINA ─────────────────────────────────────────── */
 .pp-page-title {
