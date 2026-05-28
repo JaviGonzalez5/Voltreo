@@ -111,7 +111,7 @@ class SupabaseDB:
 
     def list_users(self, club_id: Optional[str] = None) -> list[dict]:
         """Lista usuarios. Si club_id es None, devuelve todos (para superadmin)."""
-        q = self._c.table("users").select("id, username, display_name, role, email, is_active, club_id, created_at")
+        q = self._c.table("users").select("*")
         if club_id is not None:
             q = q.eq("club_id", club_id)
         resp = q.order("username").execute()
