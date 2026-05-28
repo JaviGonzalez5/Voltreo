@@ -321,6 +321,62 @@ html, body, [class*="css"] {
     font-size: .78rem; font-weight: 700;
 }
 
+/* ── TORNEOS — Tarjeta TOP ──────────────────────────────────────── */
+.t-top-banner {
+    background: linear-gradient(135deg, #1a0533 0%, #3b0f6e 40%, #6a1b9a 100%);
+    border: 2px solid #ffd700;
+    border-radius: 20px;
+    padding: 1.4rem 2rem;
+    margin-bottom: 1.4rem;
+    box-shadow: 0 4px 24px rgba(106,27,154,.35), 0 0 0 1px rgba(255,215,0,.15);
+    position: relative;
+    overflow: hidden;
+}
+.t-top-banner::before {
+    content: "★ TOP";
+    position: absolute;
+    top: 12px; right: 20px;
+    font-size: .75rem; font-weight: 900;
+    color: #ffd700;
+    letter-spacing: .15em;
+    text-shadow: 0 0 10px rgba(255,215,0,.6);
+}
+.t-top-banner .t-top-name {
+    font-size: 1.6rem;
+    font-weight: 900;
+    color: #fff;
+    letter-spacing: -.01em;
+    margin-bottom: .2rem;
+}
+.t-top-banner .t-top-meta {
+    font-size: .88rem;
+    color: rgba(255,255,255,.75);
+}
+.t-top-banner .t-top-prize {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #ffd700;
+    margin-top: .5rem;
+}
+/* Badge de categoría */
+.t-cat-masc  { background:#1565c0; color:#fff; padding:3px 12px; border-radius:20px; font-size:.78rem; font-weight:700; display:inline-block; }
+.t-cat-fem   { background:#c2185b; color:#fff; padding:3px 12px; border-radius:20px; font-size:.78rem; font-weight:700; display:inline-block; }
+.t-cat-mix   { background:#6a1b9a; color:#fff; padding:3px 12px; border-radius:20px; font-size:.78rem; font-weight:700; display:inline-block; }
+.t-subcat    { background:#263238; color:#90caf9; border:1px solid #37474f; padding:3px 10px; border-radius:20px; font-size:.78rem; font-weight:700; display:inline-block; margin-left:6px; }
+/* Tarjeta torneo normal */
+.t-card {
+    background: #fff;
+    border: 1.5px solid #e4edf8;
+    border-radius: 16px;
+    padding: 1.2rem 1.4rem;
+    margin-bottom: .9rem;
+    box-shadow: 0 1px 8px rgba(11,26,43,.07);
+    transition: box-shadow .15s, transform .15s;
+}
+.t-card:hover { box-shadow: 0 4px 18px rgba(11,26,43,.12); transform: translateY(-1px); }
+.t-card-name { font-size: 1.05rem; font-weight: 800; color: #07111d; }
+.t-card-meta { font-size: .82rem; color: #6b82a0; margin-top: .2rem; }
+
 /* ── ESTADO VACÍO ───────────────────────────────────────────────── */
 .pp-empty {
     text-align: center;
@@ -455,6 +511,7 @@ from src.syltek_connector import SyltekConnector, run_login_check, _parse_occupi
 from src.tournament_models import (
     TournamentConfig, TournamentFormat, TournamentPair, TournamentPlayer,
     TournamentCourt, TMatchStatus, MatchRound,
+    TournamentCategory, TournamentSubcategory,
 )
 from src.tournament_generator import (
     generate_tournament_structure, tournament_summary as _t_summary,
@@ -2426,10 +2483,32 @@ elif page == "syltek":
 # ---------------------------------------------------------------------------
 
 elif page == "tournament":
-    _page_header("🏆", "Torneos", "Organiza torneos de grupos, cuadro o grupos+cuadro con horarios automáticos")
 
     # ── Estado del torneo en sesión
     t: TournamentConfig | None = st.session_state.get("tournament")
+
+    # ── Cabecera dinámica según si hay torneo activo
+    if t and t.is_top:
+        _cat_html = ""
+        if t.category:
+            _cls = {"masculino": "t-cat-masc", "femenino": "t-cat-fem", "mixto": "t-cat-mix"}[t.category.value]
+            _cat_html = f'<span class="{_cls}">{t.category.icon} {t.category.label}</span>'
+        if t.subcategory:
+            _cat_html += f'<span class="t-subcat">{t.subcategory.label}</span>'
+        _dates = f"{t.start_date.strftime("%d/%m/%Y")}" + (f" – {t.end_date.strftime("%d/%m/%Y")}" if t.end_date != t.start_date else "")
+        st.markdown(
+            f'<div class="t-top-banner">'
+            f'<div class="t-top-name">🏆 {t.name}</div>'
+            f'<div class="t-top-meta">📅 {_dates}'
+            + (f' &nbsp;|&nbsp; 📍 {t.location}' if t.location else '') +
+            f'</div>'
+            f'<div style="margin-top:.5rem">{_cat_html}</div>'
+            + (f'<div class="t-top-prize">🥇 {t.prize}</div>' if t.prize else '') +
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        _page_header("🏆", "Torneos", "Organiza torneos de pádel con horarios automáticos")
 
     # ── Tabs principales
     tab_cfg, tab_pairs, tab_generate, tab_schedule, tab_export = st.tabs([
@@ -2444,6 +2523,28 @@ elif page == "tournament":
     # TAB 1 — Configuración del torneo
     # ===================================================================
     with tab_cfg:
+        import datetime as _dt_mod
+
+        # ── Bloque TOP ────────────────────────────────────────────────
+        _section_start("⭐", "Tipo de torneo")
+        _is_top_val = t.is_top if t else False
+        t_is_top = st.toggle(
+            "🏆 **Torneo TOP** — máximo nivel y visibilidad",
+            value=_is_top_val,
+            help="Los Torneos TOP se destacan con diseño premium y aparecen primero en la lista.",
+        )
+        if t_is_top:
+            st.markdown(
+                '<div style="background:linear-gradient(90deg,#3b0f6e,#6a1b9a);'
+                'border:1px solid #ffd700;border-radius:12px;padding:.6rem 1.2rem;'
+                'color:#ffd700;font-weight:700;font-size:.9rem;margin-top:.4rem">'
+                '★ Este torneo tendrá diseño dorado y aparecerá destacado</div>',
+                unsafe_allow_html=True,
+            )
+
+        st.divider()
+
+        # ── Identidad ─────────────────────────────────────────────────
         _section_start("🏆", "Datos del torneo")
 
         c1, c2 = st.columns(2)
@@ -2451,6 +2552,26 @@ elif page == "tournament":
             t_name = st.text_input(
                 "Nombre del torneo",
                 value=t.name if t else "Torneo PadelPlus 2025",
+            )
+            t_location = st.text_input(
+                "📍 Sede / Club",
+                value=t.location if t else "",
+                placeholder="Club Pádel Madrid",
+            )
+            t_prize = st.text_input(
+                "🥇 Premio / Descripción",
+                value=t.prize if t else "",
+                placeholder="Trofeo + material deportivo",
+            )
+        with c2:
+            t_start = st.date_input(
+                "Fecha de inicio",
+                value=t.start_date if t else _dt_mod.date.today(),
+            )
+            t_end = st.date_input(
+                "Fecha de fin",
+                value=t.end_date if t else _dt_mod.date.today(),
+                min_value=t_start,
             )
             t_format = st.selectbox(
                 "Formato",
@@ -2470,17 +2591,51 @@ elif page == "tournament":
                     TournamentFormat.GROUPS_BRACKET,
                 ].index(t.format),
             )
-        with c2:
-            import datetime as _dt_mod
-            t_start = st.date_input(
-                "Fecha de inicio",
-                value=t.start_date if t else _dt_mod.date.today(),
+
+        st.divider()
+
+        # ── Categoría y subcategoría ───────────────────────────────────
+        _section_start("🎾", "Categoría")
+        _cat_cols = st.columns(3)
+        _cat_options = [None, TournamentCategory.MASCULINO, TournamentCategory.FEMENINO, TournamentCategory.MIXTO]
+        _cat_labels  = {
+            None:                          "⚪ Sin especificar",
+            TournamentCategory.MASCULINO:  "👨 Masculino",
+            TournamentCategory.FEMENINO:   "👩 Femenino",
+            TournamentCategory.MIXTO:      "🤝 Mixto",
+        }
+        _cur_cat = t.category if t else None
+        t_category = st.radio(
+            "Categoría del torneo",
+            options=_cat_options,
+            format_func=lambda c: _cat_labels[c],
+            index=_cat_options.index(_cur_cat) if _cur_cat in _cat_options else 0,
+            horizontal=True,
+            label_visibility="collapsed",
+        )
+
+        # Vista previa del badge de categoría
+        if t_category:
+            _badge_preview_cls = {"masculino": "t-cat-masc", "femenino": "t-cat-fem", "mixto": "t-cat-mix"}[t_category.value]
+            st.markdown(
+                f'<div style="margin:.4rem 0">'
+                f'<span class="{_badge_preview_cls}">{t_category.icon} {t_category.label}</span>'
+                f'</div>',
+                unsafe_allow_html=True,
             )
-            t_end = st.date_input(
-                "Fecha de fin",
-                value=t.end_date if t else t_start,
-                min_value=t_start,
-            )
+
+        st.markdown("**Subcategoría**")
+        _subcat_options = [None] + list(TournamentSubcategory)
+        _subcat_labels  = {None: "⚪ Abierta"} | {s: s.label for s in TournamentSubcategory}
+        _cur_subcat = t.subcategory if t else None
+        t_subcategory = st.radio(
+            "Subcategoría",
+            options=_subcat_options,
+            format_func=lambda s: _subcat_labels[s],
+            index=_subcat_options.index(_cur_subcat) if _cur_subcat in _subcat_options else 0,
+            horizontal=True,
+            label_visibility="collapsed",
+        )
 
         st.divider()
         _section_start("🏟️", "Pistas del torneo")
@@ -2568,7 +2723,7 @@ elif page == "tournament":
                 t_qualifiers = 2
 
         st.divider()
-        if st.button("💾 Guardar configuración", type="primary"):
+        if st.button("💾 Guardar configuración", type="primary", use_container_width=True):
             courts_obj = [
                 TournamentCourt(id=f"tc_{i}", name=c["name"])
                 for i, c in enumerate(st.session_state["t_courts_list"])
@@ -2578,6 +2733,11 @@ elif page == "tournament":
             new_t = TournamentConfig(
                 id=t.id if t else str(__import__("uuid").uuid4()),
                 name=t_name,
+                category=t_category,
+                subcategory=t_subcategory,
+                is_top=t_is_top,
+                prize=t_prize,
+                location=t_location,
                 start_date=t_start,
                 end_date=t_end,
                 courts=courts_obj,

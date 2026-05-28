@@ -21,6 +21,36 @@ class TournamentFormat(str, Enum):
     GROUPS_BRACKET = "groups_bracket"  # Grupos → clasificados pasan al cuadro
 
 
+class TournamentCategory(str, Enum):
+    MASCULINO = "masculino"
+    FEMENINO  = "femenino"
+    MIXTO     = "mixto"
+
+    @property
+    def label(self) -> str:
+        return {"masculino": "Masculino", "femenino": "Femenino", "mixto": "Mixto"}[self.value]
+
+    @property
+    def icon(self) -> str:
+        return {"masculino": "👨", "femenino": "👩", "mixto": "🤝"}[self.value]
+
+    @property
+    def color(self) -> str:
+        return {"masculino": "#1565c0", "femenino": "#c2185b", "mixto": "#6a1b9a"}[self.value]
+
+
+class TournamentSubcategory(str, Enum):
+    PRIMERA  = "1a"
+    SEGUNDA  = "2a"
+    TERCERA  = "3a"
+    CUARTA   = "4a"
+    QUINTA   = "5a"
+
+    @property
+    def label(self) -> str:
+        return {"1a": "1ª", "2a": "2ª", "3a": "3ª", "4a": "4ª", "5a": "5ª"}[self.value]
+
+
 class MatchRound(str, Enum):
     GROUP         = "group"
     ROUND_OF_16   = "round_of_16"
@@ -153,6 +183,13 @@ class TournamentMatch(BaseModel):
 class TournamentConfig(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     name: str = "Torneo"
+
+    # Identidad del torneo
+    category:    Optional[TournamentCategory]    = None
+    subcategory: Optional[TournamentSubcategory] = None
+    is_top:      bool   = False        # Torneo TOP (máximo prestigio)
+    prize:       str    = ""           # Premio / descripción del torneo
+    location:    str    = ""           # Club / sede
 
     # Fechas
     start_date: date
