@@ -20,400 +20,454 @@ _HERE = Path(__file__).parent
 
 _CSS = """
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
 /* ═══════════════════════════════════════════════════════════════════
-   RANKING PÁDEL AUTOMATOR — Design System v2
-   Paleta: Navy #0b1a2b · Verde #00c853 · Gris claro #f5f8fc
+   RANKING PÁDEL AUTOMATOR — Design System v3
    ═══════════════════════════════════════════════════════════════════ */
 
 /* ── BASE ───────────────────────────────────────────────────────── */
-html, body, [class*="css"] {
-    font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+html, body, [class*="css"], * {
+    font-family: "Inter", "Segoe UI", system-ui, sans-serif !important;
 }
 .main .block-container {
-    padding-top: 1.6rem;
-    padding-bottom: 2.5rem;
-    max-width: 1240px;
+    padding-top: 2rem;
+    padding-bottom: 3rem;
+    max-width: 1200px;
 }
 
-/* ── SIDEBAR base ───────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════
+   SIDEBAR
+   ══════════════════════════════════════════════════════════════════ */
 [data-testid="stSidebar"] {
-    background: linear-gradient(175deg, #07111d 0%, #0e243d 60%, #132d4a 100%) !important;
-    border-right: 1px solid #1a3350 !important;
+    background: #07111d !important;
+    border-right: 1px solid rgba(255,255,255,.07) !important;
 }
-/* Texto general del sidebar — NO aplicar a button ni svg para no corromper iconos */
+/* Texto base del sidebar */
 [data-testid="stSidebar"] p,
 [data-testid="stSidebar"] span:not([data-baseweb]),
-[data-testid="stSidebar"] div:not([data-testid="stBaseButton-primary"]):not([data-testid="stBaseButton-secondary"]) > p,
-[data-testid="stSidebar"] label { color: #c8dff5 !important; }
-[data-testid="stSidebar"] hr { border-color: #1e3a58 !important; margin: .5rem 0 !important; }
+[data-testid="stSidebar"] label { color: #94b8d8 !important; }
+[data-testid="stSidebar"] hr   { border-color: rgba(255,255,255,.07) !important; margin: .6rem 0 !important; }
 
-/* ── Botones dentro del sidebar ─────────────────────────────────── */
+/* ─ Botones de navegación superior (Club, Admin, Logout) ─ */
+[data-testid="stSidebar"] > div > div > div > [data-testid="stVerticalBlock"] > [data-testid="element-container"] button,
 [data-testid="stSidebar"] button {
-    background: rgba(255,255,255,.07) !important;
-    color: #c8dff5 !important;
-    border: 1px solid rgba(255,255,255,.13) !important;
-    border-radius: 9px !important;
-    font-size: .86rem !important;
+    border-radius: 10px !important;
+    font-size: .84rem !important;
     font-weight: 600 !important;
     text-align: left !important;
-    transition: all .15s !important;
+    transition: all .18s cubic-bezier(.4,0,.2,1) !important;
+    letter-spacing: .01em !important;
 }
-[data-testid="stSidebar"] button:hover {
-    background: rgba(0,200,83,.16) !important;
-    border-color: rgba(0,200,83,.40) !important;
-    color: #90ffc8 !important;
+/* Secondary (default) */
+[data-testid="stSidebar"] button[kind="secondary"],
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] {
+    background: rgba(255,255,255,.05) !important;
+    color: #94b8d8 !important;
+    border: 1px solid rgba(255,255,255,.09) !important;
 }
-/* Botón activo (primary) — página actual o acción principal */
+[data-testid="stSidebar"] button[kind="secondary"]:hover,
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"]:hover {
+    background: rgba(0,200,83,.12) !important;
+    border-color: rgba(0,200,83,.30) !important;
+    color: #7fffc0 !important;
+}
+/* Primary (active page) */
 [data-testid="stSidebar"] button[kind="primary"],
 [data-testid="stSidebar"] [data-testid="stBaseButton-primary"] {
-    background: rgba(0,200,83,.22) !important;
-    color: #7fffc4 !important;
-    border: 1px solid rgba(0,200,83,.50) !important;
+    background: linear-gradient(135deg,rgba(0,200,83,.25),rgba(0,168,107,.20)) !important;
+    color: #7fffc0 !important;
+    border: 1px solid rgba(0,200,83,.40) !important;
     font-weight: 700 !important;
+    box-shadow: 0 0 0 0 rgba(0,200,83,0) !important;
 }
 [data-testid="stSidebar"] button[kind="primary"]:hover,
 [data-testid="stSidebar"] [data-testid="stBaseButton-primary"]:hover {
-    background: rgba(0,200,83,.32) !important;
+    background: linear-gradient(135deg,rgba(0,200,83,.35),rgba(0,168,107,.28)) !important;
     color: #b8ffd8 !important;
 }
-/* Botón de cerrar sesión — rojo suave */
-[data-testid="stSidebar"] button[data-testid="stBaseButton-secondary"]#btn_logout,
+/* Logout */
 [data-testid="stSidebar"] [data-key="btn_logout"] button {
-    background: rgba(220,53,53,.12) !important;
-    color: #ffaaaa !important;
-    border-color: rgba(220,53,53,.25) !important;
+    background: rgba(239,68,68,.10) !important;
+    color: #fca5a5 !important;
+    border-color: rgba(239,68,68,.22) !important;
 }
 [data-testid="stSidebar"] [data-key="btn_logout"] button:hover {
-    background: rgba(220,53,53,.25) !important;
-    color: #ffcccc !important;
-    border-color: rgba(220,53,53,.50) !important;
+    background: rgba(239,68,68,.22) !important;
+    color: #fecaca !important;
+    border-color: rgba(239,68,68,.45) !important;
 }
-/* ── Expanders del sidebar ──────────────────────────────────────── */
+
+/* ─ Expanders RANKING / TORNEOS ─ */
 [data-testid="stSidebar"] [data-testid="stExpander"] {
-    background: rgba(255,255,255,.05) !important;
-    border: 1px solid rgba(255,255,255,.12) !important;
+    background: rgba(255,255,255,.03) !important;
+    border: 1px solid rgba(255,255,255,.08) !important;
     border-radius: 12px !important;
-    margin-bottom: 8px !important;
+    margin-bottom: 6px !important;
     overflow: hidden !important;
 }
 [data-testid="stSidebar"] [data-testid="stExpander"] summary {
-    font-size: .78rem !important;
-    font-weight: 900 !important;
-    letter-spacing: .12em !important;
+    font-size: .72rem !important;
+    font-weight: 800 !important;
+    letter-spacing: .14em !important;
     text-transform: uppercase !important;
-    color: #a8c8e8 !important;
-    padding: 11px 14px !important;
+    color: #4a7aa0 !important;
+    padding: 12px 14px !important;
+    display: flex !important;
+    align-items: center !important;
 }
 [data-testid="stSidebar"] [data-testid="stExpander"] summary:hover {
-    color: #e0f0ff !important;
-    background: rgba(255,255,255,.06) !important;
+    color: #94b8d8 !important;
+    background: rgba(255,255,255,.04) !important;
 }
-/* Triángulo del expander */
 [data-testid="stSidebar"] [data-testid="stExpander"] summary svg {
-    fill: #a8c8e8 !important;
+    color: #4a7aa0 !important;
+    fill: #4a7aa0 !important;
+    transition: color .15s !important;
 }
-/* ── Botones de paso dentro de expanders (RANKING / TORNEOS) ──────── */
-/* Contenedor de botones dentro del expander */
+
+/* ─ Step buttons inside expanders ─ */
 [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stVerticalBlock"] {
-    gap: 2px !important;
-    padding: 4px 6px 8px !important;
+    gap: 1px !important;
+    padding: 4px 8px 10px !important;
 }
-/* Cada botón de paso: estilo neutro (secondary) */
+/* Pending step */
 [data-testid="stSidebar"] [data-testid="stExpander"] button[kind="secondary"],
 [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stBaseButton-secondary"] {
     background: transparent !important;
     border: none !important;
     border-radius: 8px !important;
-    color: #7fa8c8 !important;
-    font-size: .86rem !important;
+    color: #4a7aa0 !important;
+    font-size: .84rem !important;
     font-weight: 500 !important;
     text-align: left !important;
-    padding: 6px 10px !important;
+    padding: 7px 10px !important;
     height: auto !important;
-    min-height: 0 !important;
+    min-height: 34px !important;
+    line-height: 1.3 !important;
 }
 [data-testid="stSidebar"] [data-testid="stExpander"] button[kind="secondary"]:hover,
 [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stBaseButton-secondary"]:hover {
-    background: rgba(0,200,100,.10) !important;
-    color: #c8dff5 !important;
+    background: rgba(148,184,216,.08) !important;
+    color: #94b8d8 !important;
     border: none !important;
 }
-/* Paso activo (primary = página actual) */
+/* Active step */
 [data-testid="stSidebar"] [data-testid="stExpander"] button[kind="primary"],
 [data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stBaseButton-primary"] {
-    background: rgba(0,200,100,.18) !important;
-    border: 1px solid rgba(0,200,100,.35) !important;
-    border-radius: 8px !important;
+    background: rgba(0,200,83,.14) !important;
+    border: none !important;
+    border-left: 3px solid #00c853 !important;
+    border-radius: 0 8px 8px 0 !important;
     color: #7fffc0 !important;
-    font-size: .86rem !important;
+    font-size: .84rem !important;
     font-weight: 700 !important;
     text-align: left !important;
+    padding: 7px 10px 7px 9px !important;
+    height: auto !important;
+    min-height: 34px !important;
 }
 
-/* ── CABECERA DE PÁGINA ─────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════
+   PÁGINA PRINCIPAL
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Cabecera de página ─────────────────────────────────────────── */
 .pp-page-title {
     display: flex;
     align-items: center;
-    gap: .7rem;
-    padding: .5rem 0 1rem 0;
-    border-bottom: 3px solid #00c853;
-    margin-bottom: 1.8rem;
+    gap: 1rem;
+    padding: .2rem 0 1.4rem 0;
+    border-bottom: 2px solid #e8f0f8;
+    margin-bottom: 2rem;
 }
-.pp-page-title .pp-icon { font-size: 2.1rem; line-height: 1; }
+.pp-page-title .pp-icon {
+    width: 52px; height: 52px;
+    background: linear-gradient(135deg, #e8f8f0, #d0f2e4);
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.6rem; flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(0,200,83,.18);
+}
 .pp-page-title .pp-text h1 {
     margin: 0;
-    font-size: 1.8rem;
+    font-size: 1.7rem;
     font-weight: 800;
     color: #07111d;
-    line-height: 1.1;
-    letter-spacing: -.02em;
+    line-height: 1.15;
+    letter-spacing: -.03em;
 }
 .pp-page-title .pp-text p {
-    margin: .25rem 0 0 0;
-    font-size: .88rem;
-    color: #6b82a0;
+    margin: .2rem 0 0 0;
+    font-size: .87rem;
+    color: #7f9ab5;
+    font-weight: 400;
 }
 
-/* ── SECCIÓN CON TÍTULO ─────────────────────────────────────────── */
+/* ── Tarjeta de sección ─────────────────────────────────────────── */
 .pp-section {
     background: #fff;
-    border: 1px solid #e4edf8;
+    border: 1px solid #edf2fa;
     border-radius: 16px;
-    padding: 1.4rem 1.6rem 1.2rem;
+    padding: 1.5rem 1.8rem 1.3rem;
     margin-bottom: 1.2rem;
-    box-shadow: 0 1px 6px rgba(11,26,43,.06), 0 4px 16px rgba(11,26,43,.04);
+    box-shadow: 0 1px 3px rgba(11,26,43,.04), 0 4px 20px rgba(11,26,43,.06);
 }
 .pp-section-title {
     display: flex;
     align-items: center;
-    gap: .45rem;
-    font-size: .72rem;
+    gap: .5rem;
+    font-size: .68rem;
     font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: .1em;
-    color: #8faac8;
-    margin-bottom: 1rem;
-    padding-bottom: .6rem;
-    border-bottom: 1px solid #eef3fa;
+    letter-spacing: .14em;
+    color: #00843d;
+    margin-bottom: 1.1rem;
+    padding-bottom: .65rem;
+    border-bottom: 1px solid #edf4ea;
 }
-.pp-section-title span { font-size: 1rem; }
+.pp-section-title span { font-size: .95rem; }
 
-/* ── MÉTRICAS ────────────────────────────────────────────────────── */
+/* ── Métricas ───────────────────────────────────────────────────── */
 [data-testid="metric-container"] {
     background: #fff !important;
-    border: 1px solid #e4edf8 !important;
+    border: 1px solid #edf2fa !important;
     border-radius: 14px !important;
-    padding: 16px 20px !important;
-    box-shadow: 0 1px 6px rgba(11,26,43,.06) !important;
-    transition: box-shadow .15s !important;
+    padding: 18px 22px !important;
+    box-shadow: 0 1px 3px rgba(11,26,43,.04) !important;
+    transition: box-shadow .2s, transform .2s !important;
 }
 [data-testid="metric-container"]:hover {
-    box-shadow: 0 4px 14px rgba(11,26,43,.10) !important;
+    box-shadow: 0 6px 20px rgba(11,26,43,.10) !important;
+    transform: translateY(-2px) !important;
 }
 [data-testid="metric-container"] [data-testid="stMetricValue"] {
-    font-size: 2rem !important;
+    font-size: 2.1rem !important;
     font-weight: 800 !important;
     color: #07111d !important;
-    letter-spacing: -.02em !important;
+    letter-spacing: -.03em !important;
 }
 [data-testid="metric-container"] [data-testid="stMetricLabel"] {
-    font-size: .72rem !important;
-    color: #8faac8 !important;
+    font-size: .68rem !important;
+    color: #7f9ab5 !important;
     font-weight: 700 !important;
     text-transform: uppercase !important;
-    letter-spacing: .08em !important;
+    letter-spacing: .1em !important;
 }
 
-/* ── BOTONES ─────────────────────────────────────────────────────── */
+/* ── Botones principales ────────────────────────────────────────── */
 .stButton > button {
     border-radius: 10px !important;
     font-weight: 700 !important;
-    font-size: .9rem !important;
-    letter-spacing: .01em !important;
-    transition: all .2s ease !important;
-    padding: .45rem 1.2rem !important;
+    font-size: .88rem !important;
+    letter-spacing: .015em !important;
+    transition: all .18s cubic-bezier(.4,0,.2,1) !important;
+    padding: .5rem 1.3rem !important;
 }
 .stButton > button[kind="primary"] {
-    background: linear-gradient(135deg, #00d45a 0%, #00a86b 100%) !important;
+    background: linear-gradient(135deg, #00c853 0%, #00897b 100%) !important;
     color: #fff !important;
     border: none !important;
-    box-shadow: 0 3px 12px rgba(0,200,83,.30) !important;
+    box-shadow: 0 3px 14px rgba(0,200,83,.35) !important;
 }
 .stButton > button[kind="primary"]:hover {
     transform: translateY(-2px) !important;
-    box-shadow: 0 7px 20px rgba(0,200,83,.42) !important;
+    box-shadow: 0 8px 22px rgba(0,200,83,.45) !important;
 }
 .stButton > button[kind="primary"]:active { transform: translateY(0) !important; }
 .stButton > button[kind="secondary"] {
-    border: 1.5px solid #c8dfee !important;
+    border: 1.5px solid #dce8f5 !important;
     color: #1b3a58 !important;
     background: #fff !important;
 }
 .stButton > button[kind="secondary"]:hover {
     border-color: #00c853 !important;
-    color: #007a38 !important;
-    background: rgba(0,200,83,.05) !important;
+    color: #005a29 !important;
+    background: rgba(0,200,83,.04) !important;
     transform: translateY(-1px) !important;
 }
-/* Botón de descarga */
 [data-testid="stDownloadButton"] button {
     border-radius: 10px !important;
     font-weight: 700 !important;
     background: linear-gradient(135deg, #1565c0, #0d47a1) !important;
     color: #fff !important;
     border: none !important;
-    box-shadow: 0 3px 10px rgba(21,101,192,.3) !important;
+    box-shadow: 0 3px 12px rgba(21,101,192,.32) !important;
+    transition: all .18s !important;
 }
 [data-testid="stDownloadButton"] button:hover {
     transform: translateY(-2px) !important;
-    box-shadow: 0 6px 16px rgba(21,101,192,.4) !important;
+    box-shadow: 0 7px 18px rgba(21,101,192,.42) !important;
 }
 
-/* ── TABS ───────────────────────────────────────────────────────── */
+/* ── Tabs ───────────────────────────────────────────────────────── */
 [data-testid="stTabs"] [role="tablist"] {
-    gap: 2px;
-    border-bottom: 2px solid #e4edf8;
-    background: #f5f8fc;
-    border-radius: 10px 10px 0 0;
-    padding: 4px 4px 0;
+    gap: 0;
+    border-bottom: 2px solid #edf2fa;
+    background: transparent;
+    padding: 0 0 0 4px;
 }
 [data-testid="stTabs"] button[role="tab"] {
     border-radius: 8px 8px 0 0 !important;
-    padding: 9px 20px !important;
+    padding: 9px 22px !important;
     font-weight: 600 !important;
-    font-size: .88rem !important;
+    font-size: .87rem !important;
     color: #7f9ab5 !important;
     background: transparent !important;
     border: none !important;
+    border-bottom: 2px solid transparent !important;
     transition: all .15s !important;
+    margin-bottom: -2px !important;
 }
 [data-testid="stTabs"] button[role="tab"]:hover { color: #1b3a58 !important; }
 [data-testid="stTabs"] button[aria-selected="true"] {
-    color: #007a38 !important;
-    background: #fff !important;
-    border-bottom: 3px solid #00c853 !important;
+    color: #00843d !important;
+    background: transparent !important;
+    border-bottom: 2px solid #00c853 !important;
     font-weight: 700 !important;
 }
 
-/* ── EXPANDERS ──────────────────────────────────────────────────── */
+/* ── Expanders (contenido) ──────────────────────────────────────── */
 [data-testid="stExpander"] {
-    border: 1px solid #e4edf8 !important;
+    border: 1px solid #edf2fa !important;
     border-radius: 12px !important;
     overflow: hidden !important;
-    box-shadow: 0 1px 4px rgba(11,26,43,.05) !important;
+    box-shadow: none !important;
+    transition: box-shadow .15s !important;
 }
+[data-testid="stExpander"]:hover { box-shadow: 0 2px 12px rgba(11,26,43,.07) !important; }
 [data-testid="stExpander"] summary {
     font-weight: 600 !important;
-    color: #1b3a58 !important;
-    font-size: .92rem !important;
-    padding: .7rem 1rem !important;
+    color: #2d4a6a !important;
+    font-size: .9rem !important;
+    padding: .8rem 1.1rem !important;
+    background: #fafcff !important;
 }
-[data-testid="stExpander"] summary:hover { background: #f5f8fc !important; }
+[data-testid="stExpander"] summary:hover { background: #f0f6ff !important; }
 
-/* ── ALERTS ─────────────────────────────────────────────────────── */
+/* ── Alertas ─────────────────────────────────────────────────────── */
 [data-testid="stAlert"] {
     border-radius: 12px !important;
-    border-width: 1px !important;
-    font-size: .9rem !important;
+    border-width: 1.5px !important;
+    font-size: .88rem !important;
 }
 
-/* ── DATAFRAMES ─────────────────────────────────────────────────── */
+/* ── DataFrames ─────────────────────────────────────────────────── */
 [data-testid="stDataFrame"] {
     border-radius: 12px !important;
     overflow: hidden !important;
-    box-shadow: 0 1px 6px rgba(11,26,43,.07) !important;
-    border: 1px solid #e4edf8 !important;
+    box-shadow: 0 1px 8px rgba(11,26,43,.07) !important;
+    border: 1px solid #edf2fa !important;
 }
 
-/* ── INPUTS / SLIDERS ───────────────────────────────────────────── */
+/* ── Inputs ─────────────────────────────────────────────────────── */
 [data-testid="stTextInput"] input,
 [data-testid="stNumberInput"] input,
 [data-testid="stTextArea"] textarea {
-    border-radius: 9px !important;
-    border-color: #d0e0f0 !important;
-    font-size: .92rem !important;
+    border-radius: 10px !important;
+    border-color: #dce8f5 !important;
+    background: #fafcff !important;
+    font-size: .9rem !important;
+    transition: border-color .15s, box-shadow .15s !important;
 }
 [data-testid="stTextInput"] input:focus,
-[data-testid="stNumberInput"] input:focus {
+[data-testid="stNumberInput"] input:focus,
+[data-testid="stTextArea"] textarea:focus {
     border-color: #00c853 !important;
-    box-shadow: 0 0 0 2px rgba(0,200,83,.15) !important;
+    background: #fff !important;
+    box-shadow: 0 0 0 3px rgba(0,200,83,.12) !important;
 }
-[data-testid="stSlider"] [data-baseweb="slider"] div[role="slider"] {
+/* Labels */
+[data-testid="stTextInput"] label,
+[data-testid="stNumberInput"] label,
+[data-testid="stTextArea"] label,
+[data-testid="stSelectbox"] label,
+[data-testid="stSlider"] label,
+[data-testid="stTimeInput"] label,
+[data-testid="stDateInput"] label {
+    font-size: .82rem !important;
+    font-weight: 600 !important;
+    color: #3d5a78 !important;
+    letter-spacing: .01em !important;
+}
+/* Select/Dropdown */
+[data-testid="stSelectbox"] > div > div {
+    border-radius: 10px !important;
+    border-color: #dce8f5 !important;
+    background: #fafcff !important;
+}
+/* Number input */
+[data-testid="stNumberInput"] button {
+    border-radius: 6px !important;
+}
+/* Slider */
+[data-baseweb="slider"] [role="slider"] {
     background: #00c853 !important;
     border-color: #00c853 !important;
+    width: 18px !important; height: 18px !important;
+    box-shadow: 0 0 0 4px rgba(0,200,83,.18) !important;
+}
+[data-baseweb="slider"] [data-testid="stSlider"] div[role="progressbar"] {
+    background: #00c853 !important;
 }
 
-/* ── PROGRESS ───────────────────────────────────────────────────── */
+/* ── Progress ────────────────────────────────────────────────────── */
 [data-testid="stProgress"] > div > div {
-    background: linear-gradient(90deg, #00d45a, #00897b) !important;
+    background: linear-gradient(90deg, #00c853, #00897b) !important;
     border-radius: 6px !important;
 }
 
-/* ── FILE UPLOADER ──────────────────────────────────────────────── */
-[data-testid="stFileUploader"] {
-    border-radius: 12px !important;
-}
+/* ── File uploader ──────────────────────────────────────────────── */
 [data-testid="stFileUploaderDropzone"] {
-    border: 2px dashed #c0d8f0 !important;
-    border-radius: 12px !important;
-    background: #f5f8fc !important;
+    border: 2px dashed #c8dff5 !important;
+    border-radius: 14px !important;
+    background: #f5f9ff !important;
     transition: all .2s !important;
 }
 [data-testid="stFileUploaderDropzone"]:hover {
     border-color: #00c853 !important;
-    background: rgba(0,200,83,.04) !important;
+    background: rgba(0,200,83,.03) !important;
 }
 
-/* ── TOGGLES / CHECKBOXES ───────────────────────────────────────── */
+/* ── Checkbox / Toggle ──────────────────────────────────────────── */
 [data-testid="stCheckbox"] label,
 [data-testid="stToggle"] label {
-    font-size: .92rem !important;
-    color: #2c3e50 !important;
+    font-size: .88rem !important;
+    color: #2d4a6a !important;
+    font-weight: 500 !important;
 }
 
-/* ── SIDEBAR STEPPER ────────────────────────────────────────────── */
-.pp-step {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 5px 10px;
-    border-radius: 9px;
-    margin: 2px 0;
-    font-size: .84rem;
-    transition: background .15s;
-}
-.pp-step.done   { color: #7fffc0 !important; }
-.pp-step.active { color: #fff !important; font-weight: 700; background: rgba(0,200,83,.18); }
-.pp-step.todo   { color: #4a6a8a !important; }
-.pp-step .pp-step-dot {
-    width: 22px; height: 22px;
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: .75rem; flex-shrink: 0; font-weight: 700;
-}
-.pp-step.done .pp-step-dot   { background: #00c853; color: #fff; }
-.pp-step.active .pp-step-dot { background: #fff; color: #07111d; }
-.pp-step.todo .pp-step-dot   { background: #1e3a58; color: #4a6a8a; }
+/* ── Divider ─────────────────────────────────────────────────────── */
+hr { border-color: #edf2fa !important; }
 
 /* ── BADGES ─────────────────────────────────────────────────────── */
 .pp-badge-safe {
     display: inline-flex; align-items: center; gap: 5px;
-    background: rgba(0,200,83,.15);
-    color: #7fffc0 !important;
-    border: 1px solid rgba(0,200,83,.25);
+    background: rgba(0,200,83,.12);
+    color: #005a29 !important;
+    border: 1px solid rgba(0,200,83,.28);
     border-radius: 20px;
-    padding: 4px 14px;
-    font-size: .78rem; font-weight: 700;
+    padding: 3px 12px;
+    font-size: .76rem; font-weight: 700; letter-spacing: .04em;
 }
 .pp-badge-live {
     display: inline-flex; align-items: center; gap: 5px;
-    background: rgba(244,67,54,.18);
-    color: #ff8a80 !important;
-    border: 1px solid rgba(244,67,54,.28);
+    background: rgba(239,68,68,.12);
+    color: #b91c1c !important;
+    border: 1px solid rgba(239,68,68,.28);
     border-radius: 20px;
-    padding: 4px 14px;
-    font-size: .78rem; font-weight: 700;
+    padding: 3px 12px;
+    font-size: .76rem; font-weight: 700; letter-spacing: .04em;
 }
+/* ── Sidebar stepper (legacy class) ─────────────────────────────── */
+.pp-step { display:flex; align-items:center; gap:10px; padding:5px 10px; border-radius:9px; margin:2px 0; font-size:.84rem; }
+.pp-step.done   { color:#7fffc0!important; }
+.pp-step.active { color:#fff!important; font-weight:700; background:rgba(0,200,83,.18); }
+.pp-step.todo   { color:#4a6a8a!important; }
+.pp-step .pp-step-dot { width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.75rem;flex-shrink:0;font-weight:700; }
+.pp-step.done .pp-step-dot   { background:#00c853;color:#fff; }
+.pp-step.active .pp-step-dot { background:#fff;color:#07111d; }
+.pp-step.todo .pp-step-dot   { background:#1e3a58;color:#4a6a8a; }
 
 /* ── TORNEOS — Tarjeta TOP ──────────────────────────────────────── */
 .t-top-banner {
@@ -875,14 +929,18 @@ if _db_ok:
 # ---------------------------------------------------------------------------
 
 st.sidebar.markdown(
-    '<div style="text-align:center;padding:1rem 0 .5rem 0">'
-    '<span style="font-size:2.2rem">🎾</span>'
-    '<div style="font-size:1.15rem;font-weight:800;color:#fff;letter-spacing:.02em;margin-top:.3rem">Ranking Pádel</div>'
-    '<div style="font-size:.72rem;color:#7fa8cc;letter-spacing:.08em;text-transform:uppercase">Automator</div>'
-    '</div>',
+    '<div style="padding:1.4rem 1.2rem 1rem">'
+    '<div style="display:flex;align-items:center;gap:.75rem">'
+    '<div style="width:40px;height:40px;background:linear-gradient(135deg,#00c853,#00897b);'
+    'border-radius:11px;display:flex;align-items:center;justify-content:center;'
+    'font-size:1.3rem;flex-shrink:0;box-shadow:0 2px 10px rgba(0,200,83,.35)">🎾</div>'
+    '<div>'
+    '<div style="font-size:1rem;font-weight:800;color:#e8f4ff;letter-spacing:-.01em;line-height:1.1">Ranking Pádel</div>'
+    '<div style="font-size:.65rem;color:#3d6a90;letter-spacing:.12em;text-transform:uppercase;margin-top:1px">Automator</div>'
+    '</div></div></div>',
     unsafe_allow_html=True,
 )
-st.sidebar.markdown('<hr style="border-color:#2a4a6b;margin:.6rem 0">', unsafe_allow_html=True)
+st.sidebar.markdown('<hr style="border-color:rgba(255,255,255,.07);margin:0 0 .6rem">', unsafe_allow_html=True)
 
 # ── Página actual ─────────────────────────────────────────────────────────
 _s = st.session_state
@@ -910,22 +968,25 @@ if _db_ok and is_authenticated():
             st.sidebar.warning("⚠️ No hay clubs. Crea uno en Administración.")
     else:
         _club_name_sidebar = current_club_name()
-        if _club_name_sidebar:
-            st.sidebar.markdown(
-                f'<div style="padding:4px 10px 2px;font-size:.8rem">'
-                f'🏢 <b>{_club_name_sidebar}</b></div>',
-                unsafe_allow_html=True,
-            )
 
+    # ── Chip de usuario + club ──────────────────────────────────────────
+    _role_txt = "Super Admin" if is_superadmin() else "Admin"
+    _club_txt = _club_name_sidebar or "Sin club"
     st.sidebar.markdown(
-        f'<div style="padding:2px 10px 6px;font-size:.78rem;opacity:.75">'
-        f'👤 {_user["display_name"]}</div>',
+        f'<div style="margin:.2rem 1rem .8rem;padding:.7rem .9rem;'
+        f'background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);'
+        f'border-radius:10px;">'
+        f'<div style="font-size:.82rem;font-weight:700;color:#c8dff5;white-space:nowrap;'
+        f'overflow:hidden;text-overflow:ellipsis">👤 {_user["display_name"]}</div>'
+        f'<div style="font-size:.72rem;color:#3d6a90;margin-top:2px">'
+        f'{_role_txt} · {_club_txt}</div>'
+        f'</div>',
         unsafe_allow_html=True,
     )
-    if st.sidebar.button("🚪 Cerrar sesión", use_container_width=True, key="btn_logout"):
+    if st.sidebar.button("🚪  Cerrar sesión", use_container_width=True, key="btn_logout"):
         logout()
 
-st.sidebar.markdown('<hr style="border-color:#1e3a58;margin:.5rem 0">', unsafe_allow_html=True)
+st.sidebar.markdown('<hr style="border-color:rgba(255,255,255,.07);margin:.7rem 0">', unsafe_allow_html=True)
 
 # ── CLUB ───────────────────────────────────────────────────────────────────
 _club_done = bool(_club_name_sidebar)
@@ -939,7 +1000,7 @@ if st.sidebar.button(
     st.session_state["_nav_page"] = "club_config"
     st.rerun()
 
-st.sidebar.markdown('<hr style="border-color:#1e3a58;margin:.6rem 0">', unsafe_allow_html=True)
+st.sidebar.markdown('<hr style="border-color:rgba(255,255,255,.07);margin:.7rem 0">', unsafe_allow_html=True)
 
 # ── RANKING ────────────────────────────────────────────────────────────────
 _R_STEPS = [
@@ -968,7 +1029,7 @@ with st.sidebar.expander("📊  RANKING", expanded=_IS_RANKING):
         if _r_hint:
             st.caption(f"💡 {_r_hint}")
 
-st.sidebar.markdown('<hr style="border-color:#1e3a58;margin:.6rem 0">', unsafe_allow_html=True)
+st.sidebar.markdown('<hr style="border-color:rgba(255,255,255,.07);margin:.6rem 0">', unsafe_allow_html=True)
 
 # ── TORNEOS ────────────────────────────────────────────────────────────────
 _T_OBJ   = _s.get("tournament")
@@ -998,7 +1059,7 @@ with st.sidebar.expander("🏆  TORNEOS", expanded=_IS_TOURNAMENT):
 
 # ── Admin ──────────────────────────────────────────────────────────────────
 if _db_ok and is_superadmin():
-    st.sidebar.markdown('<hr style="border-color:#1e3a58;margin:.6rem 0">', unsafe_allow_html=True)
+    st.sidebar.markdown('<hr style="border-color:rgba(255,255,255,.07);margin:.6rem 0">', unsafe_allow_html=True)
     if st.sidebar.button(
         "🛠️  Administración",
         key="nav_admin",
@@ -1009,7 +1070,7 @@ if _db_ok and is_superadmin():
         st.rerun()
 
 # ── Badge Dry-Run ──────────────────────────────────────────────────────────
-st.sidebar.markdown('<hr style="border-color:#1e3a58;margin:.8rem 0 .4rem">', unsafe_allow_html=True)
+st.sidebar.markdown('<hr style="border-color:rgba(255,255,255,.07);margin:.8rem 0 .4rem">', unsafe_allow_html=True)
 _dry = _s.get("dry_run", True)
 _badge_cls = "pp-badge-safe" if _dry else "pp-badge-live"
 _badge_txt = "🔒 DRY-RUN" if _dry else "⚡ ESCRITURA REAL"
