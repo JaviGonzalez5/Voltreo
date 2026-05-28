@@ -460,6 +460,15 @@ from src.tournament_generator import (
     generate_tournament_structure, tournament_summary as _t_summary,
 )
 from src.tournament_scheduler import schedule_tournament, tournament_schedule_summary
+from src.db import get_db, is_db_configured
+from src.auth import (
+    render_login_screen, is_authenticated, get_session_user,
+    is_superadmin, current_club_id, current_club_name, logout,
+)
+from src.db_converters import (
+    phase_to_db, schedule_result_to_db, phase_from_db,
+    tournament_to_db, tournament_from_db,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -672,6 +681,40 @@ init_state()
 _inject_css()
 
 # ---------------------------------------------------------------------------
+# Base de datos y autenticación
+# ---------------------------------------------------------------------------
+
+_db_ok = is_db_configured()
+_db = get_db() if _db_ok else None
+
+if _db_ok:
+    if not is_authenticated():
+        render_login_screen(_db)   # calls st.stop() internally
+    else:
+        # Cargar fase activa del club si aún no hay datos en sesión
+        _cid_load = current_club_id()
+        if _cid_load and _db is not None and st.session_state.phase is None and not st.session_state.get("_db_phase_loaded"):
+            st.session_state["_db_phase_loaded"] = True
+            try:
+                _row = _db.get_active_phase(_cid_load)
+                if _row:
+                    _loaded_phase, _loaded_result = phase_from_db(_row)
+                    st.session_state.phase = _loaded_phase
+                    st.session_state["db_phase_id"] = _row["id"]
+                    if _loaded_phase.groups:
+                        st.session_state.groups = list(_loaded_phase.groups)
+                        st.session_state.data_loaded = True
+                    if _loaded_phase.bookings:
+                        st.session_state.bookings = list(_loaded_phase.bookings)
+                    if _loaded_result:
+                        st.session_state.schedule_result = _loaded_result
+                        st.session_state.matches_scheduled = True
+                        st.session_state.matches = _loaded_result.scheduled + _loaded_result.conflicts
+                        st.session_state.matches_generated = True
+            except Exception:
+                pass  # BD no disponible o fase inválida — ignorar silenciosamente
+
+# ---------------------------------------------------------------------------
 # Sidebar — navegación
 # ---------------------------------------------------------------------------
 
@@ -685,6 +728,40 @@ st.sidebar.markdown(
 )
 st.sidebar.markdown('<hr style="border-color:#2a4a6b;margin:.6rem 0">', unsafe_allow_html=True)
 
+# ── Usuario / Club ────────────────────────────────────────────────────────
+if _db_ok and is_authenticated():
+    _user = get_session_user()
+    _club_name_sidebar = current_club_name()
+
+    # Selector de club para superadmin
+    if is_superadmin() and _db is not None:
+        _clubs = _db.list_clubs()
+        if _clubs:
+            _club_options = {c["name"]: c["id"] for c in _clubs}
+            _selected_club_name = st.sidebar.selectbox(
+                "Club activo",
+                options=list(_club_options.keys()),
+                index=0,
+                key="superadmin_club_select",
+            )
+            st.session_state["superadmin_selected_club_id"]   = _club_options[_selected_club_name]
+            st.session_state["superadmin_selected_club_name"] = _selected_club_name
+            _club_name_sidebar = _selected_club_name
+        else:
+            st.sidebar.caption("⚠️ No hay clubs creados")
+
+    st.sidebar.markdown(
+        f'<div style="padding:0 10px 4px 10px;font-size:.78rem;color:#7fa8cc">'
+        f'👤 <b style="color:#c8dff5">{_user["display_name"]}</b>'
+        f'{"&nbsp;&nbsp;🏢 " + _club_name_sidebar if _club_name_sidebar else ""}'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    if st.sidebar.button("🚪 Cerrar sesión", use_container_width=True):
+        logout()
+
+    st.sidebar.markdown('<hr style="border-color:#2a4a6b;margin:.4rem 0 .6rem 0">', unsafe_allow_html=True)
+
 PAGES = {
     "⚙️ Configuración": "config",
     "📥 Importar datos": "import",
@@ -694,6 +771,8 @@ PAGES = {
     "🔗 Publicar en Syltek": "syltek",
     "🏆 Torneos": "tournament",
 }
+if _db_ok and is_superadmin():
+    PAGES["🛠️ Administración"] = "admin"
 page_label = st.sidebar.radio("", list(PAGES.keys()), label_visibility="collapsed")
 page = PAGES[page_label]
 
@@ -828,6 +907,28 @@ if page == "config":
                 st.session_state.phase = phase
                 st.session_state.courts = courts
                 st.session_state["club_name"] = club_name
+
+                # Persistir en Supabase si está configurado
+                if _db_ok and _db is not None:
+                    _cid = current_club_id()
+                    if _cid:
+                        try:
+                            _payload = phase_to_db(phase, _cid, st.session_state.get("db_phase_id"))
+                            _saved = _db.upsert_phase(
+                                club_id=_cid,
+                                name=_payload["name"],
+                                start_date=_payload["start_date"],
+                                end_date=_payload["end_date"],
+                                phase_config=_payload["phase_config"],
+                                groups_data=_payload["groups_data"],
+                                bookings_data=_payload["bookings_data"],
+                                schedule_result=None,
+                                phase_id=_payload["phase_id"],
+                            )
+                            st.session_state["db_phase_id"] = _saved["id"]
+                        except Exception as _e:
+                            st.warning(f"⚠️ No se pudo guardar en BD: {_e}")
+
                 st.success("✅ Configuración guardada.")
 
 # ---------------------------------------------------------------------------
@@ -870,6 +971,27 @@ elif page == "import":
                 # Actualizar fase si existe
                 if st.session_state.phase:
                     st.session_state.phase.groups = groups
+                    # Persistir en Supabase
+                    if _db_ok and _db is not None:
+                        _cid = current_club_id()
+                        _pid = st.session_state.get("db_phase_id")
+                        if _cid and _pid:
+                            try:
+                                _ph = st.session_state.phase
+                                _payload = phase_to_db(_ph, _cid, _pid)
+                                _db.upsert_phase(
+                                    club_id=_cid,
+                                    name=_payload["name"],
+                                    start_date=_payload["start_date"],
+                                    end_date=_payload["end_date"],
+                                    phase_config=_payload["phase_config"],
+                                    groups_data=_payload["groups_data"],
+                                    bookings_data=_payload["bookings_data"],
+                                    schedule_result=schedule_result_to_db(st.session_state.schedule_result),
+                                    phase_id=_pid,
+                                )
+                            except Exception:
+                                pass
                 st.success(f"✅ {len(groups)} grupos cargados con {sum(len(g.pairs) for g in groups)} parejas.")
 
         if st.session_state.groups:
@@ -1380,6 +1502,28 @@ elif page == "generate":
                 st.session_state.schedule_result = result
                 st.session_state.matches_scheduled = True
                 st.session_state.matches = result.scheduled + result.conflicts
+
+                # Persistir resultado del calendario en Supabase
+                if _db_ok and _db is not None:
+                    _cid = current_club_id()
+                    _pid = st.session_state.get("db_phase_id")
+                    if _cid and _pid and st.session_state.phase:
+                        try:
+                            _ph = st.session_state.phase
+                            _payload = phase_to_db(_ph, _cid, _pid)
+                            _db.upsert_phase(
+                                club_id=_cid,
+                                name=_payload["name"],
+                                start_date=_payload["start_date"],
+                                end_date=_payload["end_date"],
+                                phase_config=_payload["phase_config"],
+                                groups_data=_payload["groups_data"],
+                                bookings_data=_payload["bookings_data"],
+                                schedule_result=schedule_result_to_db(result),
+                                phase_id=_pid,
+                            )
+                        except Exception as _e:
+                            st.warning(f"⚠️ No se pudo guardar el calendario en BD: {_e}")
 
                 # Ejecutar validación automáticamente
                 violations = validate_schedule(result, phase)
@@ -2857,3 +3001,113 @@ elif page == "tournament":
             st.markdown("**Resumen rápido**")
             _summ_exp = _t_summary(t)
             st.json(_summ_exp)
+
+# ---------------------------------------------------------------------------
+# PÁGINA: Administración (solo superadmin, requiere DB)
+# ---------------------------------------------------------------------------
+
+elif page == "admin":
+    _page_header("🛠️", "Administración", "Gestión de clubs y usuarios")
+
+    if not _db_ok or _db is None:
+        st.error("❌ Base de datos no configurada. Añade SUPABASE_URL y SUPABASE_KEY.")
+        st.stop()
+
+    if not is_superadmin():
+        st.error("⛔ Solo el superadmin puede acceder a esta sección.")
+        st.stop()
+
+    tab_clubs, tab_users = st.tabs(["🏢 Clubs", "👤 Usuarios"])
+
+    # ── Tab Clubs ──────────────────────────────────────────────────────────
+    with tab_clubs:
+        st.markdown("### Clubs registrados")
+        _clubs_list = _db.list_clubs()
+        if _clubs_list:
+            _df_clubs = pd.DataFrame(_clubs_list)[["id", "name", "slug", "created_at"]]
+            _df_clubs.columns = ["ID", "Nombre", "Slug", "Creado"]
+            st.dataframe(_df_clubs, use_container_width=True, hide_index=True)
+        else:
+            st.info("No hay clubs registrados todavía.")
+
+        st.markdown("---")
+        st.markdown("#### ➕ Crear nuevo club")
+        with st.form("form_create_club"):
+            _new_club_name = st.text_input("Nombre del club", placeholder="Pádel Madrid Centro")
+            _new_club_slug = st.text_input("Slug (URL-friendly)", placeholder="padel-madrid-centro")
+            if st.form_submit_button("Crear club", type="primary"):
+                if not _new_club_name or not _new_club_slug:
+                    st.error("Rellena nombre y slug.")
+                else:
+                    try:
+                        _created = _db.create_club(_new_club_name.strip(), _new_club_slug.strip())
+                        st.success(f"✅ Club '{_created['name']}' creado (ID: {_created['id']})")
+                        st.rerun()
+                    except Exception as _ex:
+                        st.error(f"Error al crear el club: {_ex}")
+
+    # ── Tab Usuarios ───────────────────────────────────────────────────────
+    with tab_users:
+        from src.auth import hash_password as _hash_pw
+
+        st.markdown("### Usuarios del sistema")
+        _users_list = _db.list_users()
+        if _users_list:
+            _df_users = pd.DataFrame(_users_list)[
+                ["id", "username", "display_name", "role", "club_id", "is_active", "created_at"]
+            ]
+            _df_users.columns = ["ID", "Usuario", "Nombre", "Rol", "Club ID", "Activo", "Creado"]
+            st.dataframe(_df_users, use_container_width=True, hide_index=True)
+        else:
+            st.info("No hay usuarios registrados todavía.")
+
+        st.markdown("---")
+        st.markdown("#### ➕ Crear nuevo usuario")
+        _clubs_for_select = _db.list_clubs()
+        _club_map = {"(superadmin — sin club)": None}
+        _club_map.update({c["name"]: c["id"] for c in _clubs_for_select})
+
+        with st.form("form_create_user"):
+            _nu_username    = st.text_input("Nombre de usuario", placeholder="club_admin_madrid")
+            _nu_display     = st.text_input("Nombre para mostrar", placeholder="Admin Madrid")
+            _nu_email       = st.text_input("Email (opcional)", placeholder="admin@padelmadrid.es")
+            _nu_password    = st.text_input("Contraseña", type="password")
+            _nu_role        = st.selectbox("Rol", ["club_admin", "superadmin"])
+            _nu_club_label  = st.selectbox("Club", list(_club_map.keys()))
+            _nu_club_id     = _club_map[_nu_club_label]
+
+            if st.form_submit_button("Crear usuario", type="primary"):
+                if not _nu_username or not _nu_password:
+                    st.error("Usuario y contraseña son obligatorios.")
+                else:
+                    try:
+                        _db.create_user(
+                            username=_nu_username,
+                            password_hash=_hash_pw(_nu_password),
+                            role=_nu_role,
+                            club_id=_nu_club_id,
+                            display_name=_nu_display,
+                            email=_nu_email,
+                        )
+                        st.success(f"✅ Usuario '{_nu_username}' creado.")
+                        st.rerun()
+                    except Exception as _ex:
+                        st.error(f"Error al crear el usuario: {_ex}")
+
+        st.markdown("---")
+        st.markdown("#### 🔑 Cambiar contraseña")
+        with st.form("form_change_pw"):
+            _cp_user_labels = [u["username"] for u in (_users_list or [])]
+            if _cp_user_labels:
+                _cp_username = st.selectbox("Usuario", _cp_user_labels)
+                _cp_new_pw   = st.text_input("Nueva contraseña", type="password")
+                if st.form_submit_button("Cambiar contraseña"):
+                    if not _cp_new_pw:
+                        st.error("Introduce la nueva contraseña.")
+                    else:
+                        _cp_user_obj = next((u for u in _users_list if u["username"] == _cp_username), None)
+                        if _cp_user_obj:
+                            _db.update_user_password(_cp_user_obj["id"], _hash_pw(_cp_new_pw))
+                            st.success(f"✅ Contraseña de '{_cp_username}' actualizada.")
+            else:
+                st.info("No hay usuarios para gestionar.")
