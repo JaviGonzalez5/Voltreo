@@ -777,7 +777,20 @@ header[data-testid="stHeader"] * {
     color: #7592ae;
     font-size: .72rem;
     line-height: 1.35;
-    padding: .15rem .35rem .35rem;
+    padding: .45rem .7rem .35rem;
+}
+.pp-flow-progress {
+    height: 5px;
+    background: rgba(255,255,255,.08);
+    border-radius: 999px;
+    margin: .15rem .7rem .55rem;
+    overflow: hidden;
+}
+.pp-flow-progress > span {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg,#00c47a,#0aa3a3);
+    border-radius: 999px;
 }
 .pp-step-help {
     background: rgba(0,196,122,.10);
@@ -787,7 +800,7 @@ header[data-testid="stHeader"] * {
     padding: .6rem .7rem;
     font-size: .76rem;
     line-height: 1.38;
-    margin-top: .25rem;
+    margin: .4rem .35rem .65rem;
 }
 .pp-step-help strong {
     display: block;
@@ -796,6 +809,9 @@ header[data-testid="stHeader"] * {
     text-transform: uppercase;
     letter-spacing: .08em;
     margin-bottom: .18rem;
+}
+.pp-flow-spacer {
+    height: .35rem;
 }
 .pp-user-card,
 .pp-empty-club {
@@ -1048,16 +1064,35 @@ def _sidebar_button(label: str, target: str, current_page: str, key: str) -> Non
 
 def _sidebar_workflow(title: str, steps: list[tuple[str, str, str, bool]], current_page: str, key_prefix: str, expanded: bool) -> None:
     done_count = sum(1 for _, _, _, done in steps if done)
+    pct_done = int((done_count / max(len(steps), 1)) * 100)
     current_hint = next((hint for step_key, _, hint, _ in steps if step_key == current_page), "")
-    with st.sidebar.expander(f"{title} · {done_count}/{len(steps)} pasos", expanded=expanded):
-        st.markdown(
-            '<div class="pp-flow-meta">Flujo guiado paso a paso. Completa cada bloque y continúa con el siguiente.</div>',
+    open_key = f"_{key_prefix}_workflow_open"
+    if open_key not in st.session_state:
+        st.session_state[open_key] = expanded
+    if expanded:
+        st.session_state[open_key] = True
+
+    is_open = bool(st.session_state.get(open_key))
+    header_marker = "v" if is_open else ">"
+    if st.sidebar.button(
+        f"{header_marker}  {title} · {done_count}/{len(steps)} pasos",
+        key=f"{key_prefix}_workflow_toggle",
+        use_container_width=True,
+        type="primary" if expanded else "secondary",
+    ):
+        st.session_state[open_key] = not is_open
+        st.rerun()
+
+    if is_open:
+        st.sidebar.markdown(
+            '<div class="pp-flow-meta">Completa este flujo de arriba abajo. El panel se mantiene abierto mientras trabajas en sus pasos.</div>'
+            f'<div class="pp-flow-progress"><span style="width:{pct_done}%"></span></div>',
             unsafe_allow_html=True,
         )
         for idx, (step_key, label, hint, done) in enumerate(steps, 1):
             marker = "OK" if done else f"{idx:02d}"
             button_label = f"{marker}  {label}"
-            if st.button(
+            if st.sidebar.button(
                 button_label,
                 key=f"{key_prefix}_{step_key}",
                 use_container_width=True,
@@ -1065,10 +1100,11 @@ def _sidebar_workflow(title: str, steps: list[tuple[str, str, str, bool]], curre
             ):
                 _nav_to(step_key)
         if current_hint:
-            st.markdown(
+            st.sidebar.markdown(
                 f'<div class="pp-step-help"><strong>Paso actual</strong>{escape(current_hint)}</div>',
                 unsafe_allow_html=True,
             )
+    st.sidebar.markdown('<div class="pp-flow-spacer"></div>', unsafe_allow_html=True)
 
 
 def _sidebar_step(label: str, state: str, num: int) -> None:
