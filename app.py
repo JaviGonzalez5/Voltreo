@@ -5,6 +5,7 @@ import re
 import sys
 import io
 import uuid
+from html import escape
 from pathlib import Path
 from datetime import date, time, datetime, timedelta
 
@@ -566,6 +567,299 @@ hr { border-color: #edf2fa !important; }
     border-color: #00c853 !important;
     border-right-color: transparent !important;
 }
+
+/* Comercial polish: ocultar chrome de Streamlit y estabilizar navegación */
+#MainMenu,
+footer,
+[data-testid="stToolbar"],
+[data-testid="stDecoration"],
+[data-testid="stStatusWidget"],
+[data-testid="collapsedControl"],
+.stDeployButton {
+    visibility: hidden !important;
+    display: none !important;
+}
+header[data-testid="stHeader"] {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+}
+header[data-testid="stHeader"] * {
+    display: none !important;
+    visibility: hidden !important;
+}
+.stApp {
+    background: #f3f7fb !important;
+}
+.main .block-container {
+    max-width: 1480px !important;
+    padding-top: 3.2rem !important;
+    padding-left: 3rem !important;
+    padding-right: 3rem !important;
+}
+[data-testid="stSidebar"] {
+    min-width: 282px !important;
+    max-width: 282px !important;
+    background: #07121f !important;
+}
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
+    gap: .34rem !important;
+}
+[data-testid="stSidebar"] button[kind="headerNoPadding"],
+[data-testid="stSidebar"] [data-testid="stBaseButton-headerNoPadding"] {
+    display: none !important;
+    visibility: hidden !important;
+}
+[data-testid="stSidebar"] [data-testid="stButton"] button {
+    width: 100% !important;
+    height: 38px !important;
+    min-height: 38px !important;
+    justify-content: flex-start !important;
+    text-align: left !important;
+    border-radius: 8px !important;
+    padding: 0 .85rem !important;
+    box-shadow: none !important;
+    transform: none !important;
+    overflow: hidden !important;
+}
+[data-testid="stSidebar"] [data-testid="stButton"] button div[data-testid="stMarkdownContainer"] {
+    width: 100% !important;
+    text-align: left !important;
+}
+[data-testid="stSidebar"] [data-testid="stButton"] button p {
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    text-align: left !important;
+    width: 100% !important;
+    margin: 0 !important;
+}
+[data-testid="stSidebar"] .stButton > button[kind="secondary"],
+[data-testid="stSidebar"] button[kind="secondary"],
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] {
+    background: rgba(255,255,255,.035) !important;
+    border: 1px solid transparent !important;
+    color: #9eb6ce !important;
+}
+[data-testid="stSidebar"] .stButton > button[kind="secondary"]:hover,
+[data-testid="stSidebar"] button[kind="secondary"]:hover,
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"]:hover {
+    background: rgba(255,255,255,.055) !important;
+    border-color: rgba(255,255,255,.08) !important;
+    color: #f4fbff !important;
+}
+[data-testid="stSidebar"] .stButton > button[kind="primary"],
+[data-testid="stSidebar"] button[kind="primary"],
+[data-testid="stSidebar"] [data-testid="stBaseButton-primary"] {
+    background: linear-gradient(135deg, #08b86f 0%, #078c83 100%) !important;
+    border: 1px solid rgba(112,255,196,.16) !important;
+    color: #fff !important;
+}
+[data-testid="stSidebar"] [data-testid="stSelectbox"] label {
+    color: #7f9ab5 !important;
+    font-size: .72rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: .08em !important;
+}
+[data-testid="stSidebar"] [data-testid="stSelectbox"] > div > div {
+    background: rgba(255,255,255,.06) !important;
+    border: 1px solid rgba(255,255,255,.10) !important;
+    border-radius: 8px !important;
+    color: #e8f4ff !important;
+}
+.pp-brand {
+    padding: 1.35rem 1rem 1rem;
+    border-bottom: 1px solid rgba(255,255,255,.08);
+    margin-bottom: .75rem;
+}
+.pp-brand-row {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+}
+.pp-brand-mark {
+    width: 38px;
+    height: 38px;
+    border-radius: 8px;
+    background: linear-gradient(135deg,#00c47a,#007a73);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 900;
+    font-size: 1rem;
+    letter-spacing: 0;
+    box-shadow: 0 10px 24px rgba(0,196,122,.24);
+}
+.pp-brand-title {
+    color: #f6fbff;
+    font-weight: 850;
+    font-size: 1.05rem;
+    line-height: 1;
+}
+.pp-brand-subtitle {
+    color: #6f8ca8;
+    font-size: .69rem;
+    letter-spacing: .11em;
+    text-transform: uppercase;
+    margin-top: .2rem;
+}
+.pp-nav-section {
+    color: #6f8ca8;
+    font-size: .68rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    font-weight: 800;
+    padding: .7rem .8rem .2rem;
+}
+.pp-user-card,
+.pp-empty-club {
+    margin: .55rem .7rem .75rem;
+    padding: .8rem;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,.08);
+    background: rgba(255,255,255,.045);
+}
+.pp-user-name {
+    color: #e8f4ff;
+    font-weight: 750;
+    font-size: .86rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.pp-user-meta {
+    color: #7f9ab5;
+    font-size: .74rem;
+    margin-top: .18rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.pp-empty-club {
+    background: rgba(245,158,11,.12);
+    border-color: rgba(245,158,11,.25);
+    color: #ffdca1;
+    font-size: .82rem;
+    line-height: 1.35;
+}
+.pp-sidebar-footer {
+    color: #5f7c98;
+    font-size: .72rem;
+    padding: .45rem .85rem 1rem;
+}
+.pp-mode-pill {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.10);
+    padding: .22rem .55rem;
+    color: #9eb6ce;
+    background: rgba(255,255,255,.04);
+    font-weight: 650;
+}
+.pp-page-title {
+    border-bottom: 1px solid #dde8f4 !important;
+}
+.pp-page-title .pp-icon {
+    border-radius: 8px !important;
+    box-shadow: none !important;
+}
+.pp-section-title {
+    color: #0d7d55 !important;
+}
+.pp-hero {
+    border: 1px solid #dbe7f3;
+    background: linear-gradient(135deg,#ffffff 0%,#eef8f5 100%);
+    border-radius: 8px;
+    padding: 1.45rem 1.55rem;
+    margin-bottom: 1.25rem;
+}
+.pp-eyebrow {
+    color: #0d7d55;
+    font-size: .72rem;
+    font-weight: 850;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    margin-bottom: .45rem;
+}
+.pp-hero h1 {
+    color: #07111d;
+    font-size: 2rem;
+    line-height: 1.12;
+    margin: 0;
+    letter-spacing: 0;
+}
+.pp-hero p {
+    margin: .55rem 0 0;
+    max-width: 780px;
+    color: #59718a;
+    font-size: .96rem;
+}
+.pp-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: .85rem;
+    margin: 1rem 0 1.25rem;
+}
+.pp-kpi-card,
+.pp-action-card,
+.pp-onboarding-card {
+    background: #fff;
+    border: 1px solid #dfe9f4;
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 1px 2px rgba(15,23,42,.04);
+}
+.pp-kpi-label {
+    color: #7088a0;
+    font-size: .72rem;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+.pp-kpi-value {
+    color: #07111d;
+    font-size: 1.75rem;
+    font-weight: 850;
+    line-height: 1.1;
+    margin-top: .28rem;
+}
+.pp-kpi-note {
+    color: #7d92a8;
+    font-size: .78rem;
+    margin-top: .25rem;
+}
+.pp-card-title {
+    color: #0b1a2b;
+    font-weight: 800;
+    font-size: 1rem;
+    margin-bottom: .25rem;
+}
+.pp-card-text {
+    color: #647b93;
+    font-size: .88rem;
+    line-height: 1.45;
+}
+.pp-two-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .9rem;
+    margin: 1rem 0;
+}
+@media (max-width: 900px) {
+    .main .block-container {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
+    .pp-kpi-grid,
+    .pp-two-grid {
+        grid-template-columns: 1fr;
+    }
+    .pp-hero h1 {
+        font-size: 1.55rem;
+    }
+}
 </style>
 """
 
@@ -612,6 +906,59 @@ def _page_header(icon: str, title: str, subtitle: str = "") -> None:
         f'</div></div>',
         unsafe_allow_html=True,
     )
+
+
+def _dashboard_hero(title: str, subtitle: str, eyebrow: str = "Panel del club") -> None:
+    st.markdown(
+        f'<section class="pp-hero">'
+        f'<div class="pp-eyebrow">{escape(eyebrow)}</div>'
+        f'<h1>{escape(title)}</h1>'
+        f'<p>{escape(subtitle)}</p>'
+        f'</section>',
+        unsafe_allow_html=True,
+    )
+
+
+def _kpi_grid(cards: list[tuple[str, str, str]]) -> None:
+    html = ['<div class="pp-kpi-grid">']
+    for label, value, note in cards:
+        html.append(
+            '<div class="pp-kpi-card">'
+            f'<div class="pp-kpi-label">{escape(label)}</div>'
+            f'<div class="pp-kpi-value">{escape(str(value))}</div>'
+            f'<div class="pp-kpi-note">{escape(note)}</div>'
+            '</div>'
+        )
+    html.append("</div>")
+    st.markdown("".join(html), unsafe_allow_html=True)
+
+
+def _info_grid(cards: list[tuple[str, str]]) -> None:
+    html = ['<div class="pp-two-grid">']
+    for title, text in cards:
+        html.append(
+            '<div class="pp-action-card">'
+            f'<div class="pp-card-title">{escape(title)}</div>'
+            f'<div class="pp-card-text">{escape(text)}</div>'
+            '</div>'
+        )
+    html.append("</div>")
+    st.markdown("".join(html), unsafe_allow_html=True)
+
+
+def _nav_to(target: str) -> None:
+    st.session_state["_nav_page"] = target
+    st.rerun()
+
+
+def _sidebar_button(label: str, target: str, current_page: str, key: str) -> None:
+    if st.sidebar.button(
+        label,
+        key=key,
+        use_container_width=True,
+        type="primary" if current_page == target else "secondary",
+    ):
+        _nav_to(target)
 
 
 def _sidebar_step(label: str, state: str, num: int) -> None:
@@ -852,8 +1199,8 @@ def _df_to_bookings(df: pd.DataFrame) -> list[Booking]:
 # ---------------------------------------------------------------------------
 
 st.set_page_config(
-    page_title="Ranking Pádel Automator",
-    page_icon="🎾",
+    page_title="PadelPlus Club",
+    page_icon="P",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -877,7 +1224,7 @@ def init_state():
         # Módulo de torneos
         "tournament": None,
         # Navegación
-        "_nav_page": "club_config",
+        "_nav_page": "home",
         # Flag de carga desde DB — se resetea en logout para que recargue al volver a entrar
         "_db_phase_loaded": False,
     }
@@ -928,25 +1275,20 @@ if _db_ok:
 # Sidebar — navegación
 # ---------------------------------------------------------------------------
 
+_s = st.session_state
+page = _s.get("_nav_page", "home")
+
 st.sidebar.markdown(
-    '<div style="padding:1.4rem 1.2rem 1rem">'
-    '<div style="display:flex;align-items:center;gap:.75rem">'
-    '<div style="width:40px;height:40px;background:linear-gradient(135deg,#00c853,#00897b);'
-    'border-radius:11px;display:flex;align-items:center;justify-content:center;'
-    'font-size:1.3rem;flex-shrink:0;box-shadow:0 2px 10px rgba(0,200,83,.35)">🎾</div>'
+    '<div class="pp-brand">'
+    '<div class="pp-brand-row">'
+    '<div class="pp-brand-mark">P+</div>'
     '<div>'
-    '<div style="font-size:1rem;font-weight:800;color:#e8f4ff;letter-spacing:-.01em;line-height:1.1">Ranking Pádel</div>'
-    '<div style="font-size:.65rem;color:#3d6a90;letter-spacing:.12em;text-transform:uppercase;margin-top:1px">Automator</div>'
+    '<div class="pp-brand-title">PadelPlus</div>'
+    '<div class="pp-brand-subtitle">Club manager</div>'
     '</div></div></div>',
     unsafe_allow_html=True,
 )
-st.sidebar.markdown('<hr style="border-color:rgba(255,255,255,.07);margin:0 0 .6rem">', unsafe_allow_html=True)
 
-# ── Página actual ─────────────────────────────────────────────────────────
-_s = st.session_state
-page = _s.get("_nav_page", "club_config")
-
-# ── Usuario y club ─────────────────────────────────────────────────────────
 _club_name_sidebar = ""
 if _db_ok and is_authenticated():
     _user = get_session_user()
@@ -965,44 +1307,35 @@ if _db_ok and is_authenticated():
             st.session_state["superadmin_selected_club_name"] = _sel_name
             _club_name_sidebar = _sel_name
         else:
-            st.sidebar.warning("⚠️ No hay clubs. Crea uno en Administración.")
+            st.sidebar.markdown(
+                '<div class="pp-empty-club">Todavía no hay clubs creados. Entra en Administración para crear el primero.</div>',
+                unsafe_allow_html=True,
+            )
     else:
         _club_name_sidebar = current_club_name()
 
-    # ── Chip de usuario + club ──────────────────────────────────────────
     _role_txt = "Super Admin" if is_superadmin() else "Admin"
     _club_txt = _club_name_sidebar or "Sin club"
     st.sidebar.markdown(
-        f'<div style="margin:.2rem 1rem .8rem;padding:.7rem .9rem;'
-        f'background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);'
-        f'border-radius:10px;">'
-        f'<div style="font-size:.82rem;font-weight:700;color:#c8dff5;white-space:nowrap;'
-        f'overflow:hidden;text-overflow:ellipsis">👤 {_user["display_name"]}</div>'
-        f'<div style="font-size:.72rem;color:#3d6a90;margin-top:2px">'
-        f'{_role_txt} · {_club_txt}</div>'
+        f'<div class="pp-user-card">'
+        f'<div class="pp-user-name">{escape(str(_user["display_name"]))}</div>'
+        f'<div class="pp-user-meta">{escape(_role_txt)} · {escape(_club_txt)}</div>'
         f'</div>',
         unsafe_allow_html=True,
     )
-    if st.sidebar.button("🚪  Cerrar sesión", use_container_width=True, key="btn_logout"):
+    if st.sidebar.button("Cerrar sesión", use_container_width=True, key="btn_logout"):
         logout()
+else:
+    _club_name_sidebar = _s.get("club_name", "")
 
-st.sidebar.markdown('<hr style="border-color:rgba(255,255,255,.07);margin:.7rem 0">', unsafe_allow_html=True)
-
-# ── CLUB ───────────────────────────────────────────────────────────────────
-_club_done = bool(_club_name_sidebar)
-_club_icon = "✅" if _club_done else "🏢"
-if st.sidebar.button(
-    f"{_club_icon}  Configuración del club",
-    key="nav_club_config",
-    use_container_width=True,
-    type="primary" if page == "club_config" else "secondary",
-):
-    st.session_state["_nav_page"] = "club_config"
+if _db_ok and is_authenticated() and is_superadmin() and not _club_name_sidebar and page not in {"home", "admin"}:
+    _s["_nav_page"] = "home"
     st.rerun()
 
-st.sidebar.markdown('<hr style="border-color:rgba(255,255,255,.07);margin:.7rem 0">', unsafe_allow_html=True)
+st.sidebar.markdown('<div class="pp-nav-section">Principal</div>', unsafe_allow_html=True)
+_sidebar_button("Inicio", "home", page, "nav_home")
+_sidebar_button("Configuración del club", "club_config", page, "nav_club_config")
 
-# ── RANKING ────────────────────────────────────────────────────────────────
 _R_STEPS = [
     ("config",   "Configurar fase",    "Define fechas, pistas y parámetros",  _s.phase is not None),
     ("import",   "Importar datos",     "Sube grupos, parejas y reservas",      _s.data_loaded),
@@ -1013,25 +1346,14 @@ _R_STEPS = [
 ]
 _IS_RANKING = page in {k for k, *_ in _R_STEPS}
 
-with st.sidebar.expander("📊  RANKING", expanded=_IS_RANKING):
-    # st.button (SIN prefijo st.sidebar.) se renderiza DENTRO del expander
-    for _ri, (_rk, _rl, _rh, _rd) in enumerate(_R_STEPS, 1):
-        _r_dot  = "✅" if _rd else str(_ri)
-        _r_active = (page == _rk)
-        _r_label  = f"{'✅' if _rd else f'{_ri}.'} {_rl}"
-        if st.button(_r_label, key=f"nav_r_{_rk}",
-                     use_container_width=True,
-                     type="primary" if _r_active else "secondary"):
-            st.session_state["_nav_page"] = _rk
-            st.rerun()
-    if _IS_RANKING:
-        _r_hint = next((h for k, l, h, d in _R_STEPS if k == page), "")
-        if _r_hint:
-            st.caption(f"💡 {_r_hint}")
+st.sidebar.markdown('<div class="pp-nav-section">Ranking</div>', unsafe_allow_html=True)
+for _ri, (_rk, _rl, _rh, _rd) in enumerate(_R_STEPS, 1):
+    _sidebar_button(_rl, _rk, page, f"nav_r_{_rk}")
+if _IS_RANKING:
+    _r_hint = next((h for k, l, h, d in _R_STEPS if k == page), "")
+    if _r_hint:
+        st.sidebar.caption(_r_hint)
 
-st.sidebar.markdown('<hr style="border-color:rgba(255,255,255,.07);margin:.6rem 0">', unsafe_allow_html=True)
-
-# ── TORNEOS ────────────────────────────────────────────────────────────────
 _T_OBJ   = _s.get("tournament")
 _T_SCHED = getattr(_T_OBJ, "scheduled_count", 0) if _T_OBJ is not None else 0
 _T_STEPS = [
@@ -1043,38 +1365,24 @@ _T_STEPS = [
 ]
 _IS_TOURNAMENT = page in {k for k, *_ in _T_STEPS}
 
-with st.sidebar.expander("🏆  TORNEOS", expanded=_IS_TOURNAMENT):
-    for _ti, (_tk, _tl, _th, _td) in enumerate(_T_STEPS, 1):
-        _t_active = (page == _tk)
-        _t_label  = f"{'✅' if _td else f'{_ti}.'} {_tl}"
-        if st.button(_t_label, key=f"nav_t_{_tk}",
-                     use_container_width=True,
-                     type="primary" if _t_active else "secondary"):
-            st.session_state["_nav_page"] = _tk
-            st.rerun()
-    if _IS_TOURNAMENT:
-        _t_hint = next((h for k, l, h, d in _T_STEPS if k == page), "")
-        if _t_hint:
-            st.caption(f"💡 {_t_hint}")
+st.sidebar.markdown('<div class="pp-nav-section">Torneos</div>', unsafe_allow_html=True)
+for _ti, (_tk, _tl, _th, _td) in enumerate(_T_STEPS, 1):
+    _sidebar_button(_tl, _tk, page, f"nav_t_{_tk}")
+if _IS_TOURNAMENT:
+    _t_hint = next((h for k, l, h, d in _T_STEPS if k == page), "")
+    if _t_hint:
+        st.sidebar.caption(_t_hint)
 
-# ── Admin ──────────────────────────────────────────────────────────────────
 if _db_ok and is_superadmin():
-    st.sidebar.markdown('<hr style="border-color:rgba(255,255,255,.07);margin:.6rem 0">', unsafe_allow_html=True)
-    if st.sidebar.button(
-        "🛠️  Administración",
-        key="nav_admin",
-        use_container_width=True,
-        type="primary" if page == "admin" else "secondary",
-    ):
-        st.session_state["_nav_page"] = "admin"
-        st.rerun()
+    st.sidebar.markdown('<div class="pp-nav-section">Sistema</div>', unsafe_allow_html=True)
+    _sidebar_button("Administración", "admin", page, "nav_admin")
 
-# ── Badge Dry-Run ──────────────────────────────────────────────────────────
-st.sidebar.markdown('<hr style="border-color:rgba(255,255,255,.07);margin:.8rem 0 .4rem">', unsafe_allow_html=True)
 _dry = _s.get("dry_run", True)
-_badge_cls = "pp-badge-safe" if _dry else "pp-badge-live"
-_badge_txt = "🔒 DRY-RUN" if _dry else "⚡ ESCRITURA REAL"
-st.sidebar.markdown(f'<div style="padding:0 10px"><span class="{_badge_cls}">{_badge_txt}</span></div>', unsafe_allow_html=True)
+_mode_txt = "Modo seguro" if _dry else "Escritura real"
+st.sidebar.markdown(
+    f'<div class="pp-sidebar-footer"><span class="pp-mode-pill">{escape(_mode_txt)}</span></div>',
+    unsafe_allow_html=True,
+)
 
 # ---------------------------------------------------------------------------
 # TORNEOS — helpers (deben definirse antes del routing)
@@ -1126,10 +1434,71 @@ def _t_nav_buttons(current_step: int) -> None:
 
 
 # ---------------------------------------------------------------------------
+# PÁGINA: Inicio
+# ---------------------------------------------------------------------------
+
+if page == "home":
+    _home_club = _club_name_sidebar or current_club_name() if (_db_ok and is_authenticated()) else _s.get("club_name", "Club demo")
+    _groups_home = list(_s.get("groups") or [])
+    _pairs_home = sum(len(getattr(g, "pairs", []) or []) for g in _groups_home)
+    _phase_home = _s.get("phase")
+    _courts_home = len(getattr(_phase_home, "courts", []) or []) if _phase_home is not None else 0
+    _result_home = _s.get("schedule_result")
+    _scheduled_home = len(getattr(_result_home, "scheduled", []) or []) if _result_home is not None else 0
+    _pending_home = len(_s.get("matches") or []) if _s.get("matches_generated") and not _scheduled_home else max(len(_s.get("matches") or []) - _scheduled_home, 0)
+
+    if _db_ok and is_authenticated() and is_superadmin() and not _club_name_sidebar:
+        _dashboard_hero(
+            "Crea el primer club para activar PadelPlus",
+            "Desde Administración podrás crear clubs, usuarios y preparar una demo limpia para enseñarla a otros centros.",
+            "Puesta en marcha",
+        )
+        _info_grid([
+            ("1. Crea un club", "Registra el nombre del club y su slug interno para separar sus datos."),
+            ("2. Crea un administrador", "Asigna un usuario club_admin para que el club acceda solo a su información."),
+            ("3. Configura ranking y torneos", "Después podrás preparar rankings, pistas, parejas y horarios desde el panel."),
+            ("4. Enseña una demo", "Con datos de ejemplo la aplicación ya se percibe como producto comercial."),
+        ])
+        if st.button("Ir a Administración", type="primary", use_container_width=True):
+            _nav_to("admin")
+    else:
+        _dashboard_hero(
+            f"Gestiona {_home_club or 'tu club'} desde un único panel",
+            "Ranking, torneos, pistas y horarios organizados con una interfaz preparada para el uso diario del club.",
+            "PadelPlus Club",
+        )
+        _kpi_grid([
+            ("Grupos", len(_groups_home), "Ranking activo"),
+            ("Parejas", _pairs_home, "Jugadores inscritos"),
+            ("Partidos", _scheduled_home or len(_s.get("matches") or []), "Calendario generado"),
+            ("Pistas", _courts_home, "Configuradas"),
+        ])
+
+        _info_grid([
+            ("Ranking", "Configura fases, importa parejas, genera calendarios y exporta comunicaciones para jugadores."),
+            ("Torneos", "Crea torneos con grupos, cuadro o grupos con cuadro final, y prepara horarios por disponibilidad."),
+            ("Calendario", "Revisa reservas, conflictos y distribución de partidos antes de publicar."),
+            ("Administración", "Gestiona clubs y usuarios con datos separados para cada organización."),
+        ])
+
+        st.markdown("### Acciones rápidas")
+        qa1, qa2, qa3 = st.columns(3)
+        with qa1:
+            if st.button("Crear o revisar ranking", type="primary", use_container_width=True):
+                _nav_to("config")
+        with qa2:
+            if st.button("Crear torneo", use_container_width=True):
+                _nav_to("t_config")
+        with qa3:
+            if st.button("Configurar club", use_container_width=True):
+                _nav_to("club_config")
+
+
+# ---------------------------------------------------------------------------
 # PÁGINA 0: Configuración del club
 # ---------------------------------------------------------------------------
 
-if page == "club_config":
+elif page == "club_config":
     _page_header("🏢", "Configuración del club", "Datos del club que se guardan automáticamente")
 
     _cid = current_club_id() if _db_ok else None

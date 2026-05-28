@@ -13,8 +13,12 @@ CREATE TABLE IF NOT EXISTS clubs (
     id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     name        TEXT        NOT NULL,
     slug        TEXT        UNIQUE NOT NULL,   -- identificador URL-friendly p.ej. "padelplus-madrid"
+    settings    JSONB       NOT NULL DEFAULT '{}',
     created_at  TIMESTAMPTZ DEFAULT now()
 );
+
+ALTER TABLE clubs
+ADD COLUMN IF NOT EXISTS settings JSONB NOT NULL DEFAULT '{}';
 
 -- ============================================================
 -- 2. Usuarios (auth propio con bcrypt, sin Supabase Auth)
