@@ -35,13 +35,54 @@ html, body, [class*="css"] {
     max-width: 1240px;
 }
 
-/* ── SIDEBAR ────────────────────────────────────────────────────── */
+/* ── SIDEBAR base ───────────────────────────────────────────────── */
 [data-testid="stSidebar"] {
     background: linear-gradient(175deg, #07111d 0%, #0e243d 60%, #132d4a 100%) !important;
     border-right: 1px solid #1a3350 !important;
 }
 [data-testid="stSidebar"] * { color: #c8dff5 !important; }
 [data-testid="stSidebar"] hr { border-color: #1e3a58 !important; margin: .5rem 0 !important; }
+
+/* ── Botones dentro del sidebar ─────────────────────────────────── */
+[data-testid="stSidebar"] button {
+    background: rgba(255,255,255,.06) !important;
+    color: #c8dff5 !important;
+    border: 1px solid rgba(255,255,255,.10) !important;
+    border-radius: 8px !important;
+    font-size: .85rem !important;
+    text-align: left !important;
+}
+[data-testid="stSidebar"] button:hover {
+    background: rgba(0,200,83,.15) !important;
+    border-color: rgba(0,200,83,.35) !important;
+    color: #90ffc8 !important;
+}
+[data-testid="stSidebar"] button[kind="primary"],
+[data-testid="stSidebar"] [data-testid="stBaseButton-primary"] {
+    background: rgba(0,200,83,.22) !important;
+    color: #90ffc8 !important;
+    border: 1px solid rgba(0,200,83,.45) !important;
+    font-weight: 700 !important;
+}
+/* ── Expanders del sidebar ──────────────────────────────────────── */
+[data-testid="stSidebar"] [data-testid="stExpander"] {
+    background: rgba(255,255,255,.04) !important;
+    border: 1px solid rgba(255,255,255,.10) !important;
+    border-radius: 10px !important;
+    margin-bottom: 6px !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary {
+    font-size: .82rem !important;
+    font-weight: 800 !important;
+    letter-spacing: .06em !important;
+    text-transform: uppercase !important;
+    color: #7fa8cc !important;
+    padding: 8px 12px !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary:hover {
+    color: #c8dff5 !important;
+}
+/* ── Radio dentro sidebar ───────────────────────────────────────── */
 [data-testid="stSidebar"] [role="radiogroup"] { gap: 2px !important; }
 [data-testid="stSidebar"] label {
     border-radius: 9px !important;
@@ -729,7 +770,7 @@ def init_state():
         # Módulo de torneos
         "tournament": None,
         # Navegación
-        "_nav_page": "config",
+        "_nav_page": "club_config",
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -787,117 +828,123 @@ st.sidebar.markdown(
 )
 st.sidebar.markdown('<hr style="border-color:#2a4a6b;margin:.6rem 0">', unsafe_allow_html=True)
 
-# ── Usuario / Club ─────────────────────────────────────────────────────────
+# ── Página actual ─────────────────────────────────────────────────────────
+_s = st.session_state
+page = _s.get("_nav_page", "club_config")
+
+# ── Usuario y club ─────────────────────────────────────────────────────────
+_club_name_sidebar = ""
 if _db_ok and is_authenticated():
     _user = get_session_user()
-    _club_name_sidebar = current_club_name()
 
     if is_superadmin() and _db is not None:
         _clubs = _db.list_clubs()
         if _clubs:
             _club_options = {c["name"]: c["id"] for c in _clubs}
-            _selected_club_name = st.sidebar.selectbox(
-                "Club activo", options=list(_club_options.keys()), index=0,
-                key="superadmin_club_select",
+            _prev = st.session_state.get("superadmin_selected_club_id")
+            _default_idx = list(_club_options.values()).index(_prev) if _prev in _club_options.values() else 0
+            _sel_name = st.sidebar.selectbox(
+                "🏢 Club activo", options=list(_club_options.keys()),
+                index=_default_idx, key="superadmin_club_select",
             )
-            st.session_state["superadmin_selected_club_id"]   = _club_options[_selected_club_name]
-            st.session_state["superadmin_selected_club_name"] = _selected_club_name
-            _club_name_sidebar = _selected_club_name
+            st.session_state["superadmin_selected_club_id"]   = _club_options[_sel_name]
+            st.session_state["superadmin_selected_club_name"] = _sel_name
+            _club_name_sidebar = _sel_name
         else:
-            st.sidebar.caption("⚠️ No hay clubs creados")
+            st.sidebar.warning("⚠️ No hay clubs. Crea uno en Administración.")
+    else:
+        _club_name_sidebar = current_club_name()
+        if _club_name_sidebar:
+            st.sidebar.markdown(
+                f'<div style="padding:4px 10px 2px;font-size:.8rem">'
+                f'🏢 <b>{_club_name_sidebar}</b></div>',
+                unsafe_allow_html=True,
+            )
 
     st.sidebar.markdown(
-        f'<div style="padding:0 10px 4px 10px;font-size:.78rem;color:#7fa8cc">'
-        f'👤 <b style="color:#c8dff5">{_user["display_name"]}</b>'
-        + (f'&nbsp;&nbsp;🏢 {_club_name_sidebar}' if _club_name_sidebar else '') +
-        f'</div>',
+        f'<div style="padding:2px 10px 6px;font-size:.78rem;opacity:.75">'
+        f'👤 {_user["display_name"]}</div>',
         unsafe_allow_html=True,
     )
-    if st.sidebar.button("🚪 Cerrar sesión", use_container_width=True):
+    if st.sidebar.button("🚪 Cerrar sesión", use_container_width=True, key="btn_logout"):
         logout()
-    st.sidebar.markdown('<hr style="border-color:#2a4a6b;margin:.4rem 0 .6rem 0">', unsafe_allow_html=True)
 
-# ── Página actual (por session state) ─────────────────────────────────────
-page = st.session_state.get("_nav_page", "config")
+st.sidebar.markdown('<hr style="border-color:#1e3a58;margin:.5rem 0">', unsafe_allow_html=True)
 
-# ── Pasos de Ranking ───────────────────────────────────────────────────────
-_s = st.session_state
-_R_STEPS = [
-    ("config",   "⚙️ Configurar fase",     "Define fechas, pistas y parámetros"),
-    ("import",   "📥 Importar datos",       "Sube grupos, parejas y reservas"),
-    ("generate", "📅 Generar calendario",   "Crea los partidos automáticamente"),
-    ("export",   "📤 Exportar",             "Excel, mensajes WhatsApp y más"),
-    ("review",   "🔍 Revisión",             "Comprueba conflictos y ajustes"),
-    ("syltek",   "🔗 Publicar en Syltek",   "Reserva pistas automáticamente"),
-]
-_R_DONE = {
-    "config":   _s.phase is not None,
-    "import":   _s.data_loaded,
-    "generate": _s.matches_generated,
-    "export":   _s.matches_scheduled,
-    "review":   _s.matches_scheduled,
-    "syltek":   False,
-}
-
-# ── Pasos de Torneos ───────────────────────────────────────────────────────
-_T_OBJ = _s.get("tournament")
-_T_STEPS = [
-    ("t_config",   "⚙️ Configurar torneo", "Nombre, categoría, formato y pistas"),
-    ("t_pairs",    "👥 Añadir parejas",     "Registra las parejas participantes"),
-    ("t_generate", "🎯 Generar estructura", "Crea grupos y/o cuadro eliminatorio"),
-    ("t_schedule", "🗓️ Asignar horarios",   "Planificación automática del torneo"),
-    ("t_export",   "📤 Exportar",           "Descarga el Excel del torneo"),
-]
-_T_DONE = {
-    "t_config":   _T_OBJ is not None,
-    "t_pairs":    _T_OBJ is not None and len(_T_OBJ.pairs) > 0,
-    "t_generate": _T_OBJ is not None and len(_T_OBJ.matches) > 0,
-    "t_schedule": _T_OBJ is not None and _T_OBJ.scheduled_count > 0,
-    "t_export":   _T_OBJ is not None and _T_OBJ.scheduled_count > 0,
-}
-
-_IS_RANKING = page in {s[0] for s in _R_STEPS} or page == "admin"
-_IS_TOURNAMENT = page in {s[0] for s in _T_STEPS}
-
-# ── CSS para los botones de nav ─────────────────────────────────────────────
-st.sidebar.markdown("""
-<style>
-div[data-testid="stSidebar"] .nav-step-done button  { border-left: 3px solid #00c853 !important; }
-div[data-testid="stSidebar"] .nav-step-active button { border-left: 3px solid #fff !important; background: rgba(255,255,255,.12) !important; }
-div[data-testid="stSidebar"] .nav-step-hint          { font-size:.72rem; color:#5a8aaa; padding: 0 4px 6px 28px; line-height:1.3; }
-</style>""", unsafe_allow_html=True)
-
-def _nav_step(key, label, hint, done, active):
-    icon = "✅" if done else ("▶" if active else "○")
-    _lbl = f"{icon}  {label}"
-    if st.sidebar.button(_lbl, key=f"nav_{key}", use_container_width=True,
-                         type="primary" if active else "secondary"):
+# ── Función de navegación ──────────────────────────────────────────────────
+def _nav(key: str, label: str, done: bool = False, active: bool = False, hint: str = "") -> None:
+    _icon = "✅" if done else ("▶️" if active else "   "  )
+    if st.sidebar.button(
+        f"{_icon} {label}", key=f"nav_{key}",
+        use_container_width=True,
+        type="primary" if active else "secondary",
+    ):
         st.session_state["_nav_page"] = key
         st.rerun()
-    if active:
-        st.sidebar.markdown(f'<div class="nav-step-hint">→ {hint}</div>', unsafe_allow_html=True)
+    if active and hint:
+        st.sidebar.markdown(
+            f'<div style="font-size:.73rem;color:#5a8cb0;padding:1px 4px 6px 14px">'
+            f'💡 {hint}</div>',
+            unsafe_allow_html=True,
+        )
 
-# ── Sección RANKING ────────────────────────────────────────────────────────
-with st.sidebar.expander("📊  RANKING", expanded=_IS_RANKING or not _IS_TOURNAMENT):
-    for _sk, _sl, _sh in _R_STEPS:
-        _nav_step(_sk, _sl, _sh, _R_DONE.get(_sk, False), page == _sk)
+def _section_label(txt: str) -> None:
+    st.sidebar.markdown(
+        f'<div style="font-size:.68rem;font-weight:800;letter-spacing:.12em;'
+        f'text-transform:uppercase;color:#3d6080;padding:8px 10px 4px">{txt}</div>',
+        unsafe_allow_html=True,
+    )
 
-# ── Sección TORNEOS ────────────────────────────────────────────────────────
-with st.sidebar.expander("🏆  TORNEOS", expanded=_IS_TOURNAMENT):
-    for _sk, _sl, _sh in _T_STEPS:
-        _nav_step(_sk, _sl, _sh, _T_DONE.get(_sk, False), page == _sk)
+# ── CLUB ───────────────────────────────────────────────────────────────────
+_section_label("🏢 Club")
+_nav("club_config", "Configuración del club",
+     done=bool(_club_name_sidebar), active=(page == "club_config"),
+     hint="Nombre, pistas, horarios y contacto")
 
-# ── Admin (solo superadmin) ────────────────────────────────────────────────
+st.sidebar.markdown('<hr style="border-color:#1e3a58;margin:.5rem 0">', unsafe_allow_html=True)
+
+# ── RANKING ────────────────────────────────────────────────────────────────
+_R_STEPS = [
+    ("config",   "Configurar fase",    "Define fechas, pistas y parámetros",  _s.phase is not None),
+    ("import",   "Importar datos",     "Sube grupos, parejas y reservas",      _s.data_loaded),
+    ("generate", "Generar calendario", "Crea los partidos automáticamente",    _s.matches_generated),
+    ("export",   "Exportar",           "Excel, mensajes WhatsApp y más",       _s.matches_scheduled),
+    ("review",   "Revisión",           "Comprueba conflictos y ajustes",       _s.matches_scheduled),
+    ("syltek",   "Publicar en Syltek", "Reserva pistas automáticamente",       False),
+]
+_IS_RANKING = page in {s[0] for s in _R_STEPS}
+
+_section_label("📊 Ranking")
+with st.sidebar.expander("Ver pasos del ranking →", expanded=_IS_RANKING):
+    for _sk, _sl, _sh, _sd in _R_STEPS:
+        _nav(_sk, f"{'1234567890'[_R_STEPS.index((_sk,_sl,_sh,_sd))]}. {_sl}",
+             done=_sd, active=(page==_sk), hint=_sh)
+
+st.sidebar.markdown('<hr style="border-color:#1e3a58;margin:.5rem 0">', unsafe_allow_html=True)
+
+# ── TORNEOS ────────────────────────────────────────────────────────────────
+_T_OBJ = _s.get("tournament")
+_T_STEPS = [
+    ("t_config",   "Configurar torneo",  "Nombre, categoría, formato y pistas",  _T_OBJ is not None),
+    ("t_pairs",    "Añadir parejas",     "Registra las parejas participantes",   _T_OBJ is not None and len(_T_OBJ.pairs) > 0),
+    ("t_generate", "Generar estructura", "Crea grupos y/o cuadro",               _T_OBJ is not None and len(_T_OBJ.matches) > 0),
+    ("t_schedule", "Asignar horarios",   "Planificación automática",             _T_OBJ is not None and _T_OBJ.scheduled_count > 0),
+    ("t_export",   "Exportar",           "Descarga el Excel del torneo",         _T_OBJ is not None and _T_OBJ.scheduled_count > 0),
+]
+_IS_TOURNAMENT = page in {s[0] for s in _T_STEPS}
+
+_section_label("🏆 Torneos")
+with st.sidebar.expander("Ver pasos del torneo →", expanded=_IS_TOURNAMENT):
+    for _i, (_sk, _sl, _sh, _sd) in enumerate(_T_STEPS, 1):
+        _nav(_sk, f"{_i}. {_sl}", done=_sd, active=(page==_sk), hint=_sh)
+
+# ── Admin ──────────────────────────────────────────────────────────────────
 if _db_ok and is_superadmin():
-    st.sidebar.markdown('<hr style="border-color:#2a4a6b;margin:.6rem 0 .3rem">', unsafe_allow_html=True)
-    if st.sidebar.button("🛠️  Administración", use_container_width=True,
-                         type="primary" if page == "admin" else "secondary",
-                         key="nav_admin"):
-        st.session_state["_nav_page"] = "admin"
-        st.rerun()
+    st.sidebar.markdown('<hr style="border-color:#1e3a58;margin:.5rem 0">', unsafe_allow_html=True)
+    _nav("admin", "🛠️ Administración", active=(page == "admin"))
 
 # ── Badge Dry-Run ──────────────────────────────────────────────────────────
-st.sidebar.markdown('<hr style="border-color:#2a4a6b;margin:.8rem 0 .4rem 0">', unsafe_allow_html=True)
+st.sidebar.markdown('<hr style="border-color:#1e3a58;margin:.8rem 0 .4rem">', unsafe_allow_html=True)
 _dry = _s.get("dry_run", True)
 _badge_cls = "pp-badge-safe" if _dry else "pp-badge-live"
 _badge_txt = "🔒 DRY-RUN" if _dry else "⚡ ESCRITURA REAL"
@@ -953,10 +1000,79 @@ def _t_nav_buttons(current_step: int) -> None:
 
 
 # ---------------------------------------------------------------------------
+# PÁGINA 0: Configuración del club
+# ---------------------------------------------------------------------------
+
+if page == "club_config":
+    _page_header("🏢", "Configuración del club", "Datos del club que se guardan automáticamente")
+
+    _cid = current_club_id() if _db_ok else None
+    _club_row = _db.get_club_by_id(_cid) if (_db_ok and _db and _cid) else None
+
+    # Leer settings guardados
+    _settings = (_club_row.get("settings") or {}) if _club_row else {}
+
+    col1, col2 = st.columns(2)
+    with col1:
+        _section_start("🏢", "Datos del club")
+        _cc_name    = st.text_input("Nombre del club", value=_club_row["name"] if _club_row else _s.get("club_name",""))
+        _cc_address = st.text_input("Dirección", value=_settings.get("address",""), placeholder="Calle Mayor 1, Madrid")
+        _cc_phone   = st.text_input("Teléfono", value=_settings.get("phone",""),   placeholder="+34 600 000 000")
+        _cc_email   = st.text_input("Email de contacto", value=_settings.get("email",""), placeholder="info@miclub.es")
+        _cc_web     = st.text_input("Web", value=_settings.get("web",""),           placeholder="https://miclub.es")
+
+    with col2:
+        _section_start("🏟️", "Instalaciones")
+        _cc_courts  = st.number_input("Número de pistas de pádel", min_value=1, max_value=30,
+                                      value=int(_settings.get("num_courts", 4)))
+        _cc_indoor  = st.number_input("Pistas cubiertas", min_value=0, max_value=30,
+                                      value=int(_settings.get("indoor_courts", 0)))
+        _section_start("⏰", "Horario de apertura")
+        _cc_open  = st.time_input("Apertura",  value=_settings.get("open_time",  "08:00") if isinstance(_settings.get("open_time"), str) else time(8,0))
+        _cc_close = st.time_input("Cierre",    value=_settings.get("close_time", "23:00") if isinstance(_settings.get("close_time"), str) else time(23,0))
+        _cc_notes = st.text_area("Notas / descripción", value=_settings.get("notes",""),
+                                 placeholder="Ej: Parking gratuito, vestuarios...", height=80)
+
+    st.divider()
+    if st.button("💾 Guardar configuración del club", type="primary", use_container_width=True):
+        _new_settings = {
+            "address": _cc_address, "phone": _cc_phone, "email": _cc_email,
+            "web": _cc_web, "num_courts": _cc_courts, "indoor_courts": _cc_indoor,
+            "open_time": str(_cc_open), "close_time": str(_cc_close), "notes": _cc_notes,
+        }
+        st.session_state["club_name"] = _cc_name
+        if _db_ok and _db and _cid:
+            try:
+                # Guardar settings en la tabla clubs
+                _db._c.table("clubs").update({"name": _cc_name, "settings": _new_settings}).eq("id", _cid).execute()
+                st.success("✅ Configuración del club guardada en la base de datos.")
+            except Exception as _e:
+                st.warning(f"⚠️ No se pudo guardar en BD: {_e}")
+        else:
+            st.success("✅ Configuración guardada en sesión.")
+
+    if _club_row:
+        st.info(
+            f"🏢 **{_club_row['name']}** · "
+            + (f"📍 {_settings.get('address','')}" if _settings.get('address') else "Añade la dirección arriba")
+        )
+
+    st.divider()
+    st.markdown("#### 🚀 ¿Qué hacer a continuación?")
+    cc1, cc2 = st.columns(2)
+    with cc1:
+        if st.button("📊 Ir al Ranking →", type="primary", use_container_width=True):
+            st.session_state["_nav_page"] = "config"; st.rerun()
+    with cc2:
+        if st.button("🏆 Ir a Torneos →", use_container_width=True):
+            st.session_state["_nav_page"] = "t_config"; st.rerun()
+
+
+# ---------------------------------------------------------------------------
 # PÁGINA 1: Configuración
 # ---------------------------------------------------------------------------
 
-if page == "config":
+elif page == "config":
     _page_header("⚙️", "Configuración", "Credenciales de Syltek y parámetros de la fase de ranking")
     st.info("Las credenciales se leen del archivo `.env`. Aquí configuras los parámetros de la fase.")
 
