@@ -66,23 +66,27 @@ html, body, [class*="css"] {
 }
 /* ── Expanders del sidebar ──────────────────────────────────────── */
 [data-testid="stSidebar"] [data-testid="stExpander"] {
-    background: rgba(255,255,255,.04) !important;
-    border: 1px solid rgba(255,255,255,.10) !important;
-    border-radius: 10px !important;
+    background: rgba(255,255,255,.05) !important;
+    border: 1px solid rgba(255,255,255,.12) !important;
+    border-radius: 12px !important;
     margin-bottom: 8px !important;
     overflow: hidden !important;
 }
 [data-testid="stSidebar"] [data-testid="stExpander"] summary {
-    font-size: .80rem !important;
-    font-weight: 800 !important;
-    letter-spacing: .09em !important;
+    font-size: .78rem !important;
+    font-weight: 900 !important;
+    letter-spacing: .12em !important;
     text-transform: uppercase !important;
-    color: #5a8cb0 !important;
-    padding: 9px 12px !important;
+    color: #a8c8e8 !important;
+    padding: 11px 14px !important;
 }
 [data-testid="stSidebar"] [data-testid="stExpander"] summary:hover {
-    color: #c8dff5 !important;
-    background: rgba(255,255,255,.04) !important;
+    color: #e0f0ff !important;
+    background: rgba(255,255,255,.06) !important;
+}
+/* Triángulo del expander */
+[data-testid="stSidebar"] [data-testid="stExpander"] summary svg {
+    fill: #a8c8e8 !important;
 }
 /* ── Radio dentro sidebar ───────────────────────────────────────── */
 /* Contenedor del grupo */
@@ -916,9 +920,8 @@ _IS_RANKING = page in set(_R_KEYS)
 _r_default_idx = _R_KEYS.index(page) if _IS_RANKING else 0
 
 with st.sidebar.expander("📊  RANKING", expanded=_IS_RANKING):
-    # st.radio renders INSIDE the expander (no st.sidebar. prefix needed here)
     _r_sel = st.radio(
-        "Ranking",
+        "nav_ranking",
         _R_LABELS,
         index=_r_default_idx,
         label_visibility="hidden",
@@ -928,7 +931,7 @@ with st.sidebar.expander("📊  RANKING", expanded=_IS_RANKING):
         if _r_hint:
             st.caption(f"💡 {_r_hint}")
 
-# Navigate only when the user explicitly picked a different step
+# Navegar solo cuando el usuario eligió algo distinto al paso actual
 if _r_sel != _R_LABELS[_r_default_idx]:
     st.session_state["_nav_page"] = _R_KEYS[_R_LABELS.index(_r_sel)]
     st.rerun()
@@ -954,7 +957,7 @@ _t_default_idx = _T_KEYS.index(page) if _IS_TOURNAMENT else 0
 
 with st.sidebar.expander("🏆  TORNEOS", expanded=_IS_TOURNAMENT):
     _t_sel = st.radio(
-        "Torneos",
+        "nav_torneos",
         _T_LABELS,
         index=_t_default_idx,
         label_visibility="hidden",
