@@ -3053,10 +3053,9 @@ elif page == "admin":
         st.markdown("### Usuarios del sistema")
         _users_list = _db.list_users()
         if _users_list:
-            _df_users = pd.DataFrame(_users_list)[
-                ["id", "username", "display_name", "role", "club_id", "is_active", "created_at"]
-            ]
-            _df_users.columns = ["ID", "Usuario", "Nombre", "Rol", "Club ID", "Activo", "Creado"]
+            _df_users = pd.DataFrame(_users_list)
+            # Nunca mostrar el hash de contraseña
+            _df_users = _df_users.drop(columns=["password_hash"], errors="ignore")
             st.dataframe(_df_users, use_container_width=True, hide_index=True)
         else:
             st.info("No hay usuarios registrados todavía.")
