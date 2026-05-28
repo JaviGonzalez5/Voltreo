@@ -452,6 +452,14 @@ from src.schedule_validator import validate_schedule, validation_summary, SEVERI
 from src.excel_template_exporter import export_groups_to_template
 from src.scheduler import balance_metrics, pairs_with_most_conflicts
 from src.syltek_connector import SyltekConnector, run_login_check, _parse_occupied_slots
+from src.tournament_models import (
+    TournamentConfig, TournamentFormat, TournamentPair, TournamentPlayer,
+    TournamentCourt, TMatchStatus, MatchRound,
+)
+from src.tournament_generator import (
+    generate_tournament_structure, tournament_summary as _t_summary,
+)
+from src.tournament_scheduler import schedule_tournament, tournament_schedule_summary
 
 
 # ---------------------------------------------------------------------------
@@ -652,6 +660,8 @@ def init_state():
         "data_loaded": False,
         "matches_generated": False,
         "matches_scheduled": False,
+        # Módulo de torneos
+        "tournament": None,          # TournamentConfig activo
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -682,6 +692,7 @@ PAGES = {
     "📤 Exportar": "export",
     "🔍 Revisión": "review",
     "🔗 Publicar en Syltek": "syltek",
+    "🏆 Torneos": "tournament",
 }
 page_label = st.sidebar.radio("", list(PAGES.keys()), label_visibility="collapsed")
 page = PAGES[page_label]
@@ -2266,4 +2277,583 @@ elif page == "syltek":
         df_res = pd.DataFrame(st.session_state["syltek_publish_results"])
         st.dataframe(df_res, use_container_width=True)
 
-# (helpers definidos al inicio del archivo)
+# ---------------------------------------------------------------------------
+# PÁGINA 7: Torneos
+# ---------------------------------------------------------------------------
+
+elif page == "tournament":
+    _page_header("🏆", "Torneos", "Organiza torneos de grupos, cuadro o grupos+cuadro con horarios automáticos")
+
+    # ── Estado del torneo en sesión
+    t: TournamentConfig | None = st.session_state.get("tournament")
+
+    # ── Tabs principales
+    tab_cfg, tab_pairs, tab_generate, tab_schedule, tab_export = st.tabs([
+        "⚙️ Configuración",
+        "👥 Parejas",
+        "🎯 Generar estructura",
+        "🗓️ Horarios",
+        "📤 Exportar",
+    ])
+
+    # ===================================================================
+    # TAB 1 — Configuración del torneo
+    # ===================================================================
+    with tab_cfg:
+        _section_start("🏆", "Datos del torneo")
+
+        c1, c2 = st.columns(2)
+        with c1:
+            t_name = st.text_input(
+                "Nombre del torneo",
+                value=t.name if t else "Torneo PadelPlus 2025",
+            )
+            t_format = st.selectbox(
+                "Formato",
+                options=[
+                    TournamentFormat.GROUPS,
+                    TournamentFormat.BRACKET,
+                    TournamentFormat.GROUPS_BRACKET,
+                ],
+                format_func=lambda f: {
+                    TournamentFormat.GROUPS:         "🔄 Solo grupos (round-robin)",
+                    TournamentFormat.BRACKET:        "🪜 Solo cuadro eliminatorio",
+                    TournamentFormat.GROUPS_BRACKET: "🔄🪜 Grupos + cuadro final",
+                }[f],
+                index=0 if t is None else [
+                    TournamentFormat.GROUPS,
+                    TournamentFormat.BRACKET,
+                    TournamentFormat.GROUPS_BRACKET,
+                ].index(t.format),
+            )
+        with c2:
+            import datetime as _dt_mod
+            t_start = st.date_input(
+                "Fecha de inicio",
+                value=t.start_date if t else _dt_mod.date.today(),
+            )
+            t_end = st.date_input(
+                "Fecha de fin",
+                value=t.end_date if t else t_start,
+                min_value=t_start,
+            )
+
+        st.divider()
+        _section_start("🏟️", "Pistas del torneo")
+
+        # Gestión de pistas
+        if "t_courts_list" not in st.session_state:
+            st.session_state["t_courts_list"] = (
+                [{"name": c.name} for c in t.courts] if t else [{"name": "Pista 1"}, {"name": "Pista 2"}]
+            )
+
+        c_add, c_remove = st.columns([3, 1])
+        with c_add:
+            new_court_name = st.text_input("Nombre de la nueva pista", key="new_t_court_name", placeholder="Pista 3")
+        with c_remove:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("➕ Añadir pista") and new_court_name.strip():
+                st.session_state["t_courts_list"].append({"name": new_court_name.strip()})
+                st.rerun()
+
+        _tc_list = st.session_state["t_courts_list"]
+        if _tc_list:
+            cols_court = st.columns(min(len(_tc_list), 4))
+            for _ci, _ct in enumerate(_tc_list):
+                with cols_court[_ci % 4]:
+                    if st.button(f"🗑️ {_ct['name']}", key=f"del_court_{_ci}", help="Eliminar esta pista"):
+                        st.session_state["t_courts_list"].pop(_ci)
+                        st.rerun()
+        else:
+            st.warning("⚠️ Añade al menos una pista.")
+
+        st.divider()
+        _section_start("⏱️", "Parámetros de tiempo")
+
+        col_t1, col_t2, col_t3 = st.columns(3)
+        with col_t1:
+            t_match_dur = st.number_input(
+                "Duración del partido (min)",
+                min_value=30, max_value=180, step=15,
+                value=t.match_duration_minutes if t else 60,
+            )
+            t_rest = st.number_input(
+                "Descanso mínimo entre partidos (min)",
+                min_value=0, max_value=120, step=5,
+                value=t.rest_between_matches_min if t else 15,
+            )
+        with col_t2:
+            t_day_start = st.time_input(
+                "Hora de inicio del día",
+                value=t.day_start_time if t else _dt_mod.time(9, 0),
+            )
+            t_day_end = st.time_input(
+                "Hora de fin del día",
+                value=t.day_end_time if t else _dt_mod.time(22, 0),
+            )
+        with col_t3:
+            if t_format in (TournamentFormat.GROUPS, TournamentFormat.GROUPS_BRACKET):
+                t_group_size = st.number_input(
+                    "Parejas por grupo",
+                    min_value=3, max_value=8, value=t.group_size if t else 4,
+                )
+            else:
+                t_group_size = 4
+
+            if t_format in (TournamentFormat.BRACKET, TournamentFormat.GROUPS_BRACKET):
+                t_bracket_size = st.selectbox(
+                    "Tamaño del cuadro",
+                    options=[4, 8, 16],
+                    index=[4, 8, 16].index(t.bracket_size) if t else 1,
+                )
+                t_third_place = st.checkbox(
+                    "Partido de 3er y 4º puesto",
+                    value=t.third_place_match if t else False,
+                )
+            else:
+                t_bracket_size = 8
+                t_third_place = False
+
+            if t_format == TournamentFormat.GROUPS_BRACKET:
+                t_qualifiers = st.number_input(
+                    "Clasificados por grupo al cuadro",
+                    min_value=1, max_value=4,
+                    value=t.groups_qualifiers if t else 2,
+                )
+            else:
+                t_qualifiers = 2
+
+        st.divider()
+        if st.button("💾 Guardar configuración", type="primary"):
+            courts_obj = [
+                TournamentCourt(id=f"tc_{i}", name=c["name"])
+                for i, c in enumerate(st.session_state["t_courts_list"])
+            ]
+            pairs_keep = t.pairs if t else []
+
+            new_t = TournamentConfig(
+                id=t.id if t else str(__import__("uuid").uuid4()),
+                name=t_name,
+                start_date=t_start,
+                end_date=t_end,
+                courts=courts_obj,
+                pairs=pairs_keep,
+                format=t_format,
+                match_duration_minutes=t_match_dur,
+                rest_between_matches_min=t_rest,
+                day_start_time=t_day_start,
+                day_end_time=t_day_end,
+                group_size=t_group_size,
+                bracket_size=t_bracket_size,
+                third_place_match=t_third_place,
+                groups_qualifiers=t_qualifiers,
+                groups=[],
+                matches=[],
+            )
+            st.session_state["tournament"] = new_t
+            st.success("✅ Configuración del torneo guardada.")
+            st.rerun()
+
+    # ===================================================================
+    # TAB 2 — Parejas
+    # ===================================================================
+    with tab_pairs:
+        if not st.session_state.get("tournament"):
+            st.info("💡 Primero guarda la configuración del torneo (pestaña ⚙️ Configuración).")
+            st.stop()
+
+        t = st.session_state["tournament"]
+        _section_start("👥", "Gestión de parejas")
+
+        pair_tab_a, pair_tab_b = st.tabs(["📝 Añadir manualmente", "📂 Importar CSV"])
+
+        with pair_tab_a:
+            st.caption("Introduce los datos de la pareja:")
+            pa1, pa2, pa3 = st.columns(3)
+            with pa1:
+                new_pair_name = st.text_input("Nombre de la pareja", placeholder="García / López", key="tnp_name")
+            with pa2:
+                new_p1_name = st.text_input("Nombre Jugador 1", placeholder="Carlos García", key="tnp_p1")
+                new_p1_email = st.text_input("Email J1 (opcional)", placeholder="carlos@x.com", key="tnp_p1e")
+            with pa3:
+                new_p2_name = st.text_input("Nombre Jugador 2", placeholder="Marta López", key="tnp_p2")
+                new_p2_email = st.text_input("Email J2 (opcional)", placeholder="marta@x.com", key="tnp_p2e")
+
+            if st.button("➕ Añadir pareja", type="primary"):
+                if new_pair_name.strip() and new_p1_name.strip() and new_p2_name.strip():
+                    new_pair = TournamentPair(
+                        name=new_pair_name.strip(),
+                        player_1=TournamentPlayer(
+                            name=new_p1_name.strip(),
+                            email=new_p1_email.strip() or None,
+                        ),
+                        player_2=TournamentPlayer(
+                            name=new_p2_name.strip(),
+                            email=new_p2_email.strip() or None,
+                        ),
+                    )
+                    t.pairs.append(new_pair)
+                    t.groups = []
+                    t.matches = []
+                    st.success(f"✅ Pareja '{new_pair.display_name}' añadida.")
+                    st.rerun()
+                else:
+                    st.error("Rellena el nombre de la pareja y de los dos jugadores.")
+
+        with pair_tab_b:
+            st.markdown(
+                "El CSV debe tener las columnas: "
+                "`pair_name`, `player1_name`, `player2_name`, `player1_email` (opcional), `player2_email` (opcional)"
+            )
+            _sample_csv = "pair_name,player1_name,player2_name,player1_email,player2_email\n"
+            _sample_csv += "García / López,Carlos García,Marta López,carlos@x.com,marta@x.com\n"
+            _sample_csv += "Ruiz / Martín,Ana Ruiz,Luis Martín,,\n"
+            st.download_button("⬇️ Descargar plantilla CSV", _sample_csv, "plantilla_parejas.csv", "text/csv")
+
+            csv_upload = st.file_uploader("Subir CSV de parejas", type=["csv"], key="t_csv_pairs")
+            if csv_upload:
+                try:
+                    _df_pairs = pd.read_csv(csv_upload)
+                    required_cols = {"pair_name", "player1_name", "player2_name"}
+                    missing = required_cols - set(_df_pairs.columns)
+                    if missing:
+                        st.error(f"Faltan columnas: {', '.join(missing)}")
+                    else:
+                        new_pairs_csv = []
+                        for _, row in _df_pairs.iterrows():
+                            if pd.isna(row["pair_name"]) or not str(row["pair_name"]).strip():
+                                continue
+                            new_pairs_csv.append(TournamentPair(
+                                name=str(row["pair_name"]).strip(),
+                                player_1=TournamentPlayer(
+                                    name=str(row["player1_name"]).strip(),
+                                    email=str(row.get("player1_email", "")).strip() or None,
+                                ),
+                                player_2=TournamentPlayer(
+                                    name=str(row["player2_name"]).strip(),
+                                    email=str(row.get("player2_email", "")).strip() or None,
+                                ),
+                            ))
+                        if st.button(f"✅ Importar {len(new_pairs_csv)} parejas del CSV", type="primary"):
+                            t.pairs.extend(new_pairs_csv)
+                            t.groups = []
+                            t.matches = []
+                            st.success(f"✅ {len(new_pairs_csv)} parejas importadas.")
+                            st.rerun()
+                except Exception as _csv_err:
+                    st.error(f"Error leyendo CSV: {_csv_err}")
+
+        st.divider()
+        if t.pairs:
+            _section_start("📋", f"Parejas registradas ({len(t.pairs)})")
+            _rows_pairs = []
+            for _pi, _pp in enumerate(t.pairs):
+                _rows_pairs.append({
+                    "#": _pi + 1,
+                    "Pareja": _pp.display_name,
+                    "Jugador 1": _pp.player_1.full_name,
+                    "Jugador 2": _pp.player_2.full_name,
+                    "Email 1": _pp.player_1.email or "—",
+                    "Email 2": _pp.player_2.email or "—",
+                })
+            st.dataframe(_rows_pairs, use_container_width=True, hide_index=True)
+
+            if st.button("🗑️ Vaciar lista de parejas", type="secondary"):
+                t.pairs = []
+                t.groups = []
+                t.matches = []
+                st.rerun()
+        else:
+            _empty_state("👥", "Sin parejas", "Añade las parejas del torneo manualmente o importa un CSV.")
+
+    # ===================================================================
+    # TAB 3 — Generar estructura
+    # ===================================================================
+    with tab_generate:
+        t = st.session_state.get("tournament")
+        if not t:
+            st.info("💡 Primero configura el torneo.")
+            st.stop()
+        if not t.pairs:
+            st.info("💡 Añade las parejas del torneo antes de generar la estructura.")
+            st.stop()
+
+        _section_start("🎯", "Estructura del torneo")
+
+        n_pairs = len(t.pairs)
+        st.caption(
+            f"**{n_pairs} parejas · Formato: "
+            f"{TournamentFormat.GROUPS.value if t.format == TournamentFormat.GROUPS else t.format.value}**"
+        )
+
+        if t.format == TournamentFormat.GROUPS:
+            n_groups = max(1, -(-n_pairs // t.group_size))
+            from math import comb as _comb
+            matches_per_group = _comb(t.group_size, 2)
+            total = n_groups * matches_per_group
+            col_gs1, col_gs2, col_gs3 = st.columns(3)
+            col_gs1.metric("Grupos", n_groups)
+            col_gs2.metric("Partidos por grupo (estimado)", matches_per_group)
+            col_gs3.metric("Total partidos estimado", total)
+
+        elif t.format == TournamentFormat.BRACKET:
+            bs = min(t.bracket_size, 1 << (n_pairs.bit_length() - 1) if n_pairs >= 2 else 4)
+            bs = max(4, bs)
+            st.metric("Parejas en el cuadro", bs)
+            st.caption(f"({n_pairs - bs} parejas quedarán fuera si hay más de {bs})")
+
+        elif t.format == TournamentFormat.GROUPS_BRACKET:
+            from math import comb as _comb
+            n_groups = max(1, -(-n_pairs // t.group_size))
+            q = n_groups * t.groups_qualifiers
+            st.info(
+                f"**{n_groups} grupos** de ~{t.group_size} parejas cada uno. "
+                f"Los {t.groups_qualifiers} mejores de cada grupo pasan al cuadro "
+                f"→ **{q} clasificados**."
+            )
+
+        if st.button("⚡ Generar estructura", type="primary"):
+            with st.spinner("Generando grupos y cuadro..."):
+                t_gen = generate_tournament_structure(t)
+            st.session_state["tournament"] = t_gen
+            _summ = _t_summary(t_gen)
+            st.success(
+                f"✅ Estructura generada: "
+                f"{_summ['n_groups']} grupos · "
+                f"{_summ['total_matches']} partidos"
+            )
+            st.rerun()
+
+        # Mostrar grupos y cuadro generados
+        if t.groups:
+            st.divider()
+            _section_start("📋", "Grupos")
+            _gcols = st.columns(min(len(t.groups), 4))
+            for _gi, _grp in enumerate(t.groups):
+                with _gcols[_gi % 4]:
+                    st.markdown(f"**{_grp.name}**")
+                    for _pp in _grp.pairs:
+                        st.markdown(f"• {_pp.display_name}")
+
+        if t.matches:
+            st.divider()
+            _section_start("📊", "Partidos generados")
+            _rounds_shown = sorted(set(m.round for m in t.matches), key=lambda r: r.order)
+            for _rnd in _rounds_shown:
+                _rnd_matches = [m for m in t.matches if m.round == _rnd]
+                with st.expander(f"**{_rnd.display}** — {len(_rnd_matches)} partidos", expanded=True):
+                    _df_rnd = []
+                    for _m in _rnd_matches:
+                        _df_rnd.append({
+                            "Partido": _m.match_number,
+                            "Grupo": next(
+                                (g.name for g in t.groups if g.id == _m.group_id), ""
+                            ) if _m.group_id else "",
+                            "Pareja 1": _m.p1_display,
+                            "Pareja 2": _m.p2_display,
+                        })
+                    st.dataframe(_df_rnd, use_container_width=True, hide_index=True)
+
+    # ===================================================================
+    # TAB 4 — Horarios
+    # ===================================================================
+    with tab_schedule:
+        t = st.session_state.get("tournament")
+        if not t or not t.matches:
+            st.info("💡 Primero genera la estructura del torneo (pestaña 🎯).")
+            st.stop()
+
+        _section_start("🗓️", "Asignación automática de horarios")
+
+        col_sched, col_sum = st.columns([1, 2])
+
+        with col_sched:
+            if st.button("🕐 Asignar horarios automáticamente", type="primary"):
+                with st.spinner("Planificando torneo..."):
+                    t_sched = schedule_tournament(t)
+                st.session_state["tournament"] = t_sched
+                _ss = tournament_schedule_summary(t_sched)
+                if _ss["conflicts"] == 0:
+                    st.success(
+                        f"✅ {_ss['scheduled']} partidos programados.\n"
+                        f"🕘 {_ss['first_match']} → {_ss['last_match']}"
+                    )
+                else:
+                    st.warning(
+                        f"⚠️ {_ss['scheduled']} programados, {_ss['conflicts']} conflictos. "
+                        "Añade más pistas o amplía el horario."
+                    )
+                st.rerun()
+
+        with col_sum:
+            if any(m.status == TMatchStatus.SCHEDULED for m in t.matches):
+                _ss2 = tournament_schedule_summary(t)
+                _sm1, _sm2, _sm3 = st.columns(3)
+                _sm1.metric("✅ Programados", _ss2["scheduled"])
+                _sm2.metric("❌ Conflictos", _ss2["conflicts"])
+                _sm3.metric("🏟️ Pistas usadas", len(_ss2["courts_used"]))
+                if _ss2["first_match"]:
+                    st.caption(f"🕘 Inicio: **{_ss2['first_match']}**")
+                if _ss2["last_match"]:
+                    st.caption(f"🏁 Fin: **{_ss2['last_match']}**")
+
+        # Mostrar calendario
+        if any(m.status == TMatchStatus.SCHEDULED for m in t.matches):
+            st.divider()
+            _section_start("📅", "Calendario del torneo")
+
+            # Agrupar por día
+            _days_in_t = sorted({m.match_date for m in t.matches if m.match_date})
+            for _d in _days_in_t:
+                _day_matches = sorted(
+                    [m for m in t.matches if m.match_date == _d],
+                    key=lambda m: (m.start_time or _dt_mod.time(0, 0), m.round.order),
+                )
+                st.markdown(
+                    f'<div style="font-weight:700;font-size:1rem;color:#0b1a2b;'
+                    f'margin:.8rem 0 .3rem">📅 {_d.strftime("%A %d/%m/%Y").capitalize()}</div>',
+                    unsafe_allow_html=True,
+                )
+                _rows_day = []
+                for _m in _day_matches:
+                    _status_icon = {
+                        TMatchStatus.SCHEDULED: "✅",
+                        TMatchStatus.CONFLICT:  "❌",
+                        TMatchStatus.PENDING:   "⏳",
+                    }.get(_m.status, "")
+                    _rows_day.append({
+                        "Estado": _status_icon,
+                        "Hora": _m.start_time.strftime("%H:%M") if _m.start_time else "—",
+                        "Fin":  _m.end_time.strftime("%H:%M")   if _m.end_time   else "—",
+                        "Pista": _m.court.name if _m.court else "—",
+                        "Ronda": _m.round_display,
+                        "Grupo": next(
+                            (g.name for g in t.groups if g.id == _m.group_id), ""
+                        ) if _m.group_id else "",
+                        "Pareja 1": _m.p1_display,
+                        "Pareja 2": _m.p2_display,
+                    })
+                st.dataframe(_rows_day, use_container_width=True, hide_index=True)
+
+    # ===================================================================
+    # TAB 5 — Exportar
+    # ===================================================================
+    with tab_export:
+        t = st.session_state.get("tournament")
+        if not t or not t.matches:
+            st.info("💡 Genera la estructura y asigna horarios antes de exportar.")
+            st.stop()
+
+        _section_start("📤", "Exportar calendario del torneo")
+
+        col_xe1, col_xe2 = st.columns(2)
+
+        with col_xe1:
+            st.markdown("**Excel del torneo**")
+            if st.button("📊 Generar Excel del torneo", type="primary"):
+                import openpyxl
+                from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+                from openpyxl.utils import get_column_letter
+                from datetime import datetime as _dtt
+                import io as _io
+
+                _wb = openpyxl.Workbook()
+                _wb.remove(_wb.active)
+
+                _hdr_fill = PatternFill("solid", fgColor="1F4E79")
+                _sch_fill = PatternFill("solid", fgColor="C6EFCE")
+                _cfl_fill = PatternFill("solid", fgColor="FFC7CE")
+                _odd_fill = PatternFill("solid", fgColor="F2F2F2")
+                _evn_fill = PatternFill("solid", fgColor="FFFFFF")
+                _thin_s   = Side(style="thin", color="CCCCCC")
+                _border   = Border(left=_thin_s, right=_thin_s, top=_thin_s, bottom=_thin_s)
+
+                def _hcell(ws, r, c, val):
+                    cell = ws.cell(row=r, column=c, value=val)
+                    cell.font = Font(bold=True, color="FFFFFF", size=11)
+                    cell.fill = _hdr_fill
+                    cell.alignment = Alignment(horizontal="center", vertical="center")
+                    cell.border = _border
+                    return cell
+
+                # Hoja 1: Calendario completo
+                _ws_all = _wb.create_sheet("Calendario Torneo")
+                _cols_t = ["Fecha", "Hora", "Fin", "Pista", "Ronda", "Grupo", "Pareja 1", "Pareja 2", "Estado"]
+                for _ci, _ch in enumerate(_cols_t, 1):
+                    _hcell(_ws_all, 1, _ci, _ch)
+
+                _sorted_matches = sorted(
+                    t.matches,
+                    key=lambda m: (
+                        m.match_date or _dtt.max.date(),
+                        m.start_time or _dtt.max.time(),
+                        m.round.order,
+                    ),
+                )
+                for _ri, _m in enumerate(_sorted_matches, 2):
+                    _bg = _sch_fill if _m.status == TMatchStatus.SCHEDULED else (
+                        _cfl_fill if _m.status == TMatchStatus.CONFLICT else _evn_fill
+                    )
+                    _vals = [
+                        _m.match_date.strftime("%d/%m/%Y") if _m.match_date else "",
+                        _m.start_time.strftime("%H:%M")    if _m.start_time  else "",
+                        _m.end_time.strftime("%H:%M")      if _m.end_time    else "",
+                        _m.court.name if _m.court else "",
+                        _m.round_display,
+                        next((g.name for g in t.groups if g.id == _m.group_id), "") if _m.group_id else "",
+                        _m.p1_display,
+                        _m.p2_display,
+                        _m.status.value,
+                    ]
+                    for _ci, _v in enumerate(_vals, 1):
+                        _cell = _ws_all.cell(row=_ri, column=_ci, value=_v)
+                        _cell.fill = _bg
+                        _cell.border = _border
+                        _cell.font = Font(size=10)
+                        _cell.alignment = Alignment(horizontal="left", vertical="center")
+
+                # Autofit
+                for _col in _ws_all.columns:
+                    _max = max((len(str(cell.value or "")) for cell in _col), default=8)
+                    _ws_all.column_dimensions[get_column_letter(_col[0].column)].width = min(_max + 4, 40)
+                _ws_all.freeze_panes = "A2"
+                _ws_all.auto_filter.ref = _ws_all.dimensions
+
+                # Hoja 2: Resumen
+                _ws_r = _wb.create_sheet("Resumen")
+                _r_data = [
+                    ("Torneo",          t.name),
+                    ("Formato",         t.format.value),
+                    ("Inicio",          t.start_date.strftime("%d/%m/%Y")),
+                    ("Fin",             t.end_date.strftime("%d/%m/%Y")),
+                    ("Parejas",         len(t.pairs)),
+                    ("Grupos",          len(t.groups)),
+                    ("Total partidos",  len(t.matches)),
+                    ("Programados",     t.scheduled_count),
+                    ("Conflictos",      t.conflict_count),
+                    ("Generado el",     _dtt.now().strftime("%d/%m/%Y %H:%M")),
+                ]
+                for _ri, (k, v) in enumerate(_r_data, 1):
+                    _ws_r.cell(row=_ri, column=1, value=k).font = Font(bold=True)
+                    _ws_r.cell(row=_ri, column=2, value=str(v))
+                _ws_r.column_dimensions["A"].width = 22
+                _ws_r.column_dimensions["B"].width = 30
+
+                # Guardar en memoria y ofrecer descarga
+                _buf = _io.BytesIO()
+                _wb.save(_buf)
+                _buf.seek(0)
+                _fname = f"torneo_{t.name.replace(' ', '_')}_{t.start_date}.xlsx"
+                st.download_button(
+                    "⬇️ Descargar Excel del torneo",
+                    data=_buf.getvalue(),
+                    file_name=_fname,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="dl_tournament_xlsx",
+                )
+                st.success("✅ Excel generado.")
+
+        with col_xe2:
+            st.markdown("**Resumen rápido**")
+            _summ_exp = _t_summary(t)
+            st.json(_summ_exp)
