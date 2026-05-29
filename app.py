@@ -3327,11 +3327,47 @@ elif page == "review":
         st.info("Pulsa el botón para ejecutar la validación completa del calendario.")
     else:
         vs = validation_summary(violations)
-        rv1, rv2, rv3, rv4 = st.columns(4)
-        rv1.metric("Total incidencias", vs["total"])
-        rv2.metric("🔴 Errores",  vs["errors"])
-        rv3.metric("🟡 Avisos",   vs["warnings"])
-        rv4.metric("🔵 Info PF",  vs["infos"])
+        # Separar "incidencias" de "partidos afectados":
+        # una misma incidencia puede afectar a 1..N partidos y, además,
+        # un mismo partido puede acumular varias incidencias.
+        _affected_match_ids: set[str] = set()
+        _availability_issue_match_ids: set[str] = set()
+        _availability_types = {"availability_weekday", "availability_time_early", "availability_time_late"}
+        for _v in violations:
+            _is_availability = _v.get("type") in _availability_types
+            for _m in _v.get("matches", []) or []:
+                _mid = getattr(_m, "id", None)
+                if _mid:
+                    _affected_match_ids.add(_mid)
+                    if _is_availability:
+                        _availability_issue_match_ids.add(_mid)
+
+        rv1, rv2, rv3, rv4, rv5 = st.columns(5)
+        rv1.metric("Partidos con incidencias", len(_affected_match_ids))
+        rv2.metric("Incidencias totales", vs["total"])
+        rv3.metric("🔴 Errores",  vs["errors"])
+        rv4.metric("🟡 Avisos",   vs["warnings"])
+        rv5.metric("🔵 Info PF",  vs["infos"])
+        st.caption(
+            "Una incidencia es una regla incumplida. "
+            "Un mismo partido puede tener varias incidencias."
+        )
+
+        # Señal de inconsistencia: avisos de disponibilidad en partidos no editados manualmente.
+        _manually_modified_ids = {
+            m.id
+            for m in (result.scheduled + result.conflicts)
+            if getattr(m, "status", None) == MatchStatus.MANUALLY_MODIFIED
+        }
+        _availability_without_manual_changes = (
+            len(_availability_issue_match_ids) > 0
+            and len(_availability_issue_match_ids & _manually_modified_ids) == 0
+        )
+        if _availability_without_manual_changes:
+            st.warning(
+                "Se detectaron incidencias de disponibilidad en partidos no editados manualmente. "
+                "Esto sugiere revisar el parser de disponibilidad (Observaciones) o la validación."
+            )
 
         if vs["total"] == 0:
             st.success("✅ Sin incidencias — el calendario cumple todas las restricciones.")
