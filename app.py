@@ -1554,13 +1554,16 @@ st.sidebar.markdown('<div class="pp-nav-section">Principal</div>', unsafe_allow_
 _sidebar_button("⌂  Inicio",                   "home",        page, "nav_home")
 _sidebar_button("◈  Configuración del club",   "club_config", page, "nav_club_config")
 
+_has_results = bool(getattr(_s.phase, "match_results", []) if _s.phase else [])
 _R_STEPS = [
-    ("config",   "Configurar fase",    "Define fechas, pistas y parámetros",  _s.phase is not None),
-    ("import",   "Importar datos",     "Sube grupos, parejas y reservas",      _s.data_loaded),
-    ("generate", "Generar calendario", "Crea los partidos automáticamente",    _s.matches_generated),
-    ("export",   "Exportar",           "Excel, mensajes WhatsApp y más",       _s.matches_scheduled),
-    ("review",   "Revisión",           "Comprueba conflictos y ajustes",       _s.matches_scheduled and _s.get("schedule_violations") is not None),
-    ("syltek",   "Publicar en Syltek", "Reserva pistas automáticamente",       False),
+    ("config",    "Configurar fase",    "Define fechas, pistas y parámetros",  _s.phase is not None),
+    ("import",    "Importar datos",     "Sube grupos, parejas y reservas",      _s.data_loaded),
+    ("generate",  "Generar calendario", "Crea los partidos automáticamente",    _s.matches_generated),
+    ("results",   "Registrar resultados", "Introduce los marcadores de cada partido", _has_results),
+    ("standings", "Clasificación",      "Ranking automático por puntos",         _has_results),
+    ("export",    "Exportar",           "Excel, mensajes WhatsApp y más",       _s.matches_scheduled),
+    ("review",    "Revisión",           "Comprueba conflictos y ajustes",       _s.matches_scheduled and _s.get("schedule_violations") is not None),
+    ("syltek",    "Publicar en Syltek", "Reserva pistas automáticamente",       False),
 ]
 _IS_RANKING = page in {k for k, *_ in _R_STEPS}
 
@@ -1882,6 +1885,24 @@ elif page == "config":
             help="0 = sin restricción",
         )
 
+        st.markdown("")
+        _section_start("🏆", "Reglas de puntuación")
+        _ep_rules = getattr(_ep, "scoring_rules", None) if _ep else None
+        _pc1, _pc2, _pc3 = st.columns(3)
+        with _pc1:
+            _cfg_pts_win  = st.number_input("Puntos por victoria", min_value=1, max_value=10,
+                                            value=getattr(_ep_rules, "points_win", 3) if _ep_rules else 3)
+        with _pc2:
+            _cfg_pts_draw = st.number_input("Puntos por empate", min_value=0, max_value=5,
+                                            value=getattr(_ep_rules, "points_draw", 1) if _ep_rules else 1)
+        with _pc3:
+            _cfg_pts_loss = st.number_input("Puntos por derrota", min_value=0, max_value=5,
+                                            value=getattr(_ep_rules, "points_loss", 0) if _ep_rules else 0)
+        _cfg_bonus = st.checkbox(
+            "Punto extra por ganar sin ceder ningún set",
+            value=bool(getattr(_ep_rules, "bonus_clean_sheet", 0)) if _ep_rules else False,
+        )
+
         with st.expander("⚙️ Opciones avanzadas", expanded=False):
             _cfg_seed_on = st.checkbox("Resultado reproducible (semilla fija)", value=True)
             _cfg_seed    = st.number_input("Semilla", value=42, step=1) if _cfg_seed_on else None
@@ -1911,6 +1932,15 @@ elif page == "config":
                 )
                 for i in range(1, int(_cfg_n_courts) + 1)
             ]
+            from src.ranking_scorer import ScoringRules as _ScoringRules
+            _new_rules = _ScoringRules(
+                points_win=int(_cfg_pts_win),
+                points_draw=int(_cfg_pts_draw),
+                points_loss=int(_cfg_pts_loss),
+                bonus_clean_sheet=1 if _cfg_bonus else 0,
+            )
+            # Preservar resultados ya registrados al re-guardar una fase existente
+            _preserved_results = list(getattr(_ep, "match_results", [])) if _ep else []
             _new_phase = RankingPhase.model_construct(
                 id=str(_uuid4()),
                 name=_cfg_phase_name,
@@ -1933,6 +1963,8 @@ elif page == "config":
                     global_weekday_penalty=4.0, late_hour_penalty=2.5,
                     top_candidates_pool=4,
                 ),
+                scoring_rules=_new_rules,
+                match_results=_preserved_results,
             )
             st.session_state.phase  = _new_phase
             st.session_state.courts = _new_courts
@@ -2869,6 +2901,211 @@ elif page == "generate":
                             f'<small>{gname}</small>',
                             unsafe_allow_html=True,
                         )
+
+# ---------------------------------------------------------------------------
+# PÁGINA: Registrar resultados
+# ---------------------------------------------------------------------------
+
+elif page == "results":
+    from src.ranking_scorer import MatchResult, SetScore
+    _page_header("📝", "Registrar resultados", "Introduce el marcador de cada partido (formato set: 6-4)")
+
+    _rphase = st.session_state.phase
+    _rmatches = st.session_state.get("matches") or []
+
+    if _rphase is None or not _rmatches:
+        _empty_state("⚡", "No hay partidos",
+                     "Primero <strong>genera el calendario</strong> en el paso anterior.")
+        st.stop()
+
+    # Reglas de puntuación actuales
+    _rules = getattr(_rphase, "scoring_rules", None)
+    if _rules is None:
+        from src.ranking_scorer import ScoringRules
+        _rules = ScoringRules()
+        _rphase.scoring_rules = _rules
+
+    # Mapa de resultados ya guardados {match_id: MatchResult}
+    _existing = {r.match_id: r for r in getattr(_rphase, "match_results", [])}
+
+    def _set_to_str(gs) -> str:
+        return f"{gs.games_1}-{gs.games_2}" if (gs.games_1 or gs.games_2) else ""
+
+    def _parse_set(text):
+        """'6-4' -> SetScore(6,4). Vacío, None o NaN -> None."""
+        if text is None or (isinstance(text, float) and pd.isna(text)):
+            return None
+        text = str(text).strip()
+        if not text:
+            return None
+        for sep in ("-", "/", ":"):
+            if sep in text:
+                a, _, b = text.partition(sep)
+                try:
+                    return SetScore(games_1=int(a.strip()), games_2=int(b.strip()))
+                except ValueError:
+                    return None
+        return None
+
+    # Construir filas para el editor agrupadas por grupo
+    _groups_order = {}
+    for m in _rmatches:
+        _groups_order.setdefault(m.group_name or "Sin grupo", []).append(m)
+
+    st.caption("Introduce los sets como **6-4**. Deja en blanco los no jugados. WO = walkover (victoria sin jugar).")
+
+    _edited_results = {}
+    for _gname, _gmatches in _groups_order.items():
+        _section_start("🎾", _gname)
+        _rows = []
+        for m in _gmatches:
+            _ex = _existing.get(m.id)
+            _s1 = _set_to_str(_ex.sets[0]) if _ex and len(_ex.sets) > 0 else ""
+            _s2 = _set_to_str(_ex.sets[1]) if _ex and len(_ex.sets) > 1 else ""
+            _s3 = _set_to_str(_ex.sets[2]) if _ex and len(_ex.sets) > 2 else ""
+            _wo = ""
+            if _ex and _ex.walkover_winner_id == m.pair_1.id:
+                _wo = m.pair_1.display_name
+            elif _ex and _ex.walkover_winner_id == m.pair_2.id:
+                _wo = m.pair_2.display_name
+            _rows.append({
+                "_match_id": m.id,
+                "Partido": f"{m.pair_1.display_name}  vs  {m.pair_2.display_name}",
+                "Set 1": _s1, "Set 2": _s2, "Set 3": _s3,
+                "WO": _wo,
+            })
+        _df = pd.DataFrame(_rows)
+        _wo_opts = [""]
+        for m in _gmatches:
+            _wo_opts.extend([m.pair_1.display_name, m.pair_2.display_name])
+        _edited = st.data_editor(
+            _df,
+            key=f"results_editor_{_gname}",
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "_match_id": None,  # oculta
+                "Partido":   st.column_config.TextColumn(disabled=True, width="large"),
+                "Set 1":     st.column_config.TextColumn(width="small", help="ej. 6-4"),
+                "Set 2":     st.column_config.TextColumn(width="small"),
+                "Set 3":     st.column_config.TextColumn(width="small", help="solo si hubo tercer set"),
+                "WO":        st.column_config.SelectboxColumn(options=sorted(set(_wo_opts)), width="medium"),
+            },
+        )
+        # Mapear ediciones de vuelta a los match objects
+        _match_by_id = {m.id: m for m in _gmatches}
+        for _, _row in _edited.iterrows():
+            _edited_results[_row["_match_id"]] = (_row, _match_by_id[_row["_match_id"]])
+
+    st.divider()
+    if st.button("💾 Guardar resultados", type="primary", use_container_width=True):
+        _new_results = []
+        for _mid, (_row, _m) in _edited_results.items():
+            _wo_raw = _row.get("WO")
+            _wo_name = "" if (_wo_raw is None or (isinstance(_wo_raw, float) and pd.isna(_wo_raw))) else str(_wo_raw).strip()
+            _wo_id = None
+            if _wo_name == _m.pair_1.display_name:
+                _wo_id = _m.pair_1.id
+            elif _wo_name == _m.pair_2.display_name:
+                _wo_id = _m.pair_2.id
+
+            _sets = []
+            for _col in ("Set 1", "Set 2", "Set 3"):
+                _ss = _parse_set(_row.get(_col))
+                if _ss is not None:
+                    _sets.append(_ss)
+
+            if _sets or _wo_id:
+                _new_results.append(MatchResult(
+                    match_id=_mid, pair_1_id=_m.pair_1.id, pair_2_id=_m.pair_2.id,
+                    group_id=_m.group_id, sets=_sets, walkover_winner_id=_wo_id,
+                ))
+
+        _rphase.match_results = _new_results
+        st.session_state.phase = _rphase
+
+        # Persistir en Supabase
+        if _db_ok and _db is not None:
+            _cid = current_club_id()
+            _pid = st.session_state.get("db_phase_id")
+            if _cid and _pid:
+                try:
+                    _payload = phase_to_db(_rphase, _cid, _pid)
+                    _db.upsert_phase(
+                        club_id=_cid, name=_payload["name"],
+                        start_date=_payload["start_date"], end_date=_payload["end_date"],
+                        phase_config=_payload["phase_config"], groups_data=_payload["groups_data"],
+                        bookings_data=_payload["bookings_data"],
+                        schedule_result=schedule_result_to_db(st.session_state.get("schedule_result")),
+                        phase_id=_pid,
+                    )
+                except Exception as _e:
+                    st.warning(f"⚠️ Guardado local OK, pero falló la BD: {_e}")
+
+        st.success(f"✅ {len(_new_results)} resultados guardados.")
+        st.session_state["_nav_page"] = "standings"
+        st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# PÁGINA: Clasificación
+# ---------------------------------------------------------------------------
+
+elif page == "standings":
+    from src.ranking_scorer import compute_standings, standings_by_group, ScoringRules
+    _page_header("🏅", "Clasificación", "Ranking automático calculado a partir de los resultados")
+
+    _sphase = st.session_state.phase
+    if _sphase is None:
+        _empty_state("⚙️", "Sin fase configurada", "Configura una fase primero.")
+        st.stop()
+
+    _results = getattr(_sphase, "match_results", [])
+    if not _results:
+        _empty_state("📝", "Sin resultados todavía",
+                     "Registra los marcadores en <strong>Registrar resultados</strong>.")
+        st.stop()
+
+    _rules = getattr(_sphase, "scoring_rules", None) or ScoringRules()
+
+    # Mapas pareja → nombre y pareja → grupo
+    _pair_names, _pair_group = {}, {}
+    for g in _sphase.groups:
+        for p in g.pairs:
+            _pair_names[p.id] = p.display_name
+            _pair_group[p.id] = g.id
+    _group_label = {g.id: g.name for g in _sphase.groups}
+
+    # Resumen de reglas activas
+    _stat_chips(
+        (f"{_rules.points_win} pts victoria", "green", "🏆"),
+        (f"{_rules.points_draw} empate", "orange", "🤝"),
+        (f"{_rules.points_loss} derrota", "red", "❌"),
+        (f"{len(_results)} partidos jugados", "green", "🎾"),
+    )
+
+    _by_group = standings_by_group(_results, _pair_names, _rules, _pair_group)
+
+    for _gid, _table in _by_group.items():
+        _section_start("🏅", _group_label.get(_gid, "Clasificación"))
+        _rows = []
+        for _pos, _s in enumerate(_table, 1):
+            _medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(_pos, str(_pos))
+            _rows.append({
+                "#": _medal,
+                "Pareja": _s.pair_name,
+                "PJ": _s.played, "G": _s.won, "E": _s.drawn, "P": _s.lost,
+                "Sets": f"{_s.sets_for}-{_s.sets_against}",
+                "Juegos": f"{_s.games_for}-{_s.games_against}",
+                "Dif": f"{_s.game_diff:+d}",
+                "Pts": _s.points,
+            })
+        st.dataframe(pd.DataFrame(_rows), hide_index=True, use_container_width=True,
+                     column_config={"Pts": st.column_config.NumberColumn(width="small")})
+
+    st.caption("PJ=Jugados · G=Ganados · E=Empatados · P=Perdidos · Pts=Puntos. "
+               "Desempate: puntos → diferencia de sets → diferencia de juegos → victorias → cara a cara.")
+
 
 # ---------------------------------------------------------------------------
 # PÁGINA 4: Exportar

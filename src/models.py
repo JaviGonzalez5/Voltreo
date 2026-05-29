@@ -10,6 +10,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
+from .ranking_scorer import ScoringRules, MatchResult
+
 
 # ---------------------------------------------------------------------------
 # Enumerados
@@ -216,3 +218,6 @@ class RankingPhase(BaseModel):
     random_seed: Optional[int] = 42
     # Pesos del scoring del scheduler.
     balance_weights: BalanceWeights = Field(default_factory=BalanceWeights)
+    # Reglas de puntuación del ranking y resultados registrados.
+    scoring_rules: "ScoringRules" = Field(default_factory=lambda: ScoringRules())
+    match_results: list["MatchResult"] = Field(default_factory=list)
