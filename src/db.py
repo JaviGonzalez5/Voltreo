@@ -148,6 +148,40 @@ class SupabaseDB:
     def update_user_password(self, user_id: str, new_hash: str) -> None:
         self._c.table("users").update({"password_hash": new_hash}).eq("id", user_id).execute()
 
+    _UNSET = object()
+
+    def update_user(
+        self,
+        user_id: str,
+        *,
+        role: Optional[str] = None,
+        club_id: Any = _UNSET,
+        display_name: Optional[str] = None,
+        email: Optional[str] = None,
+    ) -> None:
+        """
+        Actualiza campos de un usuario existente.
+
+        Notas:
+        - `club_id=_UNSET` => no toca el club.
+        - `club_id=None`   => limpia el club (útil para superadmin).
+        """
+        payload: dict[str, Any] = {}
+        if role is not None:
+            if role not in self._VALID_ROLES:
+                raise ValueError(f"Rol inválido: {role!r}. Debe ser uno de {self._VALID_ROLES}")
+            payload["role"] = role
+        if club_id is not self._UNSET:
+            payload["club_id"] = club_id
+        if display_name is not None:
+            payload["display_name"] = display_name
+        if email is not None:
+            payload["email"] = email
+
+        if not payload:
+            return
+        self._c.table("users").update(payload).eq("id", user_id).execute()
+
     def set_user_active(self, user_id: str, active: bool) -> None:
         self._c.table("users").update({"is_active": active}).eq("id", user_id).execute()
 

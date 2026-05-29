@@ -215,6 +215,9 @@ class TournamentConfig(BaseModel):
     # Identidad del torneo
     category:    Optional[TournamentCategory]    = None
     subcategory: Optional[TournamentSubcategory] = None
+    # Soporte multi-categoría/subcategoría (formato: "masculino:1a", "mixto:3a", ...).
+    # Se mantiene `category`/`subcategory` por compatibilidad con datos antiguos.
+    divisions: list[str] = Field(default_factory=list)
     is_top:      bool   = False        # Torneo TOP (máximo prestigio)
     prize:       str    = ""           # Premio / descripción del torneo
     location:    str    = ""           # Club / sede

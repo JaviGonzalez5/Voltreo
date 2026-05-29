@@ -1411,6 +1411,80 @@ def _df_to_bookings(df: pd.DataFrame) -> list[Booking]:
     return bookings
 
 
+def _reset_club_runtime_state() -> None:
+    """
+    Limpia el estado en memoria que depende del club activo.
+    Se usa al cambiar de club en modo superadmin.
+    """
+    st.session_state["groups"] = []
+    st.session_state["courts"] = []
+    st.session_state["bookings"] = []
+    st.session_state["matches"] = []
+    st.session_state["schedule_result"] = None
+    st.session_state["phase"] = None
+    st.session_state["data_loaded"] = False
+    st.session_state["matches_generated"] = False
+    st.session_state["matches_scheduled"] = False
+    st.session_state["db_phase_id"] = None
+    st.session_state["_db_phase_loaded"] = False
+    st.session_state["tournament"] = None
+    st.session_state["db_tournament_id"] = None
+    st.session_state.pop("schedule_violations", None)
+    st.session_state.pop("_filter_cache_key", None)
+    st.session_state.pop("_group_names", None)
+    st.session_state.pop("_pair_names", None)
+    st.session_state.pop("_match_id_to_obj", None)
+    st.session_state.pop("_court_name_to_obj", None)
+
+
+def _division_option_maps() -> tuple[list[str], dict[str, str]]:
+    keys: list[str] = []
+    labels: dict[str, str] = {}
+    for _cat in TournamentCategory:
+        for _sub in TournamentSubcategory:
+            _key = f"{_cat.value}:{_sub.value}"
+            keys.append(_key)
+            labels[_key] = f"{_cat.icon} {_cat.label} {_sub.label}"
+    return keys, labels
+
+
+def _legacy_division_key(t_obj) -> str | None:
+    if t_obj is None:
+        return None
+    _cat = getattr(t_obj, "category", None)
+    _sub = getattr(t_obj, "subcategory", None)
+    if _cat is None or _sub is None:
+        return None
+    return f"{_cat.value}:{_sub.value}"
+
+
+def _parse_division_key(key: str) -> tuple[TournamentCategory | None, TournamentSubcategory | None]:
+    try:
+        _cat_raw, _sub_raw = key.split(":", 1)
+        return TournamentCategory(_cat_raw), TournamentSubcategory(_sub_raw)
+    except Exception:
+        return None, None
+
+
+def _division_badges_html(t_obj) -> str:
+    _keys, _labels = _division_option_maps()
+    _valid_keys = set(_keys)
+    _divs = [d for d in (getattr(t_obj, "divisions", []) or []) if d in _valid_keys]
+    if not _divs:
+        _legacy = _legacy_division_key(t_obj)
+        if _legacy:
+            _divs = [_legacy]
+    _html_parts = []
+    for _d in _divs:
+        _cat, _sub = _parse_division_key(_d)
+        if _cat is None or _sub is None:
+            continue
+        _cls = {"masculino": "t-cat-masc", "femenino": "t-cat-fem", "mixto": "t-cat-mix"}[_cat.value]
+        _html_parts.append(f'<span class="{_cls}">{_cat.icon} {_cat.label}</span>')
+        _html_parts.append(f'<span class="t-subcat">{_sub.label}</span>')
+    return "".join(_html_parts)
+
+
 # ---------------------------------------------------------------------------
 # Configuración de página
 # ---------------------------------------------------------------------------
@@ -1445,6 +1519,8 @@ def init_state():
         "_nav_page": "home",
         # Flag de carga desde DB — se resetea en logout para que recargue al volver a entrar
         "_db_phase_loaded": False,
+        # Club activo cargado en memoria (superadmin).
+        "_active_club_id": None,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -1521,9 +1597,17 @@ if _db_ok and is_authenticated():
                 "🏢 Club activo", options=list(_club_options.keys()),
                 index=_default_idx, key="superadmin_club_select",
             )
-            st.session_state["superadmin_selected_club_id"]   = _club_options[_sel_name]
+            _selected_club_id = _club_options[_sel_name]
+            st.session_state["superadmin_selected_club_id"] = _selected_club_id
             st.session_state["superadmin_selected_club_name"] = _sel_name
             _club_name_sidebar = _sel_name
+
+            # Cambio de club: limpiar estado cargado del club anterior para evitar datos mezclados.
+            _active_club_id = st.session_state.get("_active_club_id")
+            if _active_club_id != _selected_club_id:
+                st.session_state["_active_club_id"] = _selected_club_id
+                _reset_club_runtime_state()
+                st.rerun()
         else:
             st.sidebar.markdown(
                 '<div class="pp-empty-club">⚠ Sin clubs — crea uno en Administración</div>',
@@ -1531,6 +1615,8 @@ if _db_ok and is_authenticated():
             )
     else:
         _club_name_sidebar = current_club_name()
+        # Mantener el club activo sincronizado para club_admin.
+        st.session_state["_active_club_id"] = current_club_id()
 
     _role_txt = "Super Admin" if is_superadmin() else "Admin"
     _club_txt = _club_name_sidebar or "Sin club"
@@ -1603,12 +1689,7 @@ def _t_header(step_num: int, step_title: str, step_hint: str) -> None:
     import datetime as _dt_mod
     t = st.session_state.get("tournament")
     if t and getattr(t, "is_top", False):
-        _cat_html = ""
-        if t.category:
-            _cls = {"masculino":"t-cat-masc","femenino":"t-cat-fem","mixto":"t-cat-mix"}[t.category.value]
-            _cat_html = f'<span class="{_cls}">{t.category.icon} {t.category.label}</span>'
-        if t.subcategory:
-            _cat_html += f'<span class="t-subcat">{t.subcategory.label}</span>'
+        _cat_html = _division_badges_html(t)
         _dates = t.start_date.strftime("%d/%m/%Y") + (f" – {t.end_date.strftime('%d/%m/%Y')}" if t.end_date != t.start_date else "")
         st.markdown(
             f'<div class="t-top-banner"><div class="t-top-name">🏆 {t.name}</div>'
@@ -3783,24 +3864,34 @@ elif page == "t_config":
         )
 
     st.divider()
-    _section_start("🎾", "Categoría")
-    _cat_options = [None, TournamentCategory.MASCULINO, TournamentCategory.FEMENINO, TournamentCategory.MIXTO]
-    _cat_labels  = {None: "⚪ Sin especificar", TournamentCategory.MASCULINO: "👨 Masculino", TournamentCategory.FEMENINO: "👩 Femenino", TournamentCategory.MIXTO: "🤝 Mixto"}
-    _cur_cat = t.category if t else None
-    t_category = st.radio("Categoría", options=_cat_options, format_func=lambda c: _cat_labels[c],
-                          index=_cat_options.index(_cur_cat) if _cur_cat in _cat_options else 0,
-                          horizontal=True, label_visibility="collapsed")
-    if t_category:
-        _bc = {"masculino": "t-cat-masc", "femenino": "t-cat-fem", "mixto": "t-cat-mix"}[t_category.value]
-        st.markdown(f'<div style="margin:.4rem 0"><span class="{_bc}">{t_category.icon} {t_category.label}</span></div>', unsafe_allow_html=True)
+    _section_start("🎾", "Categorías y subcategorías")
+    _div_keys, _div_labels = _division_option_maps()
+    _div_key_set = set(_div_keys)
+    _current_divisions = [d for d in (getattr(t, "divisions", []) if t else []) if d in _div_key_set]
+    if not _current_divisions:
+        _legacy = _legacy_division_key(t)
+        if _legacy and _legacy in _div_key_set:
+            _current_divisions = [_legacy]
 
-    st.markdown("**Subcategoría**")
-    _subcat_options = [None] + list(TournamentSubcategory)
-    _subcat_labels  = {None: "⚪ Abierta"} | {s: s.label for s in TournamentSubcategory}
-    _cur_subcat = t.subcategory if t else None
-    t_subcategory = st.radio("Subcategoría", options=_subcat_options, format_func=lambda s: _subcat_labels[s],
-                             index=_subcat_options.index(_cur_subcat) if _cur_subcat in _subcat_options else 0,
-                             horizontal=True, label_visibility="collapsed")
+    t_divisions = st.multiselect(
+        "Selecciona una o varias categorías del torneo",
+        options=_div_keys,
+        default=_current_divisions,
+        format_func=lambda k: _div_labels.get(k, k),
+        help="Puedes combinar categorías, por ejemplo: Masculino 1ª-5ª, Femenino 1ª-5ª y Mixto 1ª-5ª.",
+    )
+
+    if t_divisions:
+        _chips = []
+        for _d in t_divisions:
+            _cat, _sub = _parse_division_key(_d)
+            if _cat is None or _sub is None:
+                continue
+            _cls = {"masculino": "t-cat-masc", "femenino": "t-cat-fem", "mixto": "t-cat-mix"}[_cat.value]
+            _chips.append(f'<span class="{_cls}">{_cat.icon} {_cat.label}</span><span class="t-subcat">{_sub.label}</span>')
+        st.markdown(f'<div style="display:flex;flex-wrap:wrap;gap:.35rem;margin:.35rem 0 0">{"".join(_chips)}</div>', unsafe_allow_html=True)
+    else:
+        st.caption("Sin categorías específicas (torneo abierto).")
 
     st.divider()
     _section_start("🏟️", "Pistas del torneo")
@@ -3846,9 +3937,15 @@ elif page == "t_config":
     if st.button("💾 Guardar y continuar →", type="primary", use_container_width=True):
         _courts_obj = [TournamentCourt(id=f"tc_{i}", name=c["name"]) for i, c in enumerate(st.session_state["t_courts_list"])]
         _pairs_keep = t.pairs if t else []
+        _primary_cat, _primary_sub = (None, None)
+        if t_divisions:
+            _primary_cat, _primary_sub = _parse_division_key(t_divisions[0])
         new_t = TournamentConfig(
             id=t.id if t else str(__import__("uuid").uuid4()),
-            name=t_name, category=t_category, subcategory=t_subcategory,
+            name=t_name,
+            category=_primary_cat,
+            subcategory=_primary_sub,
+            divisions=t_divisions,
             is_top=t_is_top, prize=t_prize, location=t_location,
             start_date=t_start, end_date=t_end, courts=_courts_obj, pairs=_pairs_keep,
             format=t_format, match_duration_minutes=t_match_dur, rest_between_matches_min=t_rest,
@@ -4306,13 +4403,18 @@ elif page == "t_export":
 
             # Hoja 2: Resumen
             _ws_r = _wb.create_sheet("Resumen")
-            _cat_txt = t.category.label if t.category else "—"
-            _sub_txt = t.subcategory.label if t.subcategory else "Abierta"
+            _div_keys, _div_labels = _division_option_maps()
+            _div_set = set(_div_keys)
+            _divs = [d for d in (getattr(t, "divisions", []) or []) if d in _div_set]
+            if not _divs:
+                _legacy_div = _legacy_division_key(t)
+                if _legacy_div:
+                    _divs = [_legacy_div]
+            _div_txt = ", ".join(_div_labels.get(d, d) for d in _divs) if _divs else "Abierta"
             _r_data = [
                 ("Torneo",       t.name),
                 ("TOP",          "⭐ SÍ" if getattr(t, "is_top", False) else "No"),
-                ("Categoría",    _cat_txt),
-                ("Subcategoría", _sub_txt),
+                ("Categorías",   _div_txt),
                 ("Sede",         t.location or "—"),
                 ("Premio",       t.prize or "—"),
                 ("Formato",      t.format.value),
@@ -4388,6 +4490,10 @@ elif page == "admin":
                 else:
                     try:
                         _created = _db.create_club(_new_club_name.strip(), _new_club_slug.strip())
+                        st.session_state["superadmin_selected_club_id"] = _created["id"]
+                        st.session_state["superadmin_selected_club_name"] = _created["name"]
+                        st.session_state["_active_club_id"] = _created["id"]
+                        _reset_club_runtime_state()
                         st.success(f"✅ Club '{_created['name']}' creado (ID: {_created['id']})")
                         st.rerun()
                     except Exception as _ex:
@@ -4444,6 +4550,42 @@ elif page == "admin":
                         st.rerun()
                     except Exception as _ex:
                         st.error(f"Error al crear el usuario: {_ex}")
+
+        st.markdown("---")
+        st.markdown("#### 🔁 Asignar usuario existente a club / rol")
+        if _users_list:
+            _users_by_username = {u["username"]: u for u in _users_list}
+            with st.form("form_assign_user"):
+                _au_username = st.selectbox("Usuario existente", sorted(_users_by_username.keys()))
+                _au_user = _users_by_username[_au_username]
+                _au_role = st.selectbox(
+                    "Rol destino",
+                    ["club_admin", "superadmin"],
+                    index=0 if _au_user.get("role") == "club_admin" else 1,
+                )
+                _au_current_club = _au_user.get("club_id")
+                _club_values = list(_club_map.values())
+                _club_labels = list(_club_map.keys())
+                _au_default_club_idx = _club_values.index(_au_current_club) if _au_current_club in _club_values else 0
+                _au_club_label = st.selectbox("Club destino", _club_labels, index=_au_default_club_idx)
+                _au_club_id = _club_map[_au_club_label]
+
+                if st.form_submit_button("Guardar asignación", type="primary"):
+                    if _au_role == "club_admin" and _au_club_id is None:
+                        st.error("Un club_admin debe estar vinculado a un club.")
+                    else:
+                        try:
+                            _db.update_user(
+                                _au_user["id"],
+                                role=_au_role,
+                                club_id=None if _au_role == "superadmin" else _au_club_id,
+                            )
+                            st.success(f"✅ Usuario '{_au_username}' actualizado correctamente.")
+                            st.rerun()
+                        except Exception as _ex:
+                            st.error(f"Error al actualizar el usuario: {_ex}")
+        else:
+            st.info("No hay usuarios creados todavía.")
 
         st.markdown("---")
         st.markdown("#### 🔑 Cambiar contraseña")
