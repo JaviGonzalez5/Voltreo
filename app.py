@@ -619,57 +619,61 @@ header[data-testid="stHeader"] * {
     background: #07121f !important;
 }
 [data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
-    gap: .34rem !important;
+    gap: .15rem !important;
 }
 [data-testid="stSidebar"] button[kind="headerNoPadding"],
 [data-testid="stSidebar"] [data-testid="stBaseButton-headerNoPadding"] {
     display: none !important;
     visibility: hidden !important;
 }
+/* ── Todos los botones del sidebar: base de enlace de navegación ─── */
 [data-testid="stSidebar"] [data-testid="stButton"] button {
     width: 100% !important;
-    height: 38px !important;
-    min-height: 38px !important;
+    height: 36px !important;
+    min-height: 36px !important;
     justify-content: flex-start !important;
     text-align: left !important;
-    border-radius: 8px !important;
-    padding: 0 .85rem !important;
+    border-radius: 7px !important;
+    padding: 0 .9rem !important;
     box-shadow: none !important;
     transform: none !important;
     overflow: hidden !important;
+    transition: background .13s, color .13s !important;
+    font-size: .84rem !important;
+    font-weight: 500 !important;
+    letter-spacing: .005em !important;
 }
 [data-testid="stSidebar"] [data-testid="stButton"] button div[data-testid="stMarkdownContainer"] {
-    width: 100% !important;
-    text-align: left !important;
+    width: 100% !important; text-align: left !important;
 }
 [data-testid="stSidebar"] [data-testid="stButton"] button p {
-    white-space: nowrap !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-    text-align: left !important;
-    width: 100% !important;
-    margin: 0 !important;
+    white-space: nowrap !important; overflow: hidden !important;
+    text-overflow: ellipsis !important; text-align: left !important;
+    width: 100% !important; margin: 0 !important;
 }
-[data-testid="stSidebar"] .stButton > button[kind="secondary"],
+/* Inactive nav item — completamente plano, sin forma de botón */
 [data-testid="stSidebar"] button[kind="secondary"],
 [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] {
-    background: rgba(255,255,255,.035) !important;
-    border: 1px solid transparent !important;
-    color: #9eb6ce !important;
+    background: transparent !important;
+    border: none !important;
+    color: #7a9ec0 !important;
 }
-[data-testid="stSidebar"] .stButton > button[kind="secondary"]:hover,
 [data-testid="stSidebar"] button[kind="secondary"]:hover,
 [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"]:hover {
-    background: rgba(255,255,255,.055) !important;
-    border-color: rgba(255,255,255,.08) !important;
-    color: #f4fbff !important;
+    background: rgba(255,255,255,.06) !important;
+    color: #cce4f6 !important;
+    border: none !important;
 }
-[data-testid="stSidebar"] .stButton > button[kind="primary"],
+/* Active nav item — acento izquierdo verde, sin relleno lleno */
 [data-testid="stSidebar"] button[kind="primary"],
 [data-testid="stSidebar"] [data-testid="stBaseButton-primary"] {
-    background: linear-gradient(135deg, #08b86f 0%, #078c83 100%) !important;
-    border: 1px solid rgba(112,255,196,.16) !important;
-    color: #fff !important;
+    background: rgba(0,200,83,.13) !important;
+    border: none !important;
+    border-left: 3px solid #00c853 !important;
+    border-radius: 0 7px 7px 0 !important;
+    color: #6effc0 !important;
+    font-weight: 700 !important;
+    padding-left: calc(.9rem - 3px) !important;
 }
 [data-testid="stSidebar"] [data-testid="stSelectbox"] label {
     color: #7f9ab5 !important;
@@ -694,18 +698,19 @@ header[data-testid="stHeader"] * {
     gap: .75rem;
 }
 .pp-brand-mark {
-    width: 38px;
-    height: 38px;
-    border-radius: 8px;
-    background: linear-gradient(135deg,#00c47a,#007a73);
+    width: 36px;
+    height: 36px;
+    border-radius: 9px;
+    background: linear-gradient(135deg, #00c853 0%, #007a73 100%);
     color: white;
     display: flex;
     align-items: center;
     justify-content: center;
     font-weight: 900;
-    font-size: 1rem;
-    letter-spacing: 0;
-    box-shadow: 0 10px 24px rgba(0,196,122,.24);
+    font-size: .9rem;
+    letter-spacing: -.02em;
+    box-shadow: 0 4px 16px rgba(0,200,83,.30), inset 0 1px 0 rgba(255,255,255,.25);
+    flex-shrink: 0;
 }
 .pp-brand-title {
     color: #f6fbff;
@@ -721,12 +726,13 @@ header[data-testid="stHeader"] * {
     margin-top: .2rem;
 }
 .pp-nav-section {
-    color: #6f8ca8;
-    font-size: .68rem;
-    letter-spacing: .12em;
+    color: #3d5f7a;
+    font-size: .63rem;
+    letter-spacing: .16em;
     text-transform: uppercase;
     font-weight: 800;
-    padding: .7rem .8rem .2rem;
+    padding: 1rem .9rem .3rem;
+    margin-bottom: .1rem;
 }
 [data-testid="stSidebar"] [data-testid="stExpander"] {
     background: rgba(255,255,255,.035) !important;
@@ -737,13 +743,13 @@ header[data-testid="stHeader"] * {
     box-shadow: none !important;
 }
 [data-testid="stSidebar"] [data-testid="stExpander"] summary {
-    background: rgba(255,255,255,.045) !important;
-    color: #e8f4ff !important;
-    border-radius: 10px !important;
-    padding: .7rem .78rem !important;
-    font-size: .84rem !important;
-    font-weight: 800 !important;
-    letter-spacing: 0 !important;
+    background: transparent !important;
+    color: #94b8d8 !important;
+    border-radius: 7px !important;
+    padding: .65rem .9rem !important;
+    font-size: .83rem !important;
+    font-weight: 600 !important;
+    letter-spacing: .01em !important;
     text-transform: none !important;
 }
 [data-testid="stSidebar"] [data-testid="stExpander"] summary::before {
@@ -813,51 +819,58 @@ header[data-testid="stHeader"] * {
 .pp-flow-spacer {
     height: .35rem;
 }
-.pp-user-card,
-.pp-empty-club {
-    margin: .55rem .7rem .75rem;
-    padding: .8rem;
-    border-radius: 8px;
-    border: 1px solid rgba(255,255,255,.08);
-    background: rgba(255,255,255,.045);
+.pp-user-card {
+    margin: .3rem .5rem .6rem;
+    padding: .7rem .85rem;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.07);
+    background: rgba(255,255,255,.04);
 }
 .pp-user-name {
-    color: #e8f4ff;
-    font-weight: 750;
-    font-size: .86rem;
+    color: #ddeeff;
+    font-weight: 700;
+    font-size: .85rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 .pp-user-meta {
-    color: #7f9ab5;
-    font-size: .74rem;
-    margin-top: .18rem;
+    color: #4a7090;
+    font-size: .72rem;
+    margin-top: .15rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 .pp-empty-club {
-    background: rgba(245,158,11,.12);
-    border-color: rgba(245,158,11,.25);
-    color: #ffdca1;
-    font-size: .82rem;
-    line-height: 1.35;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.09) !important;
+    border-left: 3px solid rgba(245,158,11,.6) !important;
+    border-radius: 0 8px 8px 0;
+    color: #c8a060;
+    font-size: .78rem;
+    line-height: 1.4;
+    margin: .4rem .12rem .5rem !important;
+    padding: .65rem .8rem !important;
 }
 .pp-sidebar-footer {
-    color: #5f7c98;
-    font-size: .72rem;
-    padding: .45rem .85rem 1rem;
+    padding: .6rem .9rem 1.2rem;
+    margin-top: .4rem;
+    border-top: 1px solid rgba(255,255,255,.06);
 }
 .pp-mode-pill {
     display: inline-flex;
     align-items: center;
-    border-radius: 999px;
-    border: 1px solid rgba(255,255,255,.10);
-    padding: .22rem .55rem;
-    color: #9eb6ce;
-    background: rgba(255,255,255,.04);
-    font-weight: 650;
+    gap: .35rem;
+    border-radius: 6px;
+    border: 1px solid rgba(0,200,83,.20);
+    padding: .3rem .7rem;
+    color: #4a9a72;
+    background: rgba(0,200,83,.07);
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
 }
 .pp-page-title {
     border-bottom: 1px solid #dde8f4 !important;
