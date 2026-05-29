@@ -564,6 +564,41 @@ def run_login_check(url: str, user: str, password: str) -> tuple[bool, str]:
 # Helpers de parsing HTML
 # ---------------------------------------------------------------------------
 
+def _balanced_block(text: str, open_idx: int) -> "tuple[str, int]":
+    """
+    Dado un índice que apunta a un '{', devuelve (contenido_interior, idx_del_cierre).
+    Respeta strings con comillas simples/dobles y escapes. Determinista.
+    """
+    brace = 0
+    in_str = False
+    str_char = ""
+    i = open_idx
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if in_str:
+            if ch == str_char:
+                bs = 0
+                j = i - 1
+                while j >= 0 and text[j] == "\\":
+                    bs += 1
+                    j -= 1
+                if bs % 2 == 0:
+                    in_str = False
+        else:
+            if ch in ('"', "'"):
+                in_str = True
+                str_char = ch
+            elif ch == "{":
+                brace += 1
+            elif ch == "}":
+                brace -= 1
+                if brace == 0:
+                    return text[open_idx + 1:i], i
+        i += 1
+    return text[open_idx + 1:], n - 1
+
+
 def _parse_occupied_slots(raw_html: str, day: date) -> list[Booking]:
     """
     Parsea la vista diaria del calendario de Syltek.
@@ -660,15 +695,15 @@ def _parse_occupied_slots(raw_html: str, day: date) -> list[Booking]:
     logger.debug("Pistas encontradas: %s", resources)
 
     # ------------------------------------------------------------------
-    # 3. Extraer reservas — estrategia robusta en dos pasos:
+    # 3. Extraer reservas — parseo ESTRUCTURAL (determinista).
     #
-    #    Paso A: encontrar TODAS las apariciones de "start: new Date(...)"
-    #            con posición en el texto.
-    #    Paso B: para cada una, buscar "end: new Date(...)" e "idResource:[...]"
-    #            en una ventana hacia adelante ANTES de que aparezca el
-    #            siguiente "start:". Así evitamos mezclar reservas.
+    #    En vez de ventanas posicionales (cuyo resultado dependía del orden
+    #    de las claves JSON y producía conteos distintos entre escaneos),
+    #    localizamos el bloque `reservations: { ... }` y separamos cada
+    #    reserva por emparejamiento de llaves. Cada reserva se parsea de
+    #    forma aislada → mismo HTML siempre da el mismo resultado.
     # ------------------------------------------------------------------
-    DATE_RE = re.compile(
+    START_RE = re.compile(
         r'start\s*:\s*new\s+Date\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,'
         r'\s*(\d+)\s*,\s*(\d+)\s*,\s*\d+\s*\)',
         re.IGNORECASE,
@@ -680,64 +715,67 @@ def _parse_occupied_slots(raw_html: str, day: date) -> list[Booking]:
     )
     RES_RE = re.compile(r'idResource\s*:\s*\[([^\]]*)\]', re.IGNORECASE)
 
+    # Localizar el bloque reservations
+    m_res_block = re.search(r'reservations\s*:\s*\{', timetable_js)
+    reservation_chunks: list[str] = []
+    if m_res_block:
+        open_idx = timetable_js.index("{", m_res_block.end() - 1)
+        inner, _ = _balanced_block(timetable_js, open_idx)
+        # Cada entrada de reservations es  KEY: { ... }  → un bloque balanceado
+        k = 0
+        while True:
+            ob = inner.find("{", k)
+            if ob == -1:
+                break
+            content, close = _balanced_block(inner, ob)
+            reservation_chunks.append(content)
+            k = close + 1
+    else:
+        # Fallback: si no hay bloque reservations reconocible, trocear por "start:"
+        starts = list(START_RE.finditer(timetable_js))
+        for i, ms in enumerate(starts):
+            seg_end = starts[i + 1].start() if i + 1 < len(starts) else len(timetable_js)
+            reservation_chunks.append(timetable_js[ms.start():seg_end])
+
     seen: set[tuple] = set()
-
-    all_starts = list(DATE_RE.finditer(timetable_js))
-    for idx_s, m_s in enumerate(all_starts):
-        sh = int(m_s.group(4))
-        sm = int(m_s.group(5))
-
-        # Ventana: desde el fin de este start hasta el inicio del siguiente start
-        # (máximo 1500 chars para robustez)
-        win_start = m_s.end()
-        win_end   = (all_starts[idx_s + 1].start()
-                     if idx_s + 1 < len(all_starts)
-                     else min(win_start + 1500, len(timetable_js)))
-        window = timetable_js[win_start:win_end]
-
-        m_end = END_RE.search(window)
-        m_res = RES_RE.search(window)
-        if not m_end or not m_res:
-            # Ampliar ventana para buscar idResource (puede estar más lejos)
-            wider = timetable_js[win_start: win_start + 2000]
-            if not m_end:
-                m_end = END_RE.search(wider)
-            if not m_res:
-                m_res = RES_RE.search(wider)
-        if not m_end or not m_res:
+    for chunk in reservation_chunks:
+        m_s = START_RE.search(chunk)
+        m_e = END_RE.search(chunk)
+        m_r = RES_RE.search(chunk)
+        if not (m_s and m_e and m_r):
             continue
 
-        eh = int(m_end.group(1))
-        em = int(m_end.group(2))
-
-        # Validar horas
+        sh, sm = int(m_s.group(4)), int(m_s.group(5))
+        eh, em = int(m_e.group(1)), int(m_e.group(2))
         if not (0 <= sh <= 23 and 0 <= sm <= 59 and 0 <= eh <= 23 and 0 <= em <= 59):
             continue
 
-        for court_id in [c.strip() for c in m_res.group(1).split(',') if c.strip().isdigit()]:
-            key = (court_id, sh, sm)
+        try:
+            start_dt = _dt.combine(day, dtime(sh, sm))
+            end_dt   = _dt.combine(day, dtime(eh, em))
+        except ValueError:
+            continue
+
+        for court_id in [c.strip() for c in m_r.group(1).split(",") if c.strip().isdigit()]:
+            # Clave con inicio Y fin → no se pierden reservas distintas con el mismo inicio
+            key = (court_id, start_dt, end_dt)
             if key in seen:
                 continue
             seen.add(key)
-
-            court_name = resources.get(court_id, f"Pista {court_id}")
-            try:
-                start_dt = _dt.combine(day, dtime(sh, sm))
-                end_dt   = _dt.combine(day, dtime(eh, em))
-            except ValueError:
-                continue
-
             bookings.append(Booking.model_construct(
                 id=str(_uuid_mod.uuid4()),
                 court_id=court_id,
-                court_name=court_name,
+                court_name=resources.get(court_id, f"Pista {court_id}"),
                 start_datetime=start_dt,
                 end_datetime=end_dt,
                 description="Reserva existente",
                 source="syltek",
             ))
 
-    logger.debug("Reservas extraídas para %s: %d", day, len(bookings))
+    # Orden determinista para que dos escaneos del mismo HTML sean idénticos
+    bookings.sort(key=lambda b: (b.court_id, b.start_datetime, b.end_datetime))
+    logger.debug("Reservas extraídas para %s: %d (de %d bloques)",
+                 day, len(bookings), len(reservation_chunks))
     return bookings
 
 

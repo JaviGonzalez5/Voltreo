@@ -160,6 +160,34 @@ def build_availability_slots(
                     )
                 slot_start += _SLOT_STEP  # granularidad 30 min
 
+            # ── Inyectar slots de Pista Fija fuera de la rejilla de 30 min.
+            # Si una PF cae a las 20:45 (con day_start 16:00 la rejilla no la
+            # genera), creamos el slot exacto para que el partido pueda asignarse.
+            if pf_patterns:
+                grid_times = {
+                    (phase.day_start_time.hour * 60 + phase.day_start_time.minute) + 30 * k
+                    for k in range(0, 48)
+                }
+                for pf_wd, pf_t in pf_patterns:
+                    if pf_wd != wd:
+                        continue
+                    pf_min = pf_t.hour * 60 + pf_t.minute
+                    if pf_min in grid_times:
+                        continue  # ya generado por la rejilla
+                    pf_start = _dt(current, pf_t)
+                    pf_end   = pf_start + duration
+                    if pf_end > day_end:
+                        continue
+                    # PF nunca se bloquea por reservas Syltek (esa ES su reserva)
+                    slots.append(
+                        AvailabilitySlot(
+                            court=court,
+                            date=current,
+                            start_time=pf_t,
+                            end_time=pf_end.time(),
+                        )
+                    )
+
         current += timedelta(days=1)
 
     return slots
@@ -495,6 +523,34 @@ class Scheduler:
         if not candidates:
             return None
 
+        # ── PISTA FIJA (restricción casi-dura) ──────────────────────────
+        # Si alguna pareja tiene pista fija (preferred_weekday + preferred_time)
+        # y existe un slot candidato que coincide EXACTAMENTE con ese día+hora
+        # (y por tanto ya ha pasado todas las restricciones físicas y de
+        # disponibilidad de AMBAS parejas), el partido DEBE ir ahí.
+        # Esto evita que el bonus suave de PF sea superado por late_hour_penalty
+        # u otras penalizaciones, o que la aleatoriedad del pool lo descarte.
+        pf_pairs = [
+            p for p in (match.pair_1, match.pair_2)
+            if getattr(p, "preferred_weekday", None) is not None
+            and getattr(p, "preferred_time", None) is not None
+        ]
+        pf_restricted = False
+        if pf_pairs:
+            def _pf_exact(slot) -> bool:
+                # El slot debe coincidir con el día+hora fijo de TODAS las parejas PF.
+                # Si dos parejas PF tienen franjas distintas, ninguna pasa y se
+                # cae al scoring normal (preferencias genuinamente incompatibles).
+                return all(
+                    slot.date.weekday() == p.preferred_weekday
+                    and slot.start_time == p.preferred_time
+                    for p in pf_pairs
+                )
+            pf_slots = [s for s in candidates if _pf_exact(s)]
+            if pf_slots:
+                candidates = pf_slots
+                pf_restricted = True
+
         # ── Ordenar por score y elegir aleatoriamente entre los top-N
         def _score(s):
             return self._slot_score(
@@ -504,6 +560,10 @@ class Scheduler:
             )
 
         candidates.sort(key=_score)
+        # Con pista fija: elegir el mejor de forma DETERMINISTA (sin randomización),
+        # garantizando que el partido cae en su franja fija siempre que sea posible.
+        if pf_restricted:
+            return candidates[0]
         pool_size = min(getattr(self.weights, "top_candidates_pool", 6), len(candidates))
         return self._rng.choice(candidates[:pool_size])
 
