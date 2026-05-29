@@ -1232,7 +1232,7 @@ from src.tournament_scheduler import schedule_tournament, tournament_schedule_su
 from src.db import get_db, is_db_configured
 from src.auth import (
     render_login_screen, is_authenticated, get_session_user,
-    is_superadmin, current_club_id, current_club_name, logout,
+    is_superadmin, current_club_id, current_club_name, logout, restore_session_from_cookie,
 )
 from src.db_converters import (
     phase_to_db, schedule_result_to_db, phase_from_db,
@@ -1544,6 +1544,8 @@ _db_ok = is_db_configured()
 _db = get_db() if _db_ok else None
 
 if _db_ok:
+    if not is_authenticated() and _db is not None:
+        restore_session_from_cookie(_db)
     if not is_authenticated():
         render_login_screen(_db)   # calls st.stop() internally
     else:
