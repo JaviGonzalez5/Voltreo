@@ -37,20 +37,87 @@ def verify_password(password: str, hashed: str) -> bool:
 # Login / Logout
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Rate limiting (session-state; no requiere Redis)
+# ---------------------------------------------------------------------------
+
+_MAX_ATTEMPTS  = 5          # intentos máximos antes de bloquear
+_LOCKOUT_SECS  = 300        # 5 minutos de bloqueo
+
+def _login_attempts_key() -> str:
+    return "_login_attempts"
+
+def _login_lockout_key() -> str:
+    return "_login_locked_until"
+
+def check_rate_limit() -> tuple[bool, int]:
+    """
+    Comprueba si el usuario actual está bloqueado por demasiados intentos fallidos.
+    Retorna (bloqueado: bool, segundos_restantes: int).
+    """
+    import time as _time
+    locked_until = st.session_state.get(_login_lockout_key(), 0)
+    if locked_until and _time.time() < locked_until:
+        remaining = int(locked_until - _time.time())
+        return True, remaining
+    return False, 0
+
+
+def _record_failed_attempt() -> None:
+    """Registra un intento fallido y aplica bloqueo si se supera el límite."""
+    import time as _time
+    key = _login_attempts_key()
+    attempts = st.session_state.get(key, 0) + 1
+    st.session_state[key] = attempts
+    if attempts >= _MAX_ATTEMPTS:
+        st.session_state[_login_lockout_key()] = _time.time() + _LOCKOUT_SECS
+        st.session_state[key] = 0  # reset contador tras bloqueo
+
+
+def _clear_login_attempts() -> None:
+    st.session_state.pop(_login_attempts_key(), None)
+    st.session_state.pop(_login_lockout_key(), None)
+
+
+def validate_password_strength(password: str) -> list[str]:
+    """
+    Valida que la contraseña cumple los requisitos mínimos.
+    Retorna lista de errores (vacía = contraseña válida).
+    """
+    errors = []
+    if len(password) < 8:
+        errors.append("Mínimo 8 caracteres.")
+    if not any(c.isupper() for c in password):
+        errors.append("Al menos una mayúscula.")
+    if not any(c.isdigit() for c in password):
+        errors.append("Al menos un número.")
+    return errors
+
+
 def login(db, username: str, password: str) -> Optional[dict]:
     """
-    Verifica credenciales contra la base de datos.
+    Verifica credenciales con rate limiting incorporado.
 
-    Retorna el dict del usuario si las credenciales son correctas,
-    None si el usuario no existe, está inactivo o la contraseña es incorrecta.
+    Retorna el dict del usuario si OK.
+    Retorna None si usuario no existe, inactivo, o contraseña incorrecta.
+    Lanza RuntimeError si la sesión está bloqueada por demasiados intentos.
     """
+    blocked, secs = check_rate_limit()
+    if blocked:
+        raise RuntimeError(f"Demasiados intentos. Espera {secs}s.")
+
     user = db.get_user_by_username(username.strip().lower())
     if user is None:
+        _record_failed_attempt()
         return None
     if not user.get("is_active", True):
+        _record_failed_attempt()
         return None
     if not verify_password(password, user["password_hash"]):
+        _record_failed_attempt()
         return None
+
+    _clear_login_attempts()  # login OK → resetear contador
     return user
 
 
@@ -264,14 +331,28 @@ def render_login_screen(db) -> None:
             password = st.text_input("Contraseña", type="password", placeholder="••••••••")
             submitted = st.form_submit_button("Entrar", type="primary", use_container_width=True)
 
+    # Mostrar estado de bloqueo antes de procesar el form
+    _blocked, _secs = check_rate_limit()
+    if _blocked:
+        st.error(f"🔒 Demasiados intentos fallidos. Espera **{_secs} segundos** antes de volver a intentarlo.")
+
     if submitted:
         if not username or not password:
             st.error("Introduce usuario y contraseña.")
         else:
-            user = login(db, username, password)
-            if user is None:
-                st.error("Usuario o contraseña incorrectos.")
-            else:
+            try:
+                user = login(db, username, password)
+            except RuntimeError as _e:
+                st.error(str(_e))
+                user = None
+
+            if user is None and not _blocked:
+                _remaining_attempts = _MAX_ATTEMPTS - st.session_state.get(_login_attempts_key(), 0)
+                if _remaining_attempts > 0:
+                    st.error(f"Usuario o contraseña incorrectos. ({_remaining_attempts} intentos restantes)")
+                else:
+                    st.error("Cuenta bloqueada temporalmente.")
+            elif user is not None:
                 if user.get("club_id"):
                     club = db.get_club_by_id(user["club_id"])
                     user["club_name"] = club["name"] if club else ""

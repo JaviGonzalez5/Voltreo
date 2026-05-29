@@ -4027,8 +4027,13 @@ elif page == "admin":
             _nu_club_id     = _club_map[_nu_club_label]
 
             if st.form_submit_button("Crear usuario", type="primary"):
-                if not _nu_username or not _nu_password:
-                    st.error("Usuario y contraseña son obligatorios.")
+                from src.auth import validate_password_strength as _vpw
+                _pw_errors = _vpw(_nu_password) if _nu_password else ["La contraseña es obligatoria."]
+                if not _nu_username:
+                    st.error("El nombre de usuario es obligatorio.")
+                elif _pw_errors:
+                    for _pwe in _pw_errors:
+                        st.error(f"Contraseña: {_pwe}")
                 else:
                     try:
                         _db.create_user(
@@ -4036,10 +4041,10 @@ elif page == "admin":
                             password_hash=_hash_pw(_nu_password),
                             role=_nu_role,
                             club_id=_nu_club_id,
-                            display_name=_nu_display,
+                            display_name=_nu_display or _nu_username,
                             email=_nu_email,
                         )
-                        st.success(f"✅ Usuario '{_nu_username}' creado.")
+                        st.success(f"✅ Usuario **{_nu_username}** ({_nu_role}) creado correctamente.")
                         st.rerun()
                     except Exception as _ex:
                         st.error(f"Error al crear el usuario: {_ex}")
