@@ -303,6 +303,22 @@ class SupabaseDB:
         )
         return resp.data[0] if resp.data else None
 
+    def get_latest_tournament(self, club_id: str) -> Optional[dict]:
+        """
+        Carga el último torneo del club (por updated_at / created_at).
+        Útil para restaurar contexto al entrar o cambiar de club.
+        """
+        resp = (
+            self._c.table("tournaments")
+            .select("*")
+            .eq("club_id", club_id)
+            .order("updated_at", desc=True)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return resp.data[0] if resp.data else None
+
     def upsert_tournament(
         self,
         club_id:          str,

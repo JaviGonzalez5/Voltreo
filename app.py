@@ -1429,6 +1429,10 @@ def _reset_club_runtime_state() -> None:
     st.session_state["_db_phase_loaded"] = False
     st.session_state["tournament"] = None
     st.session_state["db_tournament_id"] = None
+    st.session_state["_db_tournament_loaded"] = False
+    st.session_state["_t_config_divisions_source_id"] = None
+    st.session_state.pop("t_config_divisions", None)
+    st.session_state.pop("t_courts_list", None)
     st.session_state.pop("schedule_violations", None)
     st.session_state.pop("_filter_cache_key", None)
     st.session_state.pop("_group_names", None)
@@ -1519,8 +1523,10 @@ def init_state():
         "_nav_page": "home",
         # Flag de carga desde DB — se resetea en logout para que recargue al volver a entrar
         "_db_phase_loaded": False,
+        "_db_tournament_loaded": False,
         # Club activo cargado en memoria (superadmin).
         "_active_club_id": None,
+        "_t_config_divisions_source_id": None,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -1564,6 +1570,19 @@ if _db_ok:
                         st.session_state.matches_generated = True
             except Exception:
                 pass  # BD no disponible o fase inválida — ignorar silenciosamente
+        if _cid_load and _db is not None and st.session_state.get("tournament") is None and not st.session_state.get("_db_tournament_loaded"):
+            st.session_state["_db_tournament_loaded"] = True
+            try:
+                _t_row = _db.get_latest_tournament(_cid_load)
+                if _t_row:
+                    _loaded_t = tournament_from_db(_t_row)
+                    st.session_state["tournament"] = _loaded_t
+                    st.session_state["db_tournament_id"] = _t_row["id"]
+                    st.session_state.pop("t_courts_list", None)
+                    st.session_state.pop("t_config_divisions", None)
+                    st.session_state["_t_config_divisions_source_id"] = None
+            except Exception:
+                pass  # BD no disponible o torneo inválido — ignorar silenciosamente
 
 # ---------------------------------------------------------------------------
 # Sidebar — navegación
@@ -3873,10 +3892,42 @@ elif page == "t_config":
         if _legacy and _legacy in _div_key_set:
             _current_divisions = [_legacy]
 
+    _div_source_id = f"{getattr(t, 'id', 'new')}::{st.session_state.get('db_tournament_id') or ''}"
+    if st.session_state.get("_t_config_divisions_source_id") != _div_source_id:
+        st.session_state["t_config_divisions"] = list(_current_divisions)
+        st.session_state["_t_config_divisions_source_id"] = _div_source_id
+
+    _preset_masc = [f"{TournamentCategory.MASCULINO.value}:{_sub.value}" for _sub in TournamentSubcategory]
+    _preset_fem = [f"{TournamentCategory.FEMENINO.value}:{_sub.value}" for _sub in TournamentSubcategory]
+    _preset_mix = [f"{TournamentCategory.MIXTO.value}:{_sub.value}" for _sub in TournamentSubcategory]
+    _preset_all = list(dict.fromkeys(_preset_masc + _preset_fem + _preset_mix))
+
+    _preset_cols = st.columns(5)
+    with _preset_cols[0]:
+        if st.button("Masculino 1ª-5ª", key="t_div_preset_masc", use_container_width=True):
+            st.session_state["t_config_divisions"] = list(_preset_masc)
+            st.rerun()
+    with _preset_cols[1]:
+        if st.button("Femenino 1ª-5ª", key="t_div_preset_fem", use_container_width=True):
+            st.session_state["t_config_divisions"] = list(_preset_fem)
+            st.rerun()
+    with _preset_cols[2]:
+        if st.button("Mixto 1ª-5ª", key="t_div_preset_mix", use_container_width=True):
+            st.session_state["t_config_divisions"] = list(_preset_mix)
+            st.rerun()
+    with _preset_cols[3]:
+        if st.button("Todas", key="t_div_preset_all", use_container_width=True):
+            st.session_state["t_config_divisions"] = list(_preset_all)
+            st.rerun()
+    with _preset_cols[4]:
+        if st.button("Limpiar", key="t_div_preset_none", use_container_width=True):
+            st.session_state["t_config_divisions"] = []
+            st.rerun()
+
     t_divisions = st.multiselect(
         "Selecciona una o varias categorías del torneo",
         options=_div_keys,
-        default=_current_divisions,
+        key="t_config_divisions",
         format_func=lambda k: _div_labels.get(k, k),
         help="Puedes combinar categorías, por ejemplo: Masculino 1ª-5ª, Femenino 1ª-5ª y Mixto 1ª-5ª.",
     )
