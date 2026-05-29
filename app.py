@@ -28,8 +28,10 @@ _CSS = """
    ═══════════════════════════════════════════════════════════════════ */
 
 /* ── BASE ───────────────────────────────────────────────────────── */
-html, body, [class*="css"], * {
-    font-family: "Inter", "Segoe UI", system-ui, sans-serif !important;
+html, body, .stApp, .main,
+button, input, textarea, select,
+h1, h2, h3, h4, h5, h6, p, span, label, div {
+    font-family: "Inter", "Segoe UI", system-ui, sans-serif;
 }
 .main .block-container {
     padding-top: 2rem;
@@ -114,8 +116,6 @@ html, body, [class*="css"], * {
     text-transform: uppercase !important;
     color: #4a7aa0 !important;
     padding: 12px 14px !important;
-    display: flex !important;
-    align-items: center !important;
 }
 [data-testid="stSidebar"] [data-testid="stExpander"] summary:hover {
     color: #94b8d8 !important;
