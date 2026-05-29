@@ -1569,11 +1569,13 @@ _IS_RANKING = page in {k for k, *_ in _R_STEPS}
 
 _T_OBJ   = _s.get("tournament")
 _T_SCHED = getattr(_T_OBJ, "scheduled_count", 0) if _T_OBJ is not None else 0
+_t_has_results = any(getattr(m, "is_played", False) for m in getattr(_T_OBJ, "matches", [])) if _T_OBJ else False
 _T_STEPS = [
     ("t_config",   "Configurar torneo",  "Nombre, categoría, formato y pistas",  _T_OBJ is not None),
     ("t_pairs",    "Añadir parejas",     "Registra las parejas participantes",    _T_OBJ is not None and len(getattr(_T_OBJ, "pairs",    [])) > 0),
     ("t_generate", "Generar estructura", "Crea grupos y/o cuadro",                _T_OBJ is not None and len(getattr(_T_OBJ, "matches",  [])) > 0),
     ("t_schedule", "Asignar horarios",   "Planificación automática",              _T_SCHED > 0),
+    ("t_results",  "Registrar resultados", "Marcadores y avance del cuadro",      _t_has_results),
     ("t_export",   "Exportar",           "Descarga el Excel del torneo",          _T_SCHED > 0),
 ]
 _IS_TOURNAMENT = page in {k for k, *_ in _T_STEPS}
@@ -1616,7 +1618,7 @@ def _t_header(step_num: int, step_title: str, step_hint: str) -> None:
         )
     else:
         _page_header("🏆", f"Torneos — {step_title}", step_hint)
-    _steps_bc = ["⚙️ Config","👥 Parejas","🎯 Estructura","🗓️ Horarios","📤 Exportar"]
+    _steps_bc = ["⚙️ Config","👥 Parejas","🎯 Estructura","🗓️ Horarios","🏆 Resultados","📤 Exportar"]
     _bc_html = '<div style="display:flex;gap:6px;margin-bottom:1.4rem;flex-wrap:wrap">'
     for _i, _sbc in enumerate(_steps_bc, 1):
         if _i < step_num:
@@ -1630,7 +1632,7 @@ def _t_header(step_num: int, step_title: str, step_hint: str) -> None:
 
 
 def _t_nav_buttons(current_step: int) -> None:
-    _keys = ["t_config","t_pairs","t_generate","t_schedule","t_export"]
+    _keys = ["t_config","t_pairs","t_generate","t_schedule","t_results","t_export"]
     _col_prev, _, _col_next = st.columns([1, 4, 1])
     with _col_prev:
         if current_step > 1:
@@ -4074,11 +4076,132 @@ elif page == "t_schedule":
 
 
 # ---------------------------------------------------------------------------
-# TORNEO — PASO 5: Exportar
+# TORNEO — PASO 5: Registrar resultados + avance del cuadro
+# ---------------------------------------------------------------------------
+
+elif page == "t_results":
+    from src.tournament_results import (
+        register_result as _treg, clear_result as _tclear,
+        tournament_champion as _tchamp, results_summary as _tsumm,
+    )
+    from src.tournament_models import MatchRound as _MR
+    _t_header(5, "Registrar resultados", "Marcadores y avance automático del cuadro")
+    t = st.session_state.get("tournament")
+    if not t or not t.matches:
+        st.warning("⚠️ Genera la estructura del torneo antes de registrar resultados.")
+        if st.button("← Generar estructura"):
+            st.session_state["_nav_page"] = "t_generate"; st.rerun()
+        st.stop()
+
+    def _persist_tournament(_tobj):
+        if _db_ok and _db is not None:
+            _cid = current_club_id()
+            if _cid:
+                try:
+                    _p = tournament_to_db(_tobj, _cid, st.session_state.get("db_tournament_id"))
+                    _sv = _db.upsert_tournament(
+                        club_id=_cid, name=_p["name"],
+                        start_date=_p["start_date"], end_date=_p["end_date"],
+                        tournament_data=_p["tournament_data"],
+                        tournament_id=_p["tournament_id"],
+                    )
+                    st.session_state["db_tournament_id"] = _sv["id"]
+                except Exception as _e:
+                    st.warning(f"⚠️ Guardado local OK, BD falló: {_e}")
+
+    # Resumen de progreso
+    _summ = _tsumm(t)
+    _stat_chips(
+        (f"{_summ['played']} jugados", "green", "✅"),
+        (f"{_summ['pending']} pendientes", "orange", "⏳"),
+        (f"Campeón: {_summ['champion']}" if _summ['champion'] else "Sin campeón aún",
+         "green" if _summ['champion'] else "red", "🏆"),
+    )
+
+    if _summ["champion"]:
+        st.markdown(
+            f'<div style="background:linear-gradient(135deg,#1a0533,#6a1b9a);'
+            f'border:2px solid #ffd700;border-radius:16px;padding:1.2rem 1.6rem;margin:1rem 0;'
+            f'text-align:center"><div style="color:#ffd700;font-size:.8rem;font-weight:800;'
+            f'letter-spacing:.1em">🏆 CAMPEÓN DEL TORNEO</div>'
+            f'<div style="color:#fff;font-size:1.5rem;font-weight:900;margin-top:.3rem">'
+            f'{escape(_summ["champion"])}</div></div>',
+            unsafe_allow_html=True,
+        )
+
+    # Partidos jugables (ambas parejas conocidas), ordenados por ronda
+    _playable = sorted(
+        [m for m in t.matches if m.pair_1 and m.pair_2],
+        key=lambda m: (m.round.order, m.match_number),
+    )
+
+    if not _playable:
+        st.info("Aún no hay partidos con ambas parejas definidas. "
+                "En formato grupos+cuadro, juega primero la fase de grupos.")
+
+    # Agrupar por ronda
+    _by_round = {}
+    for m in _playable:
+        _by_round.setdefault(m.round, []).append(m)
+
+    for _rnd, _ms in _by_round.items():
+        _section_start("🎾", _rnd.display)
+        for m in _ms:
+            _c1, _c2, _c3 = st.columns([3, 2, 1])
+            with _c1:
+                _status_icon = "✅" if m.is_played else "⏳"
+                st.markdown(
+                    f"{_status_icon} **{escape(m.pair_1.display_name)}**  vs  "
+                    f"**{escape(m.pair_2.display_name)}**"
+                )
+                if m.is_played and m.score:
+                    st.caption(f"Resultado: {escape(m.score)}")
+            with _c2:
+                _winner_opts = ["— Sin jugar —", m.pair_1.display_name, m.pair_2.display_name]
+                _cur_idx = 0
+                if m.winner_id == m.pair_1.id:
+                    _cur_idx = 1
+                elif m.winner_id == m.pair_2.id:
+                    _cur_idx = 2
+                _sel = st.selectbox(
+                    "Ganador", _winner_opts, index=_cur_idx,
+                    key=f"twin_{m.id}", label_visibility="collapsed",
+                )
+            with _c3:
+                _score = st.text_input(
+                    "Marcador", value=m.score, key=f"tscore_{m.id}",
+                    placeholder="6-4 6-3", label_visibility="collapsed",
+                )
+
+            # Aplicar cambios inmediatamente al detectar selección
+            _new_winner_id = None
+            if _sel == m.pair_1.display_name:
+                _new_winner_id = m.pair_1.id
+            elif _sel == m.pair_2.display_name:
+                _new_winner_id = m.pair_2.id
+
+            if _new_winner_id != m.winner_id or (m.is_played and _score != m.score):
+                if _new_winner_id is None and m.is_played:
+                    _tclear(t, m.id)
+                    st.session_state["tournament"] = t
+                    _persist_tournament(t)
+                    st.rerun()
+                elif _new_winner_id is not None:
+                    _treg(t, m.id, _new_winner_id, _score)
+                    st.session_state["tournament"] = t
+                    _persist_tournament(t)
+                    st.rerun()
+
+    st.divider()
+    _t_nav_buttons(5)
+
+
+# ---------------------------------------------------------------------------
+# TORNEO — PASO 6: Exportar
 # ---------------------------------------------------------------------------
 
 elif page == "t_export":
-    _t_header(5, "Exportar", "Descarga el Excel completo del torneo")
+    _t_header(6, "Exportar", "Descarga el Excel completo del torneo")
     t = st.session_state.get("tournament")
     if not t or not t.matches:
         st.warning("⚠️ Genera la estructura y asigna horarios antes de exportar.")
@@ -4187,7 +4310,7 @@ elif page == "t_export":
         _m3.metric("Parejas",        _summ_exp["n_pairs"])
         st.json(_summ_exp["matches_by_round"])
 
-    _t_nav_buttons(5)
+    _t_nav_buttons(6)
 
 
 # ---------------------------------------------------------------------------

@@ -155,6 +155,34 @@ class TournamentMatch(BaseModel):
     status: TMatchStatus = TMatchStatus.PENDING
     conflict_reason: Optional[str] = None
 
+    # Resultado del partido (P1 torneos)
+    winner_id: Optional[str] = None      # id de la pareja ganadora
+    score: str = ""                       # marcador legible: "6-4 6-3"
+
+    @property
+    def is_played(self) -> bool:
+        return self.winner_id is not None
+
+    @property
+    def winner_pair(self) -> Optional["TournamentPair"]:
+        if self.winner_id is None:
+            return None
+        if self.pair_1 and self.pair_1.id == self.winner_id:
+            return self.pair_1
+        if self.pair_2 and self.pair_2.id == self.winner_id:
+            return self.pair_2
+        return None
+
+    @property
+    def loser_pair(self) -> Optional["TournamentPair"]:
+        if self.winner_id is None:
+            return None
+        if self.pair_1 and self.pair_1.id == self.winner_id:
+            return self.pair_2
+        if self.pair_2 and self.pair_2.id == self.winner_id:
+            return self.pair_1
+        return None
+
     @property
     def p1_display(self) -> str:
         if self.pair_1:
