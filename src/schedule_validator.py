@@ -260,34 +260,55 @@ def validate_schedule(
 
     # ----------------------------------------------------------------
     # 7. Pista fija (PF): partido no coincide con día/hora preferido
+    #
+    # Caso importante: si AMBAS parejas tienen PF en franjas distintas, el
+    # partido solo puede estar en UNA de las dos. Si cae en la PF de alguna
+    # de ellas, es el mejor resultado posible y NO se reporta como infracción.
+    # Solo se reporta si el partido no coincide con la PF de NINGUNA pareja.
     # ----------------------------------------------------------------
+    def _match_on_pf(pair, wd, st) -> bool:
+        pw = pair.preferred_weekday
+        pt = pair.preferred_time
+        if pw is None and pt is None:
+            return False
+        day_ok  = pw is None or wd == pw
+        time_ok = pt is None or st == pt
+        return day_ok and time_ok
+
     for m in scheduled:
-        for pair in (m.pair_1, m.pair_2):
+        wd = m.suggested_date.weekday()
+        st = m.suggested_start_time
+        pf_pairs = [
+            p for p in (m.pair_1, m.pair_2)
+            if p.preferred_weekday is not None or p.preferred_time is not None
+        ]
+        if not pf_pairs:
+            continue
+
+        # Si el partido cae en la PF de alguna pareja → asignación óptima, no reportar
+        if any(_match_on_pf(p, wd, st) for p in pf_pairs):
+            continue
+
+        # No coincide con ninguna PF → reportar para cada pareja con PF
+        for pair in pf_pairs:
             pw = pair.preferred_weekday
             pt = pair.preferred_time
-            if pw is None and pt is None:
-                continue
-            wd = m.suggested_date.weekday()
-            st = m.suggested_start_time
-            mismatch_day  = pw is not None and wd != pw
-            mismatch_time = pt is not None and st != pt
-            if mismatch_day or mismatch_time:
-                pref = []
-                if pw is not None:
-                    pref.append(f"{WEEKDAY_ES[pw]}")
-                if pt is not None:
-                    pref.append(f"{pt.strftime('%H:%M')}")
-                assigned = f"{WEEKDAY_ES[wd]} {st.strftime('%H:%M')}"
-                violations.append({
-                    "type": "preferred_slot_mismatch",
-                    "severity": "info",
-                    "description": (
-                        f"{pair.display_name} (PF {' '.join(pref)}): "
-                        f"partido asignado el {assigned}"
-                    ),
-                    "matches": [m],
-                    "pair_names": [pair.display_name],
-                })
+            pref = []
+            if pw is not None:
+                pref.append(f"{WEEKDAY_ES[pw]}")
+            if pt is not None:
+                pref.append(f"{pt.strftime('%H:%M')}")
+            assigned = f"{WEEKDAY_ES[wd]} {st.strftime('%H:%M')}"
+            violations.append({
+                "type": "preferred_slot_mismatch",
+                "severity": "info",
+                "description": (
+                    f"{pair.display_name} (PF {' '.join(pref)}): "
+                    f"partido asignado el {assigned}"
+                ),
+                "matches": [m],
+                "pair_names": [pair.display_name],
+            })
 
     # Ordenar: errors primero, luego warnings, luego info
     order = {"error": 0, "warning": 1, "info": 2}

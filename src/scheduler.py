@@ -537,19 +537,24 @@ class Scheduler:
         ]
         pf_restricted = False
         if pf_pairs:
-            def _pf_exact(slot) -> bool:
-                # El slot debe coincidir con el día+hora fijo de TODAS las parejas PF.
-                # Si dos parejas PF tienen franjas distintas, ninguna pasa y se
-                # cae al scoring normal (preferencias genuinamente incompatibles).
-                return all(
-                    slot.date.weekday() == p.preferred_weekday
-                    and slot.start_time == p.preferred_time
-                    for p in pf_pairs
-                )
-            pf_slots = [s for s in candidates if _pf_exact(s)]
-            if pf_slots:
-                candidates = pf_slots
+            def _pf_match(slot, pair) -> bool:
+                return (slot.date.weekday() == pair.preferred_weekday
+                        and slot.start_time == pair.preferred_time)
+
+            # 1) Ideal: slot que cumple la PF de TODAS las parejas (misma franja).
+            all_pf = [s for s in candidates if all(_pf_match(s, p) for p in pf_pairs)]
+            if all_pf:
+                candidates = all_pf
                 pf_restricted = True
+            else:
+                # 2) PF en conflicto (franjas distintas): el partido SOLO puede
+                #    estar en una de las dos franjas fijas → restringir a los slots
+                #    que cumplan la PF de ALGUNA pareja. Así nunca se asigna a un
+                #    hueco arbitrario cuando existe la franja fija de un rival.
+                any_pf = [s for s in candidates if any(_pf_match(s, p) for p in pf_pairs)]
+                if any_pf:
+                    candidates = any_pf
+                    pf_restricted = True
 
         # ── Ordenar por score y elegir aleatoriamente entre los top-N
         def _score(s):

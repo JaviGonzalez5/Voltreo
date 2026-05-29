@@ -91,6 +91,38 @@ class TestFixedCourtHonored:
         assert results[0][1] == time(20, 0)
 
 
+class TestConflictingPF:
+    """Dos parejas con PF en franjas distintas que juegan entre sí."""
+
+    def test_match_lands_on_one_of_the_two_pf_slots(self):
+        # AA: martes 19:30 ; BB: miércoles 20:00 — juegan entre sí
+        p1 = _pair("AA", preferred_weekday=1, preferred_time=time(19, 30))
+        p2 = _pair("BB", preferred_weekday=2, preferred_time=time(20, 0))
+        g = Group(name="G", pairs=[p1, p2])
+        phase = _phase([g])
+        result = Scheduler(phase).schedule(generate_all_matches([g]))
+        m = result.scheduled[0]
+        # Debe caer en UNA de las dos franjas fijas, no en un hueco arbitrario
+        on_aa = (m.suggested_date.weekday() == 1 and m.suggested_start_time == time(19, 30))
+        on_bb = (m.suggested_date.weekday() == 2 and m.suggested_start_time == time(20, 0))
+        assert on_aa or on_bb, (
+            f"Asignado a {m.suggested_date.weekday()} {m.suggested_start_time}, "
+            "debería estar en una de las dos PF"
+        )
+
+    def test_validator_does_not_flag_when_on_opponent_pf(self):
+        from src.schedule_validator import validate_schedule
+        p1 = _pair("AA", preferred_weekday=1, preferred_time=time(19, 30))
+        p2 = _pair("BB", preferred_weekday=2, preferred_time=time(20, 0))
+        g = Group(name="G", pairs=[p1, p2])
+        phase = _phase([g])
+        result = Scheduler(phase).schedule(generate_all_matches([g]))
+        violations = validate_schedule(result, phase)
+        pf_violations = [v for v in violations if v["type"] == "preferred_slot_mismatch"]
+        # El partido cae en la PF de una pareja → no debe haber infracción PF
+        assert pf_violations == [], f"No debería marcar PF: {pf_violations}"
+
+
 class TestPFDoesNotBreakNonPF:
 
     def test_non_pf_matches_still_scheduled(self):
