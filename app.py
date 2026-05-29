@@ -619,7 +619,7 @@ header[data-testid="stHeader"] * {
     background: #07121f !important;
 }
 [data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
-    gap: .15rem !important;
+    gap: .22rem !important;
 }
 [data-testid="stSidebar"] button[kind="headerNoPadding"],
 [data-testid="stSidebar"] [data-testid="stBaseButton-headerNoPadding"] {
@@ -726,13 +726,12 @@ header[data-testid="stHeader"] * {
     margin-top: .2rem;
 }
 .pp-nav-section {
-    color: #3d5f7a;
-    font-size: .63rem;
-    letter-spacing: .16em;
+    color: #2e5068;
+    font-size: .6rem;
+    letter-spacing: .18em;
     text-transform: uppercase;
     font-weight: 800;
-    padding: 1rem .9rem .3rem;
-    margin-bottom: .1rem;
+    padding: 1.1rem .9rem .55rem;
 }
 [data-testid="stSidebar"] [data-testid="stExpander"] {
     background: rgba(255,255,255,.035) !important;
@@ -843,15 +842,15 @@ header[data-testid="stHeader"] * {
     text-overflow: ellipsis;
 }
 .pp-empty-club {
-    background: rgba(255,255,255,.04);
-    border: 1px solid rgba(255,255,255,.09) !important;
-    border-left: 3px solid rgba(245,158,11,.6) !important;
-    border-radius: 0 8px 8px 0;
-    color: #c8a060;
-    font-size: .78rem;
-    line-height: 1.4;
-    margin: .4rem .12rem .5rem !important;
-    padding: .65rem .8rem !important;
+    background: transparent;
+    border: none !important;
+    border-left: 2px solid rgba(245,158,11,.5) !important;
+    border-radius: 0;
+    color: #7a6040;
+    font-size: .74rem;
+    line-height: 1.35;
+    margin: .2rem .4rem .4rem 1rem !important;
+    padding: .3rem .7rem !important;
 }
 .pp-sidebar-footer {
     padding: .6rem .9rem 1.2rem;
@@ -1526,7 +1525,7 @@ if _db_ok and is_authenticated():
             _club_name_sidebar = _sel_name
         else:
             st.sidebar.markdown(
-                '<div class="pp-empty-club">Todavía no hay clubs creados. Entra en Administración para crear el primero.</div>',
+                '<div class="pp-empty-club">⚠ Sin clubs — crea uno en Administración</div>',
                 unsafe_allow_html=True,
             )
     else:
@@ -1541,7 +1540,7 @@ if _db_ok and is_authenticated():
         f'</div>',
         unsafe_allow_html=True,
     )
-    if st.sidebar.button("Cerrar sesión", use_container_width=True, key="btn_logout"):
+    if st.sidebar.button("↪  Cerrar sesión", use_container_width=True, key="btn_logout"):
         logout()
 else:
     _club_name_sidebar = _s.get("club_name", "")
@@ -1551,8 +1550,8 @@ if _db_ok and is_authenticated() and is_superadmin() and not _club_name_sidebar 
     st.rerun()
 
 st.sidebar.markdown('<div class="pp-nav-section">Principal</div>', unsafe_allow_html=True)
-_sidebar_button("Inicio", "home", page, "nav_home")
-_sidebar_button("Configuración del club", "club_config", page, "nav_club_config")
+_sidebar_button("⌂  Inicio",                   "home",        page, "nav_home")
+_sidebar_button("◈  Configuración del club",   "club_config", page, "nav_club_config")
 
 _R_STEPS = [
     ("config",   "Configurar fase",    "Define fechas, pistas y parámetros",  _s.phase is not None),
@@ -1576,17 +1575,17 @@ _T_STEPS = [
 _IS_TOURNAMENT = page in {k for k, *_ in _T_STEPS}
 
 st.sidebar.markdown('<div class="pp-nav-section">Flujos guiados</div>', unsafe_allow_html=True)
-_sidebar_workflow("Ranking", _R_STEPS, page, "nav_r", expanded=_IS_RANKING)
-_sidebar_workflow("Torneos", _T_STEPS, page, "nav_t", expanded=_IS_TOURNAMENT)
+_sidebar_workflow("◫  Ranking",  _R_STEPS, page, "nav_r", expanded=_IS_RANKING)
+_sidebar_workflow("◈  Torneos",  _T_STEPS, page, "nav_t", expanded=_IS_TOURNAMENT)
 
 if _db_ok and is_superadmin():
     st.sidebar.markdown('<div class="pp-nav-section">Sistema</div>', unsafe_allow_html=True)
-    _sidebar_button("Administración", "admin", page, "nav_admin")
+    _sidebar_button("⚙  Administración", "admin", page, "nav_admin")
 
 _dry = _s.get("dry_run", True)
-_mode_txt = "Modo seguro" if _dry else "Escritura real"
+_mode_txt = "Modo seguro" if _dry else "⚡ Escritura real"
 st.sidebar.markdown(
-    f'<div class="pp-sidebar-footer"><span class="pp-mode-pill">{escape(_mode_txt)}</span></div>',
+    f'<div class="pp-sidebar-footer"><span class="pp-mode-pill">{"🔒  " if _dry else "⚡  "}{escape(_mode_txt)}</span></div>',
     unsafe_allow_html=True,
 )
 
