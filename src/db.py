@@ -126,15 +126,19 @@ class SupabaseDB:
         display_name: str = "",
         email: str = "",
     ) -> dict:
-        resp = self._c.table("users").insert({
+        payload = {
             "username":      username.strip().lower(),
             "password_hash": password_hash,
             "role":          role,
             "club_id":       club_id,
             "display_name":  display_name,
             "email":         email,
-            "is_active":     True,
-        }).execute()
+        }
+        # is_active puede no existir si la migración no se ejecutó — se intenta primero con ella
+        try:
+            resp = self._c.table("users").insert({**payload, "is_active": True}).execute()
+        except Exception:
+            resp = self._c.table("users").insert(payload).execute()
         return resp.data[0]
 
     def update_user_password(self, user_id: str, new_hash: str) -> None:
