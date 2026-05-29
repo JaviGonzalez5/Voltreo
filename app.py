@@ -1439,6 +1439,83 @@ def _reset_club_runtime_state() -> None:
     st.session_state.pop("_pair_names", None)
     st.session_state.pop("_match_id_to_obj", None)
     st.session_state.pop("_court_name_to_obj", None)
+    # Estado/cache de integración Syltek por club
+    st.session_state.pop("syltek_logged_in", None)
+    st.session_state.pop("syltek_courts", None)
+    st.session_state.pop("syltek_publish_results", None)
+    st.session_state.pop("syltek_credentials", None)
+    st.session_state.pop("syl_url", None)
+    st.session_state.pop("syl_user", None)
+    st.session_state.pop("syl_pass", None)
+    st.session_state.pop("syl_imp_url", None)
+    st.session_state.pop("syl_imp_user", None)
+    st.session_state.pop("syl_imp_pass", None)
+    for _k in list(st.session_state.keys()):
+        if _k.startswith("court_id_"):
+            st.session_state.pop(_k, None)
+
+
+_DEFAULT_SYLTEK_LOGIN_URL = "https://padelplus.syltek.com/system/account/login"
+
+
+def _club_settings_dict(club_row: dict | None) -> dict:
+    if not club_row:
+        return {}
+    _raw = club_row.get("settings")
+    return _raw if isinstance(_raw, dict) else {}
+
+
+def _default_syltek_url(club_row: dict | None) -> str:
+    _cfg = _club_settings_dict(club_row)
+    _saved = str(_cfg.get("syltek_url") or "").strip()
+    if _saved:
+        return _saved
+    _env = str(settings.syltek_url or "").strip()
+    if _env:
+        return _env
+    _slug = str((club_row or {}).get("slug") or "").strip().lower()
+    _name = str((club_row or {}).get("name") or "").strip().lower()
+    if "padelplus" in _slug or "padelplus" in _name:
+        return _DEFAULT_SYLTEK_LOGIN_URL
+    return _DEFAULT_SYLTEK_LOGIN_URL
+
+
+def _syltek_defaults_for_club(club_row: dict | None) -> tuple[str, str, str]:
+    _cfg = _club_settings_dict(club_row)
+    _url = _default_syltek_url(club_row)
+    _user = str(_cfg.get("syltek_user") or settings.syltek_user or "").strip()
+    _pass = str(_cfg.get("syltek_password") or settings.syltek_password or "").strip()
+    return _url, _user, _pass
+
+
+def _save_syltek_settings_for_club(
+    db_obj,
+    club_id: str | None,
+    *,
+    url: str | None = None,
+    user: str | None = None,
+    password: str | None = None,
+    courts: dict | None = None,
+) -> None:
+    """
+    Persiste configuración Syltek dentro de clubs.settings para el club activo.
+    Se hace merge con el resto de settings para no perder información del club.
+    """
+    if db_obj is None or not club_id:
+        return
+    _row = db_obj.get_club_by_id(club_id)
+    if not _row:
+        return
+    _settings = dict(_club_settings_dict(_row))
+    if url is not None:
+        _settings["syltek_url"] = str(url).strip()
+    if user is not None:
+        _settings["syltek_user"] = str(user).strip()
+    if password is not None:
+        _settings["syltek_password"] = str(password).strip()
+    if courts is not None:
+        _settings["syltek_courts"] = dict(courts)
+    db_obj._c.table("clubs").update({"settings": _settings}).eq("id", club_id).execute()
 
 
 def _division_option_maps() -> tuple[list[str], dict[str, str]]:
@@ -1828,7 +1905,8 @@ elif page == "club_config":
     _club_row = _db.get_club_by_id(_cid) if (_db_ok and _db and _cid) else None
 
     # Leer settings guardados
-    _settings = (_club_row.get("settings") or {}) if _club_row else {}
+    _settings = _club_settings_dict(_club_row)
+    _syl_default_url, _syl_default_user, _syl_default_pass = _syltek_defaults_for_club(_club_row)
 
     col1, col2 = st.columns(2)
     with col1:
@@ -1838,6 +1916,25 @@ elif page == "club_config":
         _cc_phone   = st.text_input("Teléfono", value=_settings.get("phone",""),   placeholder="+34 600 000 000")
         _cc_email   = st.text_input("Email de contacto", value=_settings.get("email",""), placeholder="info@miclub.es")
         _cc_web     = st.text_input("Web", value=_settings.get("web",""),           placeholder="https://miclub.es")
+        _section_start("🔗", "Integración Syltek")
+        _cc_syl_url = st.text_input(
+            "URL de login Syltek",
+            value=_syl_default_url,
+            placeholder="https://padelplus.syltek.com/system/account/login",
+            help="Puedes pegar la URL completa de login; el conector la normaliza automáticamente.",
+        )
+        _cc_syl_user = st.text_input("Usuario Syltek", value=_syl_default_user)
+        _cc_store_syl_pass = st.checkbox(
+            "Guardar contraseña de Syltek en este club",
+            value=bool(_syl_default_pass),
+            help="Si desmarcas esta opción, la contraseña no se guardará en la configuración del club.",
+        )
+        _cc_syl_pass = st.text_input(
+            "Contraseña Syltek",
+            type="password",
+            value=_syl_default_pass if _cc_store_syl_pass else "",
+            placeholder="••••••••",
+        )
 
     with col2:
         _section_start("🏟️", "Instalaciones")
@@ -1853,17 +1950,26 @@ elif page == "club_config":
 
     st.divider()
     if st.button("💾 Guardar configuración del club", type="primary", use_container_width=True):
-        _new_settings = {
+        _new_settings = dict(_settings)
+        _new_settings.update({
             "address": _cc_address, "phone": _cc_phone, "email": _cc_email,
             "web": _cc_web, "num_courts": _cc_courts, "indoor_courts": _cc_indoor,
             "open_time": str(_cc_open), "close_time": str(_cc_close), "notes": _cc_notes,
-        }
+            "syltek_url": (_cc_syl_url or "").strip(),
+            "syltek_user": (_cc_syl_user or "").strip(),
+        })
+        if _cc_store_syl_pass:
+            _new_settings["syltek_password"] = (_cc_syl_pass or "").strip()
+        else:
+            _new_settings.pop("syltek_password", None)
         st.session_state["club_name"] = _cc_name
+        for _k in ("syl_url", "syl_user", "syl_pass", "syl_imp_url", "syl_imp_user", "syl_imp_pass"):
+            st.session_state.pop(_k, None)
         if _db_ok and _db and _cid:
             try:
                 # Guardar settings en la tabla clubs
                 _db._c.table("clubs").update({"name": _cc_name, "settings": _new_settings}).eq("id", _cid).execute()
-                st.success("✅ Configuración del club guardada en la base de datos.")
+                st.success("✅ Configuración del club (incluido Syltek) guardada en la base de datos.")
             except Exception as _e:
                 st.warning(f"⚠️ No se pudo guardar en BD: {_e}")
         else:
@@ -2219,21 +2325,42 @@ elif page == "import":
     # --- Tab 3: Syltek ---
     with tab3:
         st.markdown("### Conectar con Syltek")
+        _imp_cid = current_club_id() if _db_ok else None
+        _imp_club_row = _db.get_club_by_id(_imp_cid) if (_db_ok and _db and _imp_cid) else None
+        _imp_url_default, _imp_user_default, _imp_pass_default = _syltek_defaults_for_club(_imp_club_row)
 
         col_c1, col_c2 = st.columns(2)
         with col_c1:
             syl_imp_url = st.text_input(
                 "URL Syltek",
-                value=settings.syltek_url or "https://padelplus.padelclick.com",
+                value=_imp_url_default,
                 key="syl_imp_url",
             )
             syl_imp_user = st.text_input(
                 "Usuario",
-                value=settings.syltek_user or "",
+                value=_imp_user_default,
                 key="syl_imp_user",
             )
         with col_c2:
-            syl_imp_pass = st.text_input("Contraseña", type="password", key="syl_imp_pass")
+            syl_imp_pass = st.text_input("Contraseña", type="password", value=_imp_pass_default, key="syl_imp_pass")
+
+        if st.button("💾 Guardar credenciales Syltek en este club", key="btn_save_syl_imp_creds"):
+            if not syl_imp_url or not syl_imp_user or not syl_imp_pass:
+                st.warning("Completa URL, usuario y contraseña para guardarlas.")
+            elif _db_ok and _db and _imp_cid:
+                try:
+                    _save_syltek_settings_for_club(
+                        _db,
+                        _imp_cid,
+                        url=syl_imp_url,
+                        user=syl_imp_user,
+                        password=syl_imp_pass,
+                    )
+                    st.success("✅ Credenciales Syltek guardadas para este club.")
+                except Exception as _e_syl_save:
+                    st.warning(f"⚠️ No se pudieron guardar: {_e_syl_save}")
+            else:
+                st.info("ℹ️ Sin base de datos activa; no se pueden persistir credenciales.")
 
         st.markdown("---")
 
@@ -2280,6 +2407,17 @@ elif page == "import":
                     if not ok:
                         st.error(f"❌ Login fallido: {msg}")
                     else:
+                        if _db_ok and _db and _imp_cid:
+                            try:
+                                _save_syltek_settings_for_club(
+                                    _db,
+                                    _imp_cid,
+                                    url=syl_imp_url,
+                                    user=syl_imp_user,
+                                    password=syl_imp_pass,
+                                )
+                            except Exception:
+                                pass
                         progress_grp = st.progress(0, text="Leyendo niveles del ranking...")
                         status_grp = st.empty()
 
@@ -3618,12 +3756,17 @@ elif page == "review":
 elif page == "syltek":
     _page_header("🔗", "Publicar en Syltek", "Crea las reservas del ranking directamente en el sistema Syltek")
 
+    _syl_cid = current_club_id() if _db_ok else None
+    _syl_club_row = _db.get_club_by_id(_syl_cid) if (_db_ok and _db and _syl_cid) else None
+    _syl_settings = _club_settings_dict(_syl_club_row)
+    _syl_url_default, _syl_user_default, _syl_pass_default = _syltek_defaults_for_club(_syl_club_row)
 
     # Estado de sesión Syltek
     if "syltek_logged_in" not in st.session_state:
         st.session_state["syltek_logged_in"] = False
     if "syltek_courts" not in st.session_state:
-        st.session_state["syltek_courts"] = {}
+        _saved_courts = _syl_settings.get("syltek_courts")
+        st.session_state["syltek_courts"] = dict(_saved_courts) if isinstance(_saved_courts, dict) else {}
     if "syltek_publish_results" not in st.session_state:
         st.session_state["syltek_publish_results"] = []
 
@@ -3636,17 +3779,35 @@ elif page == "syltek":
     with col_url:
         syl_url = st.text_input(
             "URL de Syltek",
-            value=settings.syltek_url or "https://padelplus.padelclick.com",
+            value=_syl_url_default,
             key="syl_url",
-            help="Solo la URL base. Ej: https://padelplus.padelclick.com",
+            help="Puedes usar URL base o URL completa de login, por ejemplo: https://padelplus.syltek.com/system/account/login",
         )
     with col_user:
         syl_user = st.text_input(
             "Usuario",
-            value=settings.syltek_user or "",
+            value=_syl_user_default,
             key="syl_user",
         )
-    syl_pass = st.text_input("Contraseña", type="password", key="syl_pass")
+    syl_pass = st.text_input("Contraseña", type="password", value=_syl_pass_default, key="syl_pass")
+
+    if st.button("💾 Guardar credenciales de conexión", key="btn_save_syltek_creds"):
+        if not syl_url or not syl_user or not syl_pass:
+            st.warning("Completa URL, usuario y contraseña para guardarlas.")
+        elif _db_ok and _db and _syl_cid:
+            try:
+                _save_syltek_settings_for_club(
+                    _db,
+                    _syl_cid,
+                    url=syl_url,
+                    user=syl_user,
+                    password=syl_pass,
+                )
+                st.success("✅ Credenciales guardadas para este club.")
+            except Exception as _e_syl2:
+                st.warning(f"⚠️ No se pudieron guardar: {_e_syl2}")
+        else:
+            st.info("ℹ️ Sin base de datos activa; no se pueden persistir credenciales.")
 
     dry_run_toggle = st.toggle(
         "Modo seguro (DRY-RUN) — simula las reservas sin crearlas de verdad",
@@ -3665,6 +3826,17 @@ elif page == "syltek":
             if ok:
                 st.session_state["syltek_logged_in"] = True
                 st.session_state["syltek_credentials"] = (syl_url, syl_user, syl_pass)
+                if _db_ok and _db and _syl_cid:
+                    try:
+                        _save_syltek_settings_for_club(
+                            _db,
+                            _syl_cid,
+                            url=syl_url,
+                            user=syl_user,
+                            password=syl_pass,
+                        )
+                    except Exception:
+                        pass
                 st.success(f"✅ {msg}")
             else:
                 st.session_state["syltek_logged_in"] = False
@@ -3697,6 +3869,11 @@ elif page == "syltek":
                     courts = conn.discover_courts()
                 if courts:
                     st.session_state["syltek_courts"] = courts
+                    if _db_ok and _db and _syl_cid:
+                        try:
+                            _save_syltek_settings_for_club(_db, _syl_cid, courts=courts)
+                        except Exception:
+                            pass
                     st.success(f"✅ {len(courts)} pistas encontradas: {', '.join(courts.keys())}")
                 else:
                     st.warning(
@@ -3714,6 +3891,11 @@ elif page == "syltek":
             for i in range(1, int(n_courts) + 1):
                 manual_courts[f"Padel {i}"] = str(1479 + i)
             st.session_state["syltek_courts"] = manual_courts
+            if _db_ok and _db and _syl_cid:
+                try:
+                    _save_syltek_settings_for_club(_db, _syl_cid, courts=manual_courts)
+                except Exception:
+                    pass
             st.warning(
                 "⚠️ Los IDs asignados (1480, 1481…) son **estimados** para Padelplus. "
                 "Si las reservas fallan con error de pista, usa **🔍 Descubrir pistas automáticamente** "
@@ -3735,6 +3917,11 @@ elif page == "syltek":
                 courts_edit[name] = new_id
         if st.button("💾 Guardar IDs de pistas"):
             st.session_state["syltek_courts"] = courts_edit
+            if _db_ok and _db and _syl_cid:
+                try:
+                    _save_syltek_settings_for_club(_db, _syl_cid, courts=courts_edit)
+                except Exception:
+                    pass
             st.success("IDs guardados.")
 
     if not st.session_state["syltek_courts"]:

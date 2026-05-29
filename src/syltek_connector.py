@@ -29,7 +29,7 @@ from .models import Booking, Court, Group, Pair, Player
 
 logger = logging.getLogger(__name__)
 
-PADELPLUS_BASE = "https://padelplus.padelclick.com"
+PADELPLUS_BASE = "https://padelplus.syltek.com"
 
 # Rutas conocidas de Padelplus/Syltek
 LOGIN_PATHS = [
