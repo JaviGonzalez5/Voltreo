@@ -605,7 +605,7 @@ header[data-testid="stHeader"] * {
     visibility: hidden !important;
 }
 .stApp {
-    background: #f3f7fb !important;
+    background: #f0f4f8 !important;
 }
 .main .block-container {
     max-width: 1480px !important;
@@ -869,97 +869,135 @@ header[data-testid="stHeader"] * {
 .pp-section-title {
     color: #0d7d55 !important;
 }
+/* ── Hero banner ─────────────────────────────────────────────────── */
 .pp-hero {
-    border: 1px solid #dbe7f3;
-    background: linear-gradient(135deg,#ffffff 0%,#eef8f5 100%);
-    border-radius: 8px;
-    padding: 1.45rem 1.55rem;
-    margin-bottom: 1.25rem;
+    background: linear-gradient(135deg, #07111d 0%, #0a1f35 60%, #0d2a47 100%);
+    border-radius: 16px;
+    padding: 2.2rem 2.4rem 2rem;
+    margin-bottom: 1.6rem;
+    position: relative;
+    overflow: hidden;
+}
+.pp-hero::after {
+    content: "";
+    position: absolute;
+    top: -60px; right: -60px;
+    width: 220px; height: 220px;
+    background: radial-gradient(circle, rgba(0,200,83,.18) 0%, transparent 70%);
+    pointer-events: none;
 }
 .pp-eyebrow {
-    color: #0d7d55;
-    font-size: .72rem;
-    font-weight: 850;
-    letter-spacing: .12em;
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    color: #00c853;
+    font-size: .7rem;
+    font-weight: 800;
+    letter-spacing: .14em;
     text-transform: uppercase;
-    margin-bottom: .45rem;
+    margin-bottom: .7rem;
+    background: rgba(0,200,83,.12);
+    border: 1px solid rgba(0,200,83,.25);
+    border-radius: 20px;
+    padding: .2rem .75rem;
 }
 .pp-hero h1 {
-    color: #07111d;
+    color: #ffffff;
     font-size: 2rem;
-    line-height: 1.12;
+    font-weight: 800;
+    line-height: 1.15;
     margin: 0;
-    letter-spacing: 0;
+    letter-spacing: -.02em;
 }
 .pp-hero p {
-    margin: .55rem 0 0;
-    max-width: 780px;
-    color: #59718a;
-    font-size: .96rem;
+    margin: .65rem 0 0;
+    max-width: 680px;
+    color: rgba(255,255,255,.6);
+    font-size: .95rem;
+    line-height: 1.55;
 }
+
+/* ── KPI grid ─────────────────────────────────────────────────────── */
 .pp-kpi-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: .85rem;
-    margin: 1rem 0 1.25rem;
+    gap: 1rem;
+    margin: 0 0 1.4rem;
 }
-.pp-kpi-card,
-.pp-action-card,
-.pp-onboarding-card {
+.pp-kpi-card {
     background: #fff;
-    border: 1px solid #dfe9f4;
-    border-radius: 8px;
-    padding: 1rem;
-    box-shadow: 0 1px 2px rgba(15,23,42,.04);
+    border: 1px solid #e2eaf4;
+    border-radius: 12px;
+    padding: 1.1rem 1.2rem;
+    box-shadow: 0 1px 3px rgba(11,26,43,.05), 0 4px 16px rgba(11,26,43,.04);
+    transition: transform .15s, box-shadow .15s;
+}
+.pp-kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(11,26,43,.10);
 }
 .pp-kpi-label {
     color: #7088a0;
-    font-size: .72rem;
+    font-size: .68rem;
     font-weight: 800;
-    letter-spacing: .08em;
+    letter-spacing: .1em;
     text-transform: uppercase;
+    margin-bottom: .4rem;
 }
 .pp-kpi-value {
     color: #07111d;
-    font-size: 1.75rem;
-    font-weight: 850;
-    line-height: 1.1;
-    margin-top: .28rem;
+    font-size: 2rem;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -.03em;
 }
 .pp-kpi-note {
-    color: #7d92a8;
-    font-size: .78rem;
-    margin-top: .25rem;
+    color: #94a8be;
+    font-size: .74rem;
+    margin-top: .35rem;
 }
-.pp-card-title {
-    color: #0b1a2b;
-    font-weight: 800;
-    font-size: 1rem;
-    margin-bottom: .25rem;
-}
-.pp-card-text {
-    color: #647b93;
-    font-size: .88rem;
-    line-height: 1.45;
-}
+
+/* ── Info / action cards ─────────────────────────────────────────── */
 .pp-two-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: .9rem;
-    margin: 1rem 0;
+    gap: 1rem;
+    margin: 0 0 1.4rem;
 }
+.pp-action-card,
+.pp-onboarding-card {
+    background: #fff;
+    border: 1px solid #e2eaf4;
+    border-radius: 12px;
+    padding: 1.2rem 1.3rem;
+    box-shadow: 0 1px 3px rgba(11,26,43,.04);
+    transition: transform .15s, box-shadow .15s;
+}
+.pp-action-card:hover,
+.pp-onboarding-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(11,26,43,.09);
+    border-color: #c5d8ed;
+}
+.pp-card-title {
+    color: #07111d;
+    font-weight: 700;
+    font-size: .95rem;
+    margin-bottom: .4rem;
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+}
+.pp-card-text {
+    color: #5d7a96;
+    font-size: .86rem;
+    line-height: 1.5;
+}
+
 @media (max-width: 900px) {
-    .main .block-container {
-        padding-left: 1rem !important;
-        padding-right: 1rem !important;
-    }
-    .pp-kpi-grid,
-    .pp-two-grid {
-        grid-template-columns: 1fr;
-    }
-    .pp-hero h1 {
-        font-size: 1.55rem;
-    }
+    .main .block-container { padding-left: 1rem !important; padding-right: 1rem !important; }
+    .pp-kpi-grid, .pp-two-grid { grid-template-columns: 1fr; }
+    .pp-hero h1 { font-size: 1.5rem; }
 }
 </style>
 """
@@ -1020,13 +1058,18 @@ def _dashboard_hero(title: str, subtitle: str, eyebrow: str = "Panel del club") 
     )
 
 
+_KPI_COLORS = ["#00c853", "#1565c0", "#7b1fa2", "#e65100"]
+_KPI_BG     = ["rgba(0,200,83,.08)", "rgba(21,101,192,.08)", "rgba(123,31,162,.08)", "rgba(230,81,0,.08)"]
+
 def _kpi_grid(cards: list[tuple[str, str, str]]) -> None:
     html = ['<div class="pp-kpi-grid">']
-    for label, value, note in cards:
+    for i, (label, value, note) in enumerate(cards):
+        c  = _KPI_COLORS[i % len(_KPI_COLORS)]
+        bg = _KPI_BG[i % len(_KPI_BG)]
         html.append(
-            '<div class="pp-kpi-card">'
+            f'<div class="pp-kpi-card" style="border-top:3px solid {c}">'
             f'<div class="pp-kpi-label">{escape(label)}</div>'
-            f'<div class="pp-kpi-value">{escape(str(value))}</div>'
+            f'<div class="pp-kpi-value" style="color:{c}">{escape(str(value))}</div>'
             f'<div class="pp-kpi-note">{escape(note)}</div>'
             '</div>'
         )
@@ -1034,12 +1077,28 @@ def _kpi_grid(cards: list[tuple[str, str, str]]) -> None:
     st.markdown("".join(html), unsafe_allow_html=True)
 
 
+_STEP_ICONS = ["🏢", "👤", "🎾", "🚀"]
+
 def _info_grid(cards: list[tuple[str, str]]) -> None:
     html = ['<div class="pp-two-grid">']
-    for title, text in cards:
+    for i, (title, text) in enumerate(cards):
+        icon = _STEP_ICONS[i % len(_STEP_ICONS)]
+        # Extract number prefix like "1. " if present
+        clean_title = title
+        num_badge = ""
+        import re as _re
+        m = _re.match(r'^(\d+)\.\s*(.*)', title)
+        if m:
+            num_badge = (
+                f'<span style="width:22px;height:22px;border-radius:50%;'
+                f'background:#07111d;color:#fff;font-size:.7rem;font-weight:800;'
+                f'display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">'
+                f'{m.group(1)}</span>'
+            )
+            clean_title = m.group(2)
         html.append(
             '<div class="pp-action-card">'
-            f'<div class="pp-card-title">{escape(title)}</div>'
+            f'<div class="pp-card-title">{num_badge}{escape(clean_title)}</div>'
             f'<div class="pp-card-text">{escape(text)}</div>'
             '</div>'
         )
@@ -1582,49 +1641,59 @@ if page == "home":
     _pending_home = len(_s.get("matches") or []) if _s.get("matches_generated") and not _scheduled_home else max(len(_s.get("matches") or []) - _scheduled_home, 0)
 
     if _db_ok and is_authenticated() and is_superadmin() and not _club_name_sidebar:
+        # ── Onboarding para superadmin sin clubs ──────────────────────────
         _dashboard_hero(
-            "Crea el primer club para activar PadelPlus",
-            "Desde Administración podrás crear clubs, usuarios y preparar una demo limpia para enseñarla a otros centros.",
-            "Puesta en marcha",
+            "Bienvenido a PadelPlus",
+            "Tu plataforma de gestión de pádel. Empieza creando el primer club para activar todas las funciones.",
+            "✦  Configuración inicial",
         )
         _info_grid([
-            ("1. Crea un club", "Registra el nombre del club y su slug interno para separar sus datos."),
-            ("2. Crea un administrador", "Asigna un usuario club_admin para que el club acceda solo a su información."),
-            ("3. Configura ranking y torneos", "Después podrás preparar rankings, pistas, parejas y horarios desde el panel."),
-            ("4. Enseña una demo", "Con datos de ejemplo la aplicación ya se percibe como producto comercial."),
+            ("1. Crea un club", "Registra el nombre del club y su identificador interno. Cada club tiene sus propios datos y usuarios."),
+            ("2. Añade un administrador", "Crea un usuario club_admin vinculado al club para que pueda acceder solo a su información."),
+            ("3. Configura ranking y torneos", "Con el club activo podrás configurar fases de ranking, pistas, parejas e importar datos."),
+            ("4. Lista para mostrar", "Con datos de ejemplo la aplicación se ve como un producto terminado, lista para enseñar."),
         ])
-        if st.button("Ir a Administración", type="primary", use_container_width=True):
-            _nav_to("admin")
+        st.markdown("")
+        _c1, _c2, _c3 = st.columns([2, 1, 1])
+        with _c1:
+            if st.button("🚀  Ir a Administración", type="primary", use_container_width=True):
+                _nav_to("admin")
     else:
+        # ── Dashboard del club ────────────────────────────────────────────
         _dashboard_hero(
-            f"Gestiona {_home_club or 'tu club'} desde un único panel",
-            "Ranking, torneos, pistas y horarios organizados con una interfaz preparada para el uso diario del club.",
-            "PadelPlus Club",
+            f"{_home_club or 'Tu club'} — Panel de control",
+            "Gestiona rankings, torneos, pistas y calendarios desde un único lugar.",
+            "✦  PadelPlus",
         )
         _kpi_grid([
-            ("Grupos", len(_groups_home), "Ranking activo"),
-            ("Parejas", _pairs_home, "Jugadores inscritos"),
-            ("Partidos", _scheduled_home or len(_s.get("matches") or []), "Calendario generado"),
-            ("Pistas", _courts_home, "Configuradas"),
+            ("Grupos",   len(_groups_home),                                      "en el ranking activo"),
+            ("Parejas",  _pairs_home,                                             "jugadores inscritos"),
+            ("Partidos", _scheduled_home or len(_s.get("matches") or []),         "en el calendario"),
+            ("Pistas",   _courts_home,                                            "configuradas"),
         ])
 
+        st.markdown(
+            '<div style="font-size:.7rem;font-weight:800;letter-spacing:.12em;'
+            'text-transform:uppercase;color:#7088a0;margin:0 0 .8rem">Módulos disponibles</div>',
+            unsafe_allow_html=True,
+        )
         _info_grid([
-            ("Ranking", "Configura fases, importa parejas, genera calendarios y exporta comunicaciones para jugadores."),
-            ("Torneos", "Crea torneos con grupos, cuadro o grupos con cuadro final, y prepara horarios por disponibilidad."),
-            ("Calendario", "Revisa reservas, conflictos y distribución de partidos antes de publicar."),
-            ("Administración", "Gestiona clubs y usuarios con datos separados para cada organización."),
+            ("📊  Ranking",        "Configura fases, importa grupos y parejas, genera el calendario y exporta comunicaciones a jugadores."),
+            ("🏆  Torneos",        "Crea torneos con grupos, cuadro eliminatorio o formato mixto. Asigna horarios y exporta en Excel."),
+            ("🗓️  Calendario",     "Revisa la distribución de partidos, detecta conflictos y ajusta reservas antes de publicar."),
+            ("🛠️  Administración", "Gestiona clubs, usuarios y permisos. Cada club accede solo a sus propios datos."),
         ])
 
-        st.markdown("### Acciones rápidas")
-        qa1, qa2, qa3 = st.columns(3)
-        with qa1:
-            if st.button("Crear o revisar ranking", type="primary", use_container_width=True):
+        st.markdown("")
+        _qa1, _qa2, _qa3 = st.columns(3)
+        with _qa1:
+            if st.button("📊  Gestionar ranking", type="primary", use_container_width=True):
                 _nav_to("config")
-        with qa2:
-            if st.button("Crear torneo", use_container_width=True):
+        with _qa2:
+            if st.button("🏆  Crear torneo", use_container_width=True):
                 _nav_to("t_config")
-        with qa3:
-            if st.button("Configurar club", use_container_width=True):
+        with _qa3:
+            if st.button("⚙️  Config. del club", use_container_width=True):
                 _nav_to("club_config")
 
 
