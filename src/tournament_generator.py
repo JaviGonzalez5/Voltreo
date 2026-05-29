@@ -315,6 +315,10 @@ def generate_tournament_structure(config: TournamentConfig) -> TournamentConfig:
     elif config.format == TournamentFormat.BRACKET:
         config.groups = []
         n = min(len(pairs), config.bracket_size)
+        if n < 2:
+            # Sin suficientes parejas no se puede generar cuadro
+            config.matches = []
+            return config
         # Ajustar bracket_size a la potencia de 2 inferior o igual a n
         bs = max(4, 1 << (n.bit_length() - 1))  # floor power-of-2
         if bs > 16:
@@ -330,8 +334,12 @@ def generate_tournament_structure(config: TournamentConfig) -> TournamentConfig:
         config.groups = groups
         group_matches = _generate_group_matches(groups)
 
-        # Cuadro final: el número de plazas es n_groups × qualifiers_per_group
-        n_qualifiers = len(groups) * config.groups_qualifiers
+        # groups_qualifiers debe ser al menos 1 y no más que el tamaño del grupo
+        _safe_qualifiers = max(1, min(config.groups_qualifiers, config.group_size))
+        n_qualifiers = len(groups) * _safe_qualifiers
+        if n_qualifiers < 2:
+            config.matches = group_matches
+            return config
         bs = max(4, 1 << (n_qualifiers.bit_length() - 1))
         if bs > 16:
             bs = 16
@@ -340,7 +348,8 @@ def generate_tournament_structure(config: TournamentConfig) -> TournamentConfig:
         # Etiquetas TBD para el cuadro: "1º Grupo A", "2º Grupo A", …
         bracket_pairs_tbd: list[TournamentPair] = []
         for g in groups:
-            for rank in range(1, config.groups_qualifiers + 1):
+            max_rank = min(_safe_qualifiers, len(g.pairs))  # no más clasificados que parejas reales
+            for rank in range(1, max_rank + 1):
                 fake = TournamentPair.model_construct(
                     id=str(uuid4()),
                     name=f"{rank}º {g.name}",

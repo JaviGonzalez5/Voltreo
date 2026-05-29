@@ -117,6 +117,8 @@ class SupabaseDB:
         resp = q.order("username").execute()
         return resp.data or []
 
+    _VALID_ROLES = {"superadmin", "club_admin"}
+
     def create_user(
         self,
         username: str,
@@ -126,6 +128,8 @@ class SupabaseDB:
         display_name: str = "",
         email: str = "",
     ) -> dict:
+        if role not in self._VALID_ROLES:
+            raise ValueError(f"Rol inválido: {role!r}. Debe ser uno de {self._VALID_ROLES}")
         payload = {
             "username":      username.strip().lower(),
             "password_hash": password_hash,
@@ -222,18 +226,21 @@ class SupabaseDB:
         resp = self._c.table("ranking_phases").upsert(payload).execute()
         saved = resp.data[0]
 
-        # Desactivar otras fases del club si se acaba de activar esta
-        if phase_id is None:
-            self._c.table("ranking_phases").update({"is_active": False}).eq(
-                "club_id", club_id
-            ).neq("id", saved["id"]).execute()
+        # Siempre desactivar las otras fases del club (INSERT y UPDATE)
+        # Evita que múltiples fases queden is_active=True al guardar una existente
+        self._c.table("ranking_phases").update({"is_active": False}).eq(
+            "club_id", club_id
+        ).neq("id", saved["id"]).execute()
 
         return saved
 
     def set_phase_active(self, phase_id: str, club_id: str) -> None:
-        """Activa esta fase y desactiva el resto del club."""
-        self._c.table("ranking_phases").update({"is_active": False}).eq("club_id", club_id).execute()
+        """Activa esta fase y desactiva el resto del club (en un solo paso para evitar race)."""
+        # Primero activar la nueva, luego desactivar las demás
         self._c.table("ranking_phases").update({"is_active": True}).eq("id", phase_id).execute()
+        self._c.table("ranking_phases").update({"is_active": False}).eq(
+            "club_id", club_id
+        ).neq("id", phase_id).execute()
 
     def delete_phase(self, phase_id: str, club_id: str) -> None:
         self._c.table("ranking_phases").delete().eq("id", phase_id).eq("club_id", club_id).execute()

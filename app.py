@@ -1440,6 +1440,7 @@ def init_state():
         "matches_scheduled": False,
         # Módulo de torneos
         "tournament": None,
+        "db_tournament_id": None,
         # Navegación
         "_nav_page": "home",
         # Flag de carga desde DB — se resetea en logout para que recargue al volver a entrar
@@ -1992,10 +1993,15 @@ elif page == "import":
                 groups = _df_to_groups(df)
                 st.session_state.groups = groups
                 st.session_state.data_loaded = True
+                # Al reimportar grupos los partidos anteriores quedan obsoletos — limpiar
+                st.session_state.schedule_result  = None
+                st.session_state.matches          = []
+                st.session_state.matches_generated = False
+                st.session_state.matches_scheduled = False
                 # Actualizar fase si existe
                 if st.session_state.phase:
                     st.session_state.phase.groups = groups
-                    # Persistir en Supabase
+                    # Persistir en Supabase (sin schedule_result para evitar datos huérfanos)
                     if _db_ok and _db is not None:
                         _cid = current_club_id()
                         _pid = st.session_state.get("db_phase_id")
@@ -2011,7 +2017,7 @@ elif page == "import":
                                     phase_config=_payload["phase_config"],
                                     groups_data=_payload["groups_data"],
                                     bookings_data=_payload["bookings_data"],
-                                    schedule_result=schedule_result_to_db(st.session_state.schedule_result),
+                                    schedule_result=None,  # reseteado intencionadamente
                                     phase_id=_pid,
                                 )
                             except Exception:
@@ -2739,15 +2745,21 @@ elif page == "generate":
                             schedule_fields_changed = True
                         elif col == "Inicio" and new_val is not None:
                             if isinstance(new_val, str):
-                                parts = new_val.split(":")
-                                match_obj.suggested_start_time = time(int(parts[0]), int(parts[1]))
+                                try:
+                                    parts = new_val.split(":")
+                                    match_obj.suggested_start_time = time(int(parts[0]), int(parts[1]))
+                                except (IndexError, ValueError):
+                                    pass  # formato inesperado — ignorar sin crashear
                             else:
                                 match_obj.suggested_start_time = new_val
                             schedule_fields_changed = True
                         elif col == "Fin" and new_val is not None:
                             if isinstance(new_val, str):
-                                parts = new_val.split(":")
-                                match_obj.suggested_end_time = time(int(parts[0]), int(parts[1]))
+                                try:
+                                    parts = new_val.split(":")
+                                    match_obj.suggested_end_time = time(int(parts[0]), int(parts[1]))
+                                except (IndexError, ValueError):
+                                    pass
                             else:
                                 match_obj.suggested_end_time = new_val
                             schedule_fields_changed = True
@@ -3571,6 +3583,23 @@ elif page == "t_config":
             groups=[], matches=[],
         )
         st.session_state["tournament"] = new_t
+        # Persistir en Supabase
+        if _db_ok and _db is not None:
+            _t_cid = current_club_id()
+            if _t_cid:
+                try:
+                    _t_payload = tournament_to_db(new_t, _t_cid, st.session_state.get("db_tournament_id"))
+                    _t_saved   = _db.upsert_tournament(
+                        club_id=_t_cid,
+                        name=_t_payload["name"],
+                        start_date=_t_payload["start_date"],
+                        end_date=_t_payload["end_date"],
+                        tournament_data=_t_payload["tournament_data"],
+                        tournament_id=_t_payload["tournament_id"],
+                    )
+                    st.session_state["db_tournament_id"] = _t_saved["id"]
+                except Exception as _te:
+                    st.warning(f"⚠️ No se pudo guardar en BD: {_te}")
         st.success("✅ Configuración guardada.")
         st.session_state["_nav_page"] = "t_pairs"
         st.rerun()
@@ -3754,6 +3783,21 @@ elif page == "t_schedule":
             with st.spinner("Planificando..."):
                 t_sched = schedule_tournament(t)
             st.session_state["tournament"] = t_sched
+            # Persistir torneo con horarios asignados en Supabase
+            if _db_ok and _db is not None:
+                _t_cid2 = current_club_id()
+                if _t_cid2:
+                    try:
+                        _t_p2    = tournament_to_db(t_sched, _t_cid2, st.session_state.get("db_tournament_id"))
+                        _t_s2    = _db.upsert_tournament(
+                            club_id=_t_cid2, name=_t_p2["name"],
+                            start_date=_t_p2["start_date"], end_date=_t_p2["end_date"],
+                            tournament_data=_t_p2["tournament_data"],
+                            tournament_id=_t_p2["tournament_id"],
+                        )
+                        st.session_state["db_tournament_id"] = _t_s2["id"]
+                    except Exception:
+                        pass
             _ss = tournament_schedule_summary(t_sched)
             if _ss["conflicts"] == 0:
                 st.success(f"✅ {_ss['scheduled']} partidos programados · {_ss['first_match']} → {_ss['last_match']}")
