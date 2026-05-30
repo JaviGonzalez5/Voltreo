@@ -21,6 +21,7 @@ Algoritmo:
   3. Si no cabe en todo el rango de fechas → CONFLICT.
 """
 
+import unicodedata
 from collections import defaultdict
 from datetime import date, time, datetime, timedelta
 from typing import Optional
@@ -32,6 +33,38 @@ from .tournament_models import (
     TMatchStatus,
     MatchRound,
 )
+
+
+# ---------------------------------------------------------------------------
+# Identidad de jugador (para detectar el mismo jugador en distintas categorías)
+# ---------------------------------------------------------------------------
+
+def _player_key(player) -> str:
+    """
+    Clave normalizada del jugador físico: nombre completo en minúsculas y sin
+    acentos. Permite detectar que el mismo jugador participa en varias
+    categorías (ej. Masculino y Mixto) aunque sea en parejas distintas, para
+    que no se le asignen dos partidos simultáneos.
+    """
+    if player is None:
+        return ""
+    raw = f"{getattr(player, 'name', '')} {getattr(player, 'surname', '')}".strip().lower()
+    nfkd = unicodedata.normalize("NFKD", raw)
+    key = "".join(c for c in nfkd if not unicodedata.combining(c))
+    return key or getattr(player, "id", "")
+
+
+def _match_player_keys(match: TournamentMatch) -> list[str]:
+    """Claves de los hasta 4 jugadores de un partido (vacío si pareja TBD)."""
+    keys: list[str] = []
+    for pair in (match.pair_1, match.pair_2):
+        if pair is None:
+            continue
+        for pl in (getattr(pair, "player_1", None), getattr(pair, "player_2", None)):
+            k = _player_key(pl)
+            if k:
+                keys.append(k)
+    return keys
 
 
 # ---------------------------------------------------------------------------
@@ -69,20 +102,35 @@ class _CourtTimeline:
             self._free[d] = end
 
 
-class _PairTimeline:
-    """Registra el fin del último partido asignado a cada pareja."""
+class _PlayerTimeline:
+    """
+    Registra el fin del último partido de cada JUGADOR (no de cada pareja).
+
+    Así, un jugador que compite en varias categorías queda bloqueado en todas
+    ellas: su siguiente partido (en cualquier categoría) no puede empezar antes
+    de que termine el anterior + descanso. Evita partidos simultáneos del mismo
+    jugador físico.
+    """
 
     def __init__(self, rest_minutes: int):
-        self._rest   = timedelta(minutes=rest_minutes)
-        self._last:  dict[str, datetime] = {}
+        self._rest  = timedelta(minutes=rest_minutes)
+        self._last: dict[str, datetime] = {}
 
-    def available_from(self, pair_id: str) -> Optional[datetime]:
-        last = self._last.get(pair_id)
-        return (last + self._rest) if last else None
+    def available_from(self, player_keys: list[str]) -> Optional[datetime]:
+        """Momento más temprano en que TODOS los jugadores del partido están libres."""
+        latest: Optional[datetime] = None
+        for k in player_keys:
+            last = self._last.get(k)
+            if last is not None:
+                cand = last + self._rest
+                if latest is None or cand > latest:
+                    latest = cand
+        return latest
 
-    def record(self, pair_id: str, end: datetime) -> None:
-        if pair_id not in self._last or end > self._last[pair_id]:
-            self._last[pair_id] = end
+    def record(self, player_keys: list[str], end: datetime) -> None:
+        for k in player_keys:
+            if k not in self._last or end > self._last[k]:
+                self._last[k] = end
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +165,7 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
 
     # ── Estado compartido
     court_tls  = {c.id: _CourtTimeline() for c in active_courts}
-    pair_tl    = _PairTimeline(config.rest_between_matches_min)
+    player_tl  = _PlayerTimeline(config.rest_between_matches_min)
     prev_round_end: Optional[datetime] = None
 
     for rnd in rounds_ordered:
@@ -135,7 +183,7 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
                 match        = match,
                 active_courts= active_courts,
                 court_tls    = court_tls,
-                pair_tl      = pair_tl,
+                player_tl    = player_tl,
                 duration     = duration,
                 all_days     = all_days,
                 day_start    = day_start,
@@ -158,10 +206,8 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
                 match.status     = TMatchStatus.SCHEDULED
 
                 court_tls[court.id].mark_occupied(match.match_date, s_end)
-                if match.pair_1:
-                    pair_tl.record(match.pair_1.id, s_end)
-                if match.pair_2:
-                    pair_tl.record(match.pair_2.id, s_end)
+                # Bloquear a TODOS los jugadores del partido (en todas las categorías)
+                player_tl.record(_match_player_keys(match), s_end)
 
                 if rnd_latest_end is None or s_end > rnd_latest_end:
                     rnd_latest_end = s_end
@@ -180,7 +226,7 @@ def _find_best_slot(
     match:         TournamentMatch,
     active_courts: list[TournamentCourt],
     court_tls:     dict[str, _CourtTimeline],
-    pair_tl:       _PairTimeline,
+    player_tl:     _PlayerTimeline,
     duration:      timedelta,
     all_days:      list[date],
     day_start:     time,
@@ -193,12 +239,12 @@ def _find_best_slot(
 
     La función COMPARA todas las pistas en cada día y elige la que
     permita el inicio más temprano — esto garantiza el uso en paralelo.
-    """
-    p1_id = match.pair_1.id if match.pair_1 else None
-    p2_id = match.pair_2.id if match.pair_2 else None
 
-    p1_avail = pair_tl.available_from(p1_id) if p1_id else None
-    p2_avail = pair_tl.available_from(p2_id) if p2_id else None
+    Tiene en cuenta a TODOS los jugadores del partido: si alguno juega en otra
+    categoría, no puede tener dos partidos a la vez.
+    """
+    # Momento más temprano en que todos los jugadores del partido están libres
+    players_avail = player_tl.available_from(_match_player_keys(match))
 
     for d in all_days:
         day_start_dt = _dt(d, day_start)
@@ -226,15 +272,10 @@ def _find_best_slot(
                     continue  # Esta ronda no puede empezar hoy
                 earliest_start = max(earliest_start, rnd_earliest)
 
-            if p1_avail is not None:
-                if p1_avail.date() > d:
-                    continue  # Pareja 1 aún no ha descansado para hoy
-                earliest_start = max(earliest_start, p1_avail)
-
-            if p2_avail is not None:
-                if p2_avail.date() > d:
-                    continue
-                earliest_start = max(earliest_start, p2_avail)
+            if players_avail is not None:
+                if players_avail.date() > d:
+                    continue  # Algún jugador aún no ha terminado/descansado para hoy
+                earliest_start = max(earliest_start, players_avail)
 
             # Asegurar que no cae antes del inicio del día
             slot_start = max(earliest_start, day_start_dt)
