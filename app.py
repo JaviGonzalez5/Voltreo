@@ -4132,25 +4132,28 @@ elif page == "t_config":
     _preset_mix = [f"{TournamentCategory.MIXTO.value}:{_sub.value}" for _sub in _t_subs]
     _preset_all = list(dict.fromkeys(_preset_masc + _preset_fem + _preset_mix))
 
+    st.caption("Los botones **añaden** categorías a tu selección (puedes combinar Masculino, Femenino y Mixto). "
+               "Usa «Limpiar» para empezar de cero.")
+
+    def _add_divs(keys_to_add):
+        _cur = list(st.session_state.get("t_config_divisions", []))
+        st.session_state["t_config_divisions"] = list(dict.fromkeys(_cur + list(keys_to_add)))
+
     _preset_cols = st.columns(5)
     with _preset_cols[0]:
-        if st.button(f"Masculino {_sub_range_lbl}", key="t_div_preset_masc", use_container_width=True):
-            st.session_state["t_config_divisions"] = list(_preset_masc)
-            st.rerun()
+        if st.button(f"➕ Masculino {_sub_range_lbl}", key="t_div_preset_masc", use_container_width=True):
+            _add_divs(_preset_masc); st.rerun()
     with _preset_cols[1]:
-        if st.button(f"Femenino {_sub_range_lbl}", key="t_div_preset_fem", use_container_width=True):
-            st.session_state["t_config_divisions"] = list(_preset_fem)
-            st.rerun()
+        if st.button(f"➕ Femenino {_sub_range_lbl}", key="t_div_preset_fem", use_container_width=True):
+            _add_divs(_preset_fem); st.rerun()
     with _preset_cols[2]:
-        if st.button(f"Mixto {_sub_range_lbl}", key="t_div_preset_mix", use_container_width=True):
-            st.session_state["t_config_divisions"] = list(_preset_mix)
-            st.rerun()
+        if st.button(f"➕ Mixto {_sub_range_lbl}", key="t_div_preset_mix", use_container_width=True):
+            _add_divs(_preset_mix); st.rerun()
     with _preset_cols[3]:
-        if st.button("Todas", key="t_div_preset_all", use_container_width=True):
-            st.session_state["t_config_divisions"] = list(_preset_all)
-            st.rerun()
+        if st.button("➕ Todas", key="t_div_preset_all", use_container_width=True):
+            _add_divs(_preset_all); st.rerun()
     with _preset_cols[4]:
-        if st.button("Limpiar", key="t_div_preset_none", use_container_width=True):
+        if st.button("🗑️ Limpiar", key="t_div_preset_none", use_container_width=True):
             st.session_state["t_config_divisions"] = []
             st.rerun()
 
@@ -4203,7 +4206,7 @@ elif page == "t_config":
     _section_start("⏱️", "Parámetros de tiempo")
     col_t1, col_t2, col_t3 = st.columns(3)
     with col_t1:
-        t_match_dur = st.number_input("Duración del partido (min)", min_value=30, max_value=180, step=15, value=t.match_duration_minutes if t else 60)
+        t_match_dur = st.number_input("Duración del partido (min)", min_value=10, max_value=180, step=5, value=t.match_duration_minutes if t else 60)
         t_rest = st.number_input("Descanso mínimo entre partidos (min)", min_value=0, max_value=120, step=5, value=t.rest_between_matches_min if t else 15)
     with col_t2:
         t_day_start = st.time_input("Hora de inicio del día", value=t.day_start_time if t else _dt_mod.time(9, 0))
