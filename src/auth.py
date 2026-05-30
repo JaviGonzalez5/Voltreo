@@ -107,13 +107,17 @@ def _auth_cookie_secret() -> Optional[str]:
     Prioridad:
     1) AUTH_COOKIE_SECRET (env / secrets)
     2) COOKIE_SECRET (env / secrets)
-    3) SUPABASE_SERVICE_ROLE_KEY (fallback para no romper despliegues existentes)
+    3) SUPABASE_SERVICE_ROLE_KEY / SUPABASE_KEY / SUPABASE_ANON_KEY (fallback)
     """
     for key in ("AUTH_COOKIE_SECRET", "COOKIE_SECRET"):
         val = os.environ.get(key) or _safe_get_secret(key) or _safe_get_secret(key.lower())
         if val:
             return val
-    return os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or _safe_get_secret("SUPABASE_SERVICE_ROLE_KEY")
+    for key in ("SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_KEY", "SUPABASE_ANON_KEY"):
+        val = os.environ.get(key) or _safe_get_secret(key) or _safe_get_secret(key.lower())
+        if val:
+            return val
+    return None
 
 
 def _b64url_encode(raw: bytes) -> str:
@@ -189,7 +193,7 @@ def set_remember_cookie(user: dict) -> bool:
             _REMEMBER_COOKIE_NAME,
             token,
             expires_at=expires_at,
-            same_site="strict",
+            same_site="lax",
             secure=True,
         )
         return True
@@ -220,17 +224,30 @@ def restore_session_from_cookie(db) -> bool:
     if not secret or mgr is None:
         return False
 
+    token = None
     try:
         token = mgr.get(_REMEMBER_COOKIE_NAME)
     except Exception:
-        return False
+        token = None
+
+    # Fallback: algunos navegadores/componentes devuelven cookies solo vía get_all().
+    if (not token or not isinstance(token, str)) and hasattr(mgr, "get_all"):
+        try:
+            all_cookies = mgr.get_all() or {}
+            if isinstance(all_cookies, dict):
+                token = all_cookies.get(_REMEMBER_COOKIE_NAME)
+        except Exception:
+            token = token
 
     if not token or not isinstance(token, str):
         return False
 
     parsed = _parse_remember_token(token)
     if not parsed:
-        clear_remember_cookie()
+        # Evita borrar una cookie potencialmente válida si el componente
+        # aún no devolvió el valor completo en este render.
+        if "." in token:
+            clear_remember_cookie()
         return False
 
     if parsed["exp"] <= int(datetime.now(timezone.utc).timestamp()):
@@ -255,6 +272,8 @@ def restore_session_from_cookie(db) -> bool:
         user["club_name"] = club["name"] if club else ""
 
     set_session_user(user)
+    # Sliding expiration: renueva la cookie al restaurar sesión.
+    set_remember_cookie(user)
     return True
 
 
@@ -370,6 +389,11 @@ def render_login_screen(db) -> None:
     Muestra la pantalla de login centrada.
     Llama a st.stop() internamente para detener el renderizado del resto de la app.
     """
+    # Segundo intento de restauración: el gestor de cookies puede no estar listo
+    # en el primer ciclo de render.
+    if not is_authenticated() and restore_session_from_cookie(db):
+        st.rerun()
+
     from .branding import (
         BRAND_NAME, BRAND_MONOGRAM, BRAND_SUFFIX, BRAND_TAGLINE, BRAND_PITCH, BRAND_GRADIENT,
     )

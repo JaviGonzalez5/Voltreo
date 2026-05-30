@@ -93,6 +93,15 @@ def validate_phase_dates(start: Any, end: Any) -> ValidationErrors:
     return errors
 
 
+def validate_required_text(value: Any, field_label: str) -> ValidationErrors:
+    """
+    Valida que un campo de texto obligatorio no esté vacío.
+    """
+    if value is None or str(value).strip() == "":
+        return [f"{field_label} es obligatorio."]
+    return []
+
+
 def validate_groups(groups: list[Group]) -> ValidationIssues:
     """
     Valida la estructura de los grupos cargados.

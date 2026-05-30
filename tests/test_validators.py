@@ -5,6 +5,7 @@ from src.validators import (
     validate_groups,
     validate_groups_df,
     validate_phase_dates,
+    validate_required_text,
     issues_summary,
     EXPECTED_GROUP_SIZE,
 )
@@ -205,3 +206,20 @@ class TestValidatePhaseDates:
     def test_none_dates(self):
         errs = validate_phase_dates(None, None)
         assert len(errs) >= 1
+
+
+# ---------------------------------------------------------------------------
+# validate_required_text
+# ---------------------------------------------------------------------------
+
+class TestValidateRequiredText:
+    def test_required_text_ok(self):
+        assert validate_required_text("Ranking Primavera", "Nombre") == []
+
+    def test_required_text_empty(self):
+        errs = validate_required_text("   ", "Nombre")
+        assert errs == ["Nombre es obligatorio."]
+
+    def test_required_text_none(self):
+        errs = validate_required_text(None, "Nombre")
+        assert errs == ["Nombre es obligatorio."]

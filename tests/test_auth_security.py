@@ -256,3 +256,71 @@ class TestClubIsolation:
         from src.auth import current_club_name
         self._set_user(clean_session, "club_admin", "clubA")
         assert current_club_name() == "Mi Club"
+
+
+# ---------------------------------------------------------------------------
+# Remember-me cookie
+# ---------------------------------------------------------------------------
+
+class TestRememberCookie:
+    def test_cookie_secret_falls_back_to_supabase_key(self, clean_session, monkeypatch):
+        from src.auth import _auth_cookie_secret
+        monkeypatch.delenv("AUTH_COOKIE_SECRET", raising=False)
+        monkeypatch.delenv("COOKIE_SECRET", raising=False)
+        monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
+        monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
+        monkeypatch.setenv("SUPABASE_KEY", "supabase_fallback_key")
+        assert _auth_cookie_secret() == "supabase_fallback_key"
+
+    def test_restore_session_uses_get_all_fallback(self, clean_session, monkeypatch):
+        import bcrypt
+        from src.auth import (
+            _REMEMBER_COOKIE_NAME,
+            _AUTH_KEY,
+            _build_remember_token,
+            restore_session_from_cookie,
+        )
+
+        monkeypatch.setenv("AUTH_COOKIE_SECRET", "test_cookie_secret")
+
+        user = {
+            "id": "u1",
+            "username": "admin",
+            "password_hash": bcrypt.hashpw(b"StrongPass1", bcrypt.gensalt()).decode(),
+            "role": "club_admin",
+            "club_id": None,
+            "display_name": "Admin",
+            "is_active": True,
+        }
+        token = _build_remember_token(user)
+
+        class FakeCookieMgr:
+            def __init__(self):
+                self.cookies = {_REMEMBER_COOKIE_NAME: token}
+                self.set_calls = 0
+
+            def get(self, _name):
+                return None  # fuerza fallback a get_all
+
+            def get_all(self):
+                return dict(self.cookies)
+
+            def set(self, name, value, **_kwargs):
+                self.cookies[name] = value
+                self.set_calls += 1
+
+            def delete(self, name):
+                self.cookies.pop(name, None)
+
+        fake_mgr = FakeCookieMgr()
+        monkeypatch.setattr("src.auth._cookie_manager", lambda: fake_mgr)
+
+        db = MagicMock()
+        db.get_user_by_username.return_value = dict(user)
+
+        ok = restore_session_from_cookie(db)
+        assert ok is True
+        assert _AUTH_KEY in clean_session
+        assert clean_session[_AUTH_KEY]["username"] == "admin"
+        # Sliding expiration: al restaurar, se renueva la cookie.
+        assert fake_mgr.set_calls == 1

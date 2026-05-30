@@ -1133,10 +1133,51 @@ def _sidebar_button(label: str, target: str, current_page: str, key: str) -> Non
         _nav_to(target)
 
 
+def _workflow_unlock_limit(steps: list[tuple[str, str, str, bool]]) -> int:
+    """
+    Devuelve hasta qué paso (1-index) se puede navegar:
+    pasos completados consecutivos + el siguiente paso pendiente.
+    """
+    if not steps:
+        return 0
+    limit = 1
+    for _, _, _, done in steps:
+        if done:
+            limit += 1
+        else:
+            break
+    return min(limit, len(steps))
+
+
+def _is_workflow_step_unlocked(step_key: str, steps: list[tuple[str, str, str, bool]]) -> bool:
+    step_keys = [k for k, *_ in steps]
+    if step_key not in step_keys:
+        return True
+    idx = step_keys.index(step_key) + 1
+    return idx <= _workflow_unlock_limit(steps)
+
+
+def _redirect_locked_workflow_page(current_page: str, steps: list[tuple[str, str, str, bool]]) -> bool:
+    """
+    Si la página actual está bloqueada por flujo, la redirige al siguiente paso permitido.
+    """
+    step_keys = [k for k, *_ in steps]
+    if current_page not in step_keys:
+        return False
+    if _is_workflow_step_unlocked(current_page, steps):
+        return False
+    unlock_limit = _workflow_unlock_limit(steps)
+    if unlock_limit <= 0:
+        return False
+    st.session_state["_nav_page"] = step_keys[unlock_limit - 1]
+    return True
+
+
 def _sidebar_workflow(title: str, steps: list[tuple[str, str, str, bool]], current_page: str, key_prefix: str, expanded: bool) -> None:
     done_count = sum(1 for _, _, _, done in steps if done)
     pct_done = int((done_count / max(len(steps), 1)) * 100)
     current_hint = next((hint for step_key, _, hint, _ in steps if step_key == current_page), "")
+    unlock_limit = _workflow_unlock_limit(steps)
     open_key = f"_{key_prefix}_workflow_open"
     if open_key not in st.session_state:
         st.session_state[open_key] = expanded
@@ -1161,13 +1202,15 @@ def _sidebar_workflow(title: str, steps: list[tuple[str, str, str, bool]], curre
             unsafe_allow_html=True,
         )
         for idx, (step_key, label, hint, done) in enumerate(steps, 1):
-            marker = "OK" if done else f"{idx:02d}"
+            is_unlocked = idx <= unlock_limit
+            marker = "OK" if done else (f"{idx:02d}" if is_unlocked else "🔒")
             button_label = f"{marker}  {label}"
             if st.sidebar.button(
                 button_label,
                 key=f"{key_prefix}_{step_key}",
                 use_container_width=True,
                 type="primary" if current_page == step_key else "secondary",
+                disabled=(not is_unlocked and current_page != step_key),
             ):
                 _nav_to(step_key)
         if current_hint:
@@ -1217,7 +1260,7 @@ from src.excel_exporter import export_to_excel
 from src.message_generator import generate_all_group_messages, generate_all_pair_messages
 from src.validators import (
     validate_groups_df, validate_bookings_df, validate_phase_dates,
-    validate_groups, issues_summary,
+    validate_groups, issues_summary, validate_required_text,
 )
 from src.schedule_validator import validate_schedule, validation_summary, SEVERITY_EMOJI
 from src.excel_template_exporter import export_groups_to_template
@@ -1779,9 +1822,33 @@ st.sidebar.markdown('<div class="pp-nav-section">Principal</div>', unsafe_allow_
 _sidebar_button("⌂  Inicio",                   "home",        page, "nav_home")
 _sidebar_button("◈  Configuración del club",   "club_config", page, "nav_club_config")
 
+def _phase_config_ready(phase_obj) -> bool:
+    if phase_obj is None:
+        return False
+    if not str(getattr(phase_obj, "name", "")).strip():
+        return False
+    if getattr(phase_obj, "start_date", None) is None or getattr(phase_obj, "end_date", None) is None:
+        return False
+    if phase_obj.start_date >= phase_obj.end_date:
+        return False
+    return len(getattr(phase_obj, "courts", []) or []) > 0
+
+
+def _tournament_config_ready(t_obj) -> bool:
+    if t_obj is None:
+        return False
+    if not str(getattr(t_obj, "name", "")).strip():
+        return False
+    if getattr(t_obj, "start_date", None) is None or getattr(t_obj, "end_date", None) is None:
+        return False
+    if t_obj.end_date < t_obj.start_date:
+        return False
+    return len(getattr(t_obj, "courts", []) or []) > 0
+
+
 _has_results = bool(getattr(_s.phase, "match_results", []) if _s.phase else [])
 _R_STEPS = [
-    ("config",    "Configurar fase",    "Define fechas, pistas y parámetros",  _s.phase is not None),
+    ("config",    "Configurar fase",    "Define fechas, pistas y parámetros",  _phase_config_ready(_s.phase)),
     ("import",    "Importar datos",     "Sube grupos, parejas y reservas",      _s.data_loaded),
     ("generate",  "Generar calendario", "Crea los partidos automáticamente",    _s.matches_generated),
     ("results",   "Registrar resultados", "Introduce los marcadores de cada partido", _has_results),
@@ -1796,14 +1863,17 @@ _T_OBJ   = _s.get("tournament")
 _T_SCHED = getattr(_T_OBJ, "scheduled_count", 0) if _T_OBJ is not None else 0
 _t_has_results = any(getattr(m, "is_played", False) for m in getattr(_T_OBJ, "matches", [])) if _T_OBJ else False
 _T_STEPS = [
-    ("t_config",   "Configurar torneo",  "Nombre, categoría, formato y pistas",  _T_OBJ is not None),
-    ("t_pairs",    "Añadir parejas",     "Registra las parejas participantes",    _T_OBJ is not None and len(getattr(_T_OBJ, "pairs",    [])) > 0),
-    ("t_generate", "Generar estructura", "Crea grupos y/o cuadro",                _T_OBJ is not None and len(getattr(_T_OBJ, "matches",  [])) > 0),
+    ("t_config",   "Configurar torneo",  "Nombre, categoría, formato y pistas",  _tournament_config_ready(_T_OBJ)),
+    ("t_pairs",    "Añadir parejas",     "Registra las parejas participantes",    _tournament_config_ready(_T_OBJ) and len(getattr(_T_OBJ, "pairs",    [])) > 0),
+    ("t_generate", "Generar estructura", "Crea grupos y/o cuadro",                _tournament_config_ready(_T_OBJ) and len(getattr(_T_OBJ, "matches",  [])) > 0),
     ("t_schedule", "Asignar horarios",   "Planificación automática",              _T_SCHED > 0),
     ("t_results",  "Registrar resultados", "Marcadores y avance del cuadro",      _t_has_results),
     ("t_export",   "Exportar",           "Descarga el Excel del torneo",          _T_SCHED > 0),
 ]
 _IS_TOURNAMENT = page in {k for k, *_ in _T_STEPS}
+
+if _redirect_locked_workflow_page(page, _R_STEPS) or _redirect_locked_workflow_page(page, _T_STEPS):
+    st.rerun()
 
 st.sidebar.markdown('<div class="pp-nav-section">Flujos guiados</div>', unsafe_allow_html=True)
 _sidebar_workflow("◫  Ranking",  _R_STEPS, page, "nav_r", expanded=_IS_RANKING)
@@ -2179,7 +2249,10 @@ elif page == "config":
             st.session_state["_nav_page"] = "import"; st.rerun()
 
     if _save_btn:
-        _errs_phase = validate_phase_dates(_cfg_start, _cfg_end)
+        _cfg_phase_name_clean = str(_cfg_phase_name).strip()
+        _errs_phase = []
+        _errs_phase.extend(validate_required_text(_cfg_phase_name_clean, "El nombre de la fase"))
+        _errs_phase.extend(validate_phase_dates(_cfg_start, _cfg_end))
         if _errs_phase:
             for _e in _errs_phase:
                 st.error(_e)
@@ -2205,7 +2278,7 @@ elif page == "config":
             _preserved_results = list(getattr(_ep, "match_results", [])) if _ep else []
             _new_phase = RankingPhase.model_construct(
                 id=str(_uuid4()),
-                name=_cfg_phase_name,
+                name=_cfg_phase_name_clean,
                 start_date=_cfg_start,
                 end_date=_cfg_end,
                 courts=_new_courts,
@@ -2243,11 +2316,11 @@ elif page == "config":
                         phase_id=_payload["phase_id"],
                     )
                     st.session_state["db_phase_id"] = _saved["id"]
-                    st.success(f"✅ Fase **{_cfg_phase_name}** guardada correctamente.")
+                    st.success(f"✅ Fase **{_cfg_phase_name_clean}** guardada correctamente.")
                 except Exception as _e:
                     st.warning(f"⚠️ No se pudo guardar en BD: {_e}")
             else:
-                st.success(f"✅ Fase **{_cfg_phase_name}** guardada en sesión.")
+                st.success(f"✅ Fase **{_cfg_phase_name_clean}** guardada en sesión.")
             st.rerun()
 
 # ---------------------------------------------------------------------------
@@ -4263,46 +4336,69 @@ elif page == "t_config":
 
     st.divider()
     if st.button("💾 Guardar y continuar →", type="primary", use_container_width=True):
-        _courts_obj = [TournamentCourt(id=f"tc_{i}", name=c["name"]) for i, c in enumerate(st.session_state["t_courts_list"])]
-        _pairs_keep = t.pairs if t else []
-        _primary_cat, _primary_sub = (None, None)
-        if t_divisions:
-            _primary_cat, _primary_sub = _parse_division_key(t_divisions[0])
-        new_t = TournamentConfig(
-            id=t.id if t else str(__import__("uuid").uuid4()),
-            name=t_name,
-            category=_primary_cat,
-            subcategory=_primary_sub,
-            divisions=t_divisions,
-            is_top=t_is_top, prize=t_prize, location=t_location,
-            start_date=t_start, end_date=t_end, courts=_courts_obj, pairs=_pairs_keep,
-            format=t_format, match_duration_minutes=t_match_dur, rest_between_matches_min=t_rest,
-            day_start_time=t_day_start, day_end_time=t_day_end,
-            group_size=t_group_size, bracket_size=t_bracket_size,
-            third_place_match=t_third_place, groups_qualifiers=t_qualifiers,
-            groups=[], matches=[],
-        )
-        st.session_state["tournament"] = new_t
-        # Persistir en Supabase
-        if _db_ok and _db is not None:
-            _t_cid = current_club_id()
-            if _t_cid:
-                try:
-                    _t_payload = tournament_to_db(new_t, _t_cid, st.session_state.get("db_tournament_id"))
-                    _t_saved   = _db.upsert_tournament(
-                        club_id=_t_cid,
-                        name=_t_payload["name"],
-                        start_date=_t_payload["start_date"],
-                        end_date=_t_payload["end_date"],
-                        tournament_data=_t_payload["tournament_data"],
-                        tournament_id=_t_payload["tournament_id"],
-                    )
-                    st.session_state["db_tournament_id"] = _t_saved["id"]
-                except Exception as _te:
-                    st.warning(f"⚠️ No se pudo guardar en BD: {_te}")
-        st.success("✅ Configuración guardada.")
-        st.session_state["_nav_page"] = "t_pairs"
-        st.rerun()
+        _t_name_clean = str(t_name).strip()
+        _t_errors = []
+        _t_errors.extend(validate_required_text(_t_name_clean, "El nombre del torneo"))
+
+        _raw_courts = st.session_state.get("t_courts_list", []) or []
+        if not _raw_courts:
+            _t_errors.append("Añade al menos una pista para el torneo.")
+        else:
+            _empty_courts = [idx + 1 for idx, c in enumerate(_raw_courts) if not str(c.get("name", "")).strip()]
+            if _empty_courts:
+                _idx_txt = ", ".join(str(x) for x in _empty_courts)
+                _t_errors.append(f"Las pistas {_idx_txt} no tienen nombre.")
+
+        if t_end < t_start:
+            _t_errors.append("La fecha de fin no puede ser anterior a la fecha de inicio.")
+
+        if _t_errors:
+            for _err in _t_errors:
+                st.error(_err)
+        else:
+            _courts_obj = [
+                TournamentCourt(id=f"tc_{i}", name=str(c["name"]).strip())
+                for i, c in enumerate(_raw_courts)
+            ]
+            _pairs_keep = t.pairs if t else []
+            _primary_cat, _primary_sub = (None, None)
+            if t_divisions:
+                _primary_cat, _primary_sub = _parse_division_key(t_divisions[0])
+            new_t = TournamentConfig(
+                id=t.id if t else str(__import__("uuid").uuid4()),
+                name=_t_name_clean,
+                category=_primary_cat,
+                subcategory=_primary_sub,
+                divisions=t_divisions,
+                is_top=t_is_top, prize=t_prize, location=t_location,
+                start_date=t_start, end_date=t_end, courts=_courts_obj, pairs=_pairs_keep,
+                format=t_format, match_duration_minutes=t_match_dur, rest_between_matches_min=t_rest,
+                day_start_time=t_day_start, day_end_time=t_day_end,
+                group_size=t_group_size, bracket_size=t_bracket_size,
+                third_place_match=t_third_place, groups_qualifiers=t_qualifiers,
+                groups=[], matches=[],
+            )
+            st.session_state["tournament"] = new_t
+            # Persistir en Supabase
+            if _db_ok and _db is not None:
+                _t_cid = current_club_id()
+                if _t_cid:
+                    try:
+                        _t_payload = tournament_to_db(new_t, _t_cid, st.session_state.get("db_tournament_id"))
+                        _t_saved   = _db.upsert_tournament(
+                            club_id=_t_cid,
+                            name=_t_payload["name"],
+                            start_date=_t_payload["start_date"],
+                            end_date=_t_payload["end_date"],
+                            tournament_data=_t_payload["tournament_data"],
+                            tournament_id=_t_payload["tournament_id"],
+                        )
+                        st.session_state["db_tournament_id"] = _t_saved["id"]
+                    except Exception as _te:
+                        st.warning(f"⚠️ No se pudo guardar en BD: {_te}")
+            st.success("✅ Configuración guardada.")
+            st.session_state["_nav_page"] = "t_pairs"
+            st.rerun()
 
     _t_nav_buttons(1)
 
