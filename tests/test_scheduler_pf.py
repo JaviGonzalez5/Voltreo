@@ -153,6 +153,47 @@ class TestPFDoesNotBreakNonPF:
         assert aa_bb.suggested_start_time == time(20, 30)
 
 
+class TestMultiPFValidation:
+
+    def test_validator_accepts_second_pf_slot(self):
+        """
+        Si una pareja tiene dos PF, un partido en la segunda franja NO debe
+        marcarse como "PF no respetada".
+        """
+        from src.models import Match, ScheduleResult
+        from src.schedule_validator import validate_schedule
+
+        p1 = _pair(
+            "AA",
+            preferred_weekday=1,
+            preferred_time=time(19, 30),
+            preferred_slots=[
+                {"weekday": 1, "time": time(19, 30)},  # martes
+                {"weekday": 3, "time": time(20, 30)},  # jueves
+            ],
+        )
+        p2 = _pair("BB")
+        g = Group(name="G", pairs=[p1, p2])
+        phase = _phase([g])
+
+        m = Match(
+            group_id=g.id,
+            group_name=g.name,
+            pair_1=p1,
+            pair_2=p2,
+            suggested_date=date(2026, 6, 4),   # jueves
+            suggested_start_time=time(20, 30),
+            suggested_end_time=time(22, 0),
+            court=phase.courts[0],
+            status=MatchStatus.SCHEDULED,
+        )
+        result = ScheduleResult(scheduled=[m], conflicts=[], total_matches=1)
+
+        violations = validate_schedule(result, phase)
+        pf_violations = [v for v in violations if v["type"] == "preferred_slot_mismatch"]
+        assert pf_violations == [], pf_violations
+
+
 class TestMidnightClose:
     """Hora de cierre 00:00 = medianoche (fin del día), no inicio del día."""
 

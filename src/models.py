@@ -66,6 +66,9 @@ class Pair(BaseModel):
     # Pista fija: día y hora preferidos (PF X2030 → miércoles 20:30)
     preferred_weekday: Optional[int] = None   # 0=Lun … 6=Dom
     preferred_time: Optional[time] = None     # hora exacta preferida
+    # Soporte multi-PF: varias franjas fijas para la misma pareja.
+    # Formato: [{"weekday": 0..6, "time": time}]
+    preferred_slots: list[dict] = Field(default_factory=list)
     # Si True, el scheduler NO asigna horario automáticamente (p.ej. "MIRAR MAIL")
     manual_only: bool = False
 

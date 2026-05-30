@@ -33,6 +33,45 @@ SEVERITY_EMOJI = {"error": "🔴", "warning": "🟡", "info": "🔵"}
 WEEKDAY_ES = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 
 
+def _pair_pf_slots(pair) -> list[tuple[int, time]]:
+    """
+    Devuelve todas las franjas PF de una pareja como (weekday, time),
+    soportando formato nuevo (preferred_slots) y legado (preferred_weekday/time).
+    """
+    slots: list[tuple[int, time]] = []
+    seen: set[tuple[int, time]] = set()
+
+    raw_slots = getattr(pair, "preferred_slots", None) or []
+    for item in raw_slots:
+        wd = None
+        tt = None
+        if isinstance(item, dict):
+            wd = item.get("weekday")
+            tt = item.get("time")
+        else:
+            wd = getattr(item, "weekday", None)
+            tt = getattr(item, "time", None)
+        if isinstance(wd, int) and isinstance(tt, time):
+            key = (wd, tt)
+            if key not in seen:
+                seen.add(key)
+                slots.append(key)
+
+    pw = getattr(pair, "preferred_weekday", None)
+    pt = getattr(pair, "preferred_time", None)
+    if isinstance(pw, int) and isinstance(pt, time):
+        key = (pw, pt)
+        if key not in seen:
+            seen.add(key)
+            slots.append(key)
+
+    return slots
+
+
+def _slot_matches_pair_pf(pair, wd: int, st: time) -> bool:
+    return any((wd == pf_wd and st == pf_t) for pf_wd, pf_t in _pair_pf_slots(pair))
+
+
 # ----------------------------------------------------------------
 # Función principal
 # ----------------------------------------------------------------
@@ -146,10 +185,8 @@ def validate_schedule(
         wd = m.suggested_date.weekday()
         st = m.suggested_start_time
         for pair in (m.pair_1, m.pair_2):
-            pw = getattr(pair, "preferred_weekday", None)
-            pt = getattr(pair, "preferred_time", None)
             # Si el partido cae en la pista fija de la pareja, no es una infracción
-            if pw is not None and wd == pw and (pt is None or st == pt):
+            if _slot_matches_pair_pf(pair, wd, st):
                 continue
             if pair.available_weekdays and wd not in pair.available_weekdays:
                 avail_str = ", ".join(WEEKDAY_ES[d] for d in pair.available_weekdays)
@@ -184,9 +221,7 @@ def validate_schedule(
                 wuntil = pair.available_until
 
             # PF override: si coincide con preferred_weekday+preferred_time, no reportar
-            pw = getattr(pair, "preferred_weekday", None)
-            pt = getattr(pair, "preferred_time", None)
-            if pw is not None and pt is not None and wd == pw and st == pt:
+            if _slot_matches_pair_pf(pair, wd, st):
                 continue
 
             if wfrom and st < wfrom:
@@ -276,21 +311,12 @@ def validate_schedule(
     # Solo se reporta si el partido no coincide con la PF de NINGUNA pareja.
     # ----------------------------------------------------------------
     def _match_on_pf(pair, wd, st) -> bool:
-        pw = pair.preferred_weekday
-        pt = pair.preferred_time
-        if pw is None and pt is None:
-            return False
-        day_ok  = pw is None or wd == pw
-        time_ok = pt is None or st == pt
-        return day_ok and time_ok
+        return _slot_matches_pair_pf(pair, wd, st)
 
     for m in scheduled:
         wd = m.suggested_date.weekday()
         st = m.suggested_start_time
-        pf_pairs = [
-            p for p in (m.pair_1, m.pair_2)
-            if p.preferred_weekday is not None or p.preferred_time is not None
-        ]
+        pf_pairs = [p for p in (m.pair_1, m.pair_2) if _pair_pf_slots(p)]
         if not pf_pairs:
             continue
 
@@ -300,19 +326,13 @@ def validate_schedule(
 
         # No coincide con ninguna PF → reportar para cada pareja con PF
         for pair in pf_pairs:
-            pw = pair.preferred_weekday
-            pt = pair.preferred_time
-            pref = []
-            if pw is not None:
-                pref.append(f"{WEEKDAY_ES[pw]}")
-            if pt is not None:
-                pref.append(f"{pt.strftime('%H:%M')}")
+            pref = [f"{WEEKDAY_ES[pw]} {pt.strftime('%H:%M')}" for pw, pt in _pair_pf_slots(pair)]
             assigned = f"{WEEKDAY_ES[wd]} {st.strftime('%H:%M')}"
             violations.append({
                 "type": "preferred_slot_mismatch",
                 "severity": "info",
                 "description": (
-                    f"{pair.display_name} (PF {' '.join(pref)}): "
+                    f"{pair.display_name} (PF {' / '.join(pref)}): "
                     f"partido asignado el {assigned}"
                 ),
                 "matches": [m],

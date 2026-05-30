@@ -1435,6 +1435,7 @@ def _df_to_groups(df: pd.DataFrame) -> list[Group]:
             per_day_windows={},
             preferred_weekday=None,
             preferred_time=None,
+            preferred_slots=[],
             manual_only=False,
         )
         groups_dict[gid].pairs.append(pair)

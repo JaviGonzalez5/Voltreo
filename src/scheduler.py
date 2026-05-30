@@ -96,6 +96,45 @@ def _booking_belongs_to_court(booking: Booking, court: Court) -> bool:
     return False
 
 
+def _pair_pf_slots(pair) -> list[tuple[int, time]]:
+    """
+    Devuelve todas las franjas PF de una pareja como (weekday, time),
+    soportando formato nuevo (preferred_slots) y legado (preferred_weekday/time).
+    """
+    slots: list[tuple[int, time]] = []
+    seen: set[tuple[int, time]] = set()
+
+    raw_slots = getattr(pair, "preferred_slots", None) or []
+    for item in raw_slots:
+        wd = None
+        tt = None
+        if isinstance(item, dict):
+            wd = item.get("weekday")
+            tt = item.get("time")
+        else:
+            wd = getattr(item, "weekday", None)
+            tt = getattr(item, "time", None)
+        if isinstance(wd, int) and isinstance(tt, time):
+            key = (wd, tt)
+            if key not in seen:
+                seen.add(key)
+                slots.append(key)
+
+    pw = getattr(pair, "preferred_weekday", None)
+    pt = getattr(pair, "preferred_time", None)
+    if isinstance(pw, int) and isinstance(pt, time):
+        key = (pw, pt)
+        if key not in seen:
+            seen.add(key)
+            slots.append(key)
+
+    return slots
+
+
+def _slot_matches_pair_pf(d: date, st: time, pair) -> bool:
+    return any((d.weekday() == wd and st == tt) for wd, tt in _pair_pf_slots(pair))
+
+
 def build_availability_slots(
     courts: list[Court],
     phase: RankingPhase,
@@ -283,9 +322,7 @@ class Scheduler:
         wd = d.weekday()
 
         # ── PF override: la hora de pista fija siempre es válida
-        pw = getattr(pair, "preferred_weekday", None)
-        pt = getattr(pair, "preferred_time", None)
-        if pw is not None and pt is not None and wd == pw and st == pt:
+        if _slot_matches_pair_pf(d, st, pair):
             return True
 
         # ── Días de la semana
@@ -392,13 +429,15 @@ class Scheduler:
         for pair in (pair_1, pair_2):
             if pair is None:
                 continue
-            pw = getattr(pair, "preferred_weekday", None)
-            pt = getattr(pair, "preferred_time", None)
-            day_match  = pw is not None and slot.date.weekday() == pw
-            time_match = pt is not None and slot.start_time == pt
+            pf_slots = _pair_pf_slots(pair)
+            if not pf_slots:
+                continue
+            day_match = any(slot.date.weekday() == wd for wd, _ in pf_slots)
+            time_match = any(slot.start_time == tt for _, tt in pf_slots)
+            exact_match = any(slot.date.weekday() == wd and slot.start_time == tt for wd, tt in pf_slots)
             if day_match or time_match:
                 score -= preferred_bonus
-            if day_match and time_match:
+            if exact_match:
                 score -= preferred_bonus  # bonus adicional por coincidencia exacta día+hora
 
         # Penalizar horas tardías del día.
@@ -441,8 +480,7 @@ class Scheduler:
                     window_h = pair.available_until.hour - pair.available_from.hour
                     score += max(0, 4 - window_h) * 10
             # Pista fija: el slot exacto (día+hora) es crítico → máxima prioridad
-            if (getattr(pair, "preferred_weekday", None) is not None
-                    and getattr(pair, "preferred_time", None) is not None):
+            if _pair_pf_slots(pair):
                 score += 80
         return score
 
@@ -542,16 +580,11 @@ class Scheduler:
         # disponibilidad de AMBAS parejas), el partido DEBE ir ahí.
         # Esto evita que el bonus suave de PF sea superado por late_hour_penalty
         # u otras penalizaciones, o que la aleatoriedad del pool lo descarte.
-        pf_pairs = [
-            p for p in (match.pair_1, match.pair_2)
-            if getattr(p, "preferred_weekday", None) is not None
-            and getattr(p, "preferred_time", None) is not None
-        ]
+        pf_pairs = [p for p in (match.pair_1, match.pair_2) if _pair_pf_slots(p)]
         pf_restricted = False
         if pf_pairs:
             def _pf_match(slot, pair) -> bool:
-                return (slot.date.weekday() == pair.preferred_weekday
-                        and slot.start_time == pair.preferred_time)
+                return _slot_matches_pair_pf(slot.date, slot.start_time, pair)
 
             # 1) Ideal: slot que cumple la PF de TODAS las parejas (misma franja).
             all_pf = [s for s in candidates if all(_pf_match(s, p) for p in pf_pairs)]
@@ -670,9 +703,7 @@ class Scheduler:
         pf_patterns: set[tuple[int, time]] = set()
         for g in self.phase.groups:
             for p in g.pairs:
-                pw = getattr(p, "preferred_weekday", None)
-                pt = getattr(p, "preferred_time", None)
-                if pw is not None and pt is not None:
+                for pw, pt in _pair_pf_slots(p):
                     pf_patterns.add((pw, pt))
 
         slots = build_availability_slots(

@@ -888,6 +888,7 @@ def _parse_groups_table(soup: BeautifulSoup, ranking_id: str, level_name: str) -
             availability_notes=obs,
             preferred_weekday=avail["preferred_weekday"],
             preferred_time=avail["preferred_time"],
+            preferred_slots=avail.get("preferred_slots", []),
             manual_only=avail.get("manual_only", False),
         )
         groups[gid].pairs.append(pair)
@@ -986,6 +987,7 @@ def parse_observaciones(text: str) -> dict:
       'per_day_windows':  {int: {"from":time|None,"until":time|None}},
       'preferred_weekday': int|None,
       'preferred_time':    time|None,
+      'preferred_slots':   [{"weekday":int,"time":time}, ...],
       'manual_only':       bool,
     }
 
@@ -1017,6 +1019,7 @@ def parse_observaciones(text: str) -> dict:
             "weekdays": [], "available_from": None, "available_until": None,
             "per_day_windows": {},
             "preferred_weekday": None, "preferred_time": None,
+            "preferred_slots": [],
             "manual_only": False,
         }
 
@@ -1060,6 +1063,7 @@ def parse_observaciones(text: str) -> dict:
             "weekdays": [], "available_from": None, "available_until": None,
             "per_day_windows": {},
             "preferred_weekday": None, "preferred_time": None,
+            "preferred_slots": [],
             "manual_only": True,
         }
 
@@ -1098,6 +1102,8 @@ def parse_observaciones(text: str) -> dict:
     # ═══════════════════════════════════════════════════════
     preferred_weekday: Optional[int] = None
     preferred_time: Optional[dtime]  = None
+    preferred_slots: list[dict] = []
+    _seen_pf_slots: set[tuple[int, dtime]] = set()
 
     pf_patterns = [
         # PFIJA / PF seguido de día y hora
@@ -1106,12 +1112,21 @@ def parse_observaciones(text: str) -> dict:
         r"PF(?:IJA|IXA)?\s+([LMXJVSD])\s+(\d{3,4})\b",
     ]
     for pp in pf_patterns:
-        pm = re.search(pp, t)
-        if pm:
-            preferred_weekday = DMAP.get(pm.group(1))
-            preferred_time = _parse_time_token(pm.group(2))
-            if preferred_weekday is not None and preferred_time is not None:
-                break
+        for pm in re.finditer(pp, t):
+            _pf_wd = DMAP.get(pm.group(1))
+            _pf_time = _parse_time_token(pm.group(2))
+            if _pf_wd is None or _pf_time is None:
+                continue
+            _pf_key = (_pf_wd, _pf_time)
+            if _pf_key in _seen_pf_slots:
+                continue
+            _seen_pf_slots.add(_pf_key)
+            preferred_slots.append({"weekday": _pf_wd, "time": _pf_time})
+
+    # Compatibilidad: mantener preferred_weekday/preferred_time como la primera PF detectada.
+    if preferred_slots:
+        preferred_weekday = preferred_slots[0]["weekday"]
+        preferred_time = preferred_slots[0]["time"]
 
     # ═══════════════════════════════════════════════════════
     # SEGMENTACIÓN POR SEGMENTOS
@@ -1373,21 +1388,25 @@ def parse_observaciones(text: str) -> dict:
     for wk_d in (5, 6):
         per_day_windows.pop(wk_d, None)
 
-    # ── PF override: si hay preferred_weekday + preferred_time, asegurarse de que
-    #    ese día tiene ventana válida aunque el horario general lo excluyera.
-    if preferred_weekday is not None and preferred_weekday in range(5):
-        weekdays_set.add(preferred_weekday)
-        win = per_day_windows.get(preferred_weekday)
+    # ── PF override: asegurar que cada PF queda dentro de la ventana del día
+    #    aunque el horario general lo excluyera.
+    for _pf in preferred_slots:
+        _pf_wd = _pf.get("weekday")
+        _pf_t = _pf.get("time")
+        if _pf_wd is None or _pf_t is None or _pf_wd not in range(5):
+            continue
+        weekdays_set.add(_pf_wd)
+        win = per_day_windows.get(_pf_wd)
         if win is None:
-            per_day_windows[preferred_weekday] = {"from": preferred_time, "until": preferred_time}
-        elif preferred_time is not None:
-            # Ampliar ventana para incluir el tiempo PF si estaba fuera
+            per_day_windows[_pf_wd] = {"from": _pf_t, "until": _pf_t}
+        else:
+            # Ampliar ventana para incluir TODAS las PF de ese día.
             wf = win.get("from")
             wu = win.get("until")
-            if wf and preferred_time < wf:
-                per_day_windows[preferred_weekday]["from"] = preferred_time
-            if wu and preferred_time > wu:
-                per_day_windows[preferred_weekday]["until"] = preferred_time
+            if wf is None or _pf_t < wf:
+                per_day_windows[_pf_wd]["from"] = _pf_t
+            if wu is None or _pf_t > wu:
+                per_day_windows[_pf_wd]["until"] = _pf_t
 
     # ── Inferir preferred si hay hora exacta única (sin PF explícita)
     if preferred_weekday is None and len(weekdays_set) == 1:
@@ -1404,6 +1423,7 @@ def parse_observaciones(text: str) -> dict:
         "per_day_windows":   per_day_windows,
         "preferred_weekday": preferred_weekday,
         "preferred_time":    preferred_time,
+        "preferred_slots":   preferred_slots,
         "manual_only":       False,
     }
 
@@ -1517,8 +1537,11 @@ def _parse_group_table(table, group_name: str, ranking_id: str) -> Optional[Grou
             available_from=None,
             available_until=None,
             availability_notes="",
+            per_day_windows={},
             preferred_weekday=None,
             preferred_time=None,
+            preferred_slots=[],
+            manual_only=False,
         )
         group.pairs.append(pair)
 
