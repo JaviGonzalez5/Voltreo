@@ -297,86 +297,156 @@ def _generate_bracket_matches(
 # Función principal
 # ---------------------------------------------------------------------------
 
-def generate_tournament_structure(config: TournamentConfig) -> TournamentConfig:
+def _generate_one_division(
+    pairs: list[TournamentPair],
+    fmt: TournamentFormat,
+    group_size: int,
+    groups_qualifiers: int,
+    bracket_size: int,
+    third_place_match: bool,
+) -> "tuple[list[TournamentGroup], list[TournamentMatch], int]":
     """
-    Genera grupos y/o cuadro según el formato del torneo y rellena
-    `config.groups` y `config.matches`.
-
-    Devuelve el mismo objeto `config` modificado in-place.
+    Genera (grupos, partidos, bracket_size_efectivo) para UN conjunto de parejas
+    según el formato. Lógica común reutilizada por torneos de una o varias
+    categorías. No muta ningún config.
     """
-    pairs = list(config.pairs)
+    groups: list[TournamentGroup] = []
     all_matches: list[TournamentMatch] = []
+    eff_bracket = bracket_size
 
-    if config.format == TournamentFormat.GROUPS:
-        groups = _make_groups(pairs, config.group_size)
-        config.groups = groups
+    if fmt == TournamentFormat.GROUPS:
+        groups = _make_groups(pairs, group_size)
         all_matches = _generate_group_matches(groups)
 
-    elif config.format == TournamentFormat.BRACKET:
-        config.groups = []
-        n = min(len(pairs), config.bracket_size)
+    elif fmt == TournamentFormat.BRACKET:
+        n = min(len(pairs), bracket_size)
         if n < 2:
-            # Sin suficientes parejas no se puede generar cuadro
-            config.matches = []
-            return config
-        # Ajustar bracket_size a la potencia de 2 inferior o igual a n
-        bs = max(4, 1 << (n.bit_length() - 1))  # floor power-of-2
+            return [], [], bracket_size
+        bs = max(4, 1 << (n.bit_length() - 1))
         if bs > 16:
             bs = 16
-        config.bracket_size = bs
-        all_matches = _generate_bracket_matches(
-            bs, pairs[:bs],
-            third_place=config.third_place_match,
-        )
+        eff_bracket = bs
+        all_matches = _generate_bracket_matches(bs, pairs[:bs], third_place=third_place_match)
 
-    elif config.format == TournamentFormat.GROUPS_BRACKET:
-        groups = _make_groups(pairs, config.group_size)
-        config.groups = groups
+    elif fmt == TournamentFormat.GROUPS_BRACKET:
+        groups = _make_groups(pairs, group_size)
         group_matches = _generate_group_matches(groups)
-
-        # groups_qualifiers debe ser al menos 1 y no más que el tamaño del grupo
-        _safe_qualifiers = max(1, min(config.groups_qualifiers, config.group_size))
-        n_qualifiers = len(groups) * _safe_qualifiers
+        _safe_q = max(1, min(groups_qualifiers, group_size))
+        n_qualifiers = len(groups) * _safe_q
         if n_qualifiers < 2:
-            config.matches = group_matches
-            return config
+            return groups, group_matches, bracket_size
         bs = max(4, 1 << (n_qualifiers.bit_length() - 1))
         if bs > 16:
             bs = 16
-        config.bracket_size = bs
+        eff_bracket = bs
 
-        # Etiquetas TBD para el cuadro: "1º Grupo A", "2º Grupo A", …
         bracket_pairs_tbd: list[TournamentPair] = []
         for g in groups:
-            max_rank = min(_safe_qualifiers, len(g.pairs))  # no más clasificados que parejas reales
+            max_rank = min(_safe_q, len(g.pairs))
             for rank in range(1, max_rank + 1):
-                fake = TournamentPair.model_construct(
-                    id=str(uuid4()),
-                    name=f"{rank}º {g.name}",
+                bracket_pairs_tbd.append(TournamentPair.model_construct(
+                    id=str(uuid4()), name=f"{rank}º {g.name}",
                     player_1=TournamentPlayer_placeholder(g.name, rank),
                     player_2=TournamentPlayer_placeholder(g.name, rank),
-                    seed=None,
-                    group_id=None,
-                )
-                bracket_pairs_tbd.append(fake)
+                    seed=None, group_id=None,
+                ))
                 if len(bracket_pairs_tbd) >= bs:
                     break
             if len(bracket_pairs_tbd) >= bs:
                 break
 
         bracket_matches = _generate_bracket_matches(
-            bs, bracket_pairs_tbd[:bs],
-            third_place=config.third_place_match,
-            label_prefix="",
+            bs, bracket_pairs_tbd[:bs], third_place=third_place_match, label_prefix="",
         )
-        # Reemplazar pair_1/pair_2 por None (son TBD hasta que terminen los grupos)
         for bm in bracket_matches:
             bm.pair_1 = None
             bm.pair_2 = None
-
         all_matches = group_matches + bracket_matches
 
+    return groups, all_matches, eff_bracket
+
+
+def generate_tournament_structure(config: TournamentConfig) -> TournamentConfig:
+    """
+    Genera grupos y/o cuadro. Si el torneo tiene varias divisiones
+    (config.divisions con >1 categoría), genera una estructura independiente
+    por cada división y combina todos los partidos en config.matches.
+    De lo contrario, genera un único cuadro como antes.
+
+    Devuelve el mismo objeto `config` modificado in-place.
+    """
+    div_keys = list(getattr(config, "divisions", []) or [])
+    if len(div_keys) > 1:
+        return generate_multi_division(config)
+
+    groups, all_matches, eff_bracket = _generate_one_division(
+        list(config.pairs), config.format, config.group_size,
+        config.groups_qualifiers, config.bracket_size, config.third_place_match,
+    )
+    config.groups = groups
     config.matches = all_matches
+    config.bracket_size = eff_bracket
+    config.division_draws = []
+    # Etiquetar con la división primaria si existe
+    _primary = div_keys[0] if div_keys else None
+    if _primary:
+        for m in all_matches:
+            m.division = _primary
+    return config
+
+
+def generate_multi_division(config: TournamentConfig) -> TournamentConfig:
+    """
+    Genera un cuadro independiente por cada categoría seleccionada.
+
+    Las parejas se reparten por su atributo `division` (clave "cat:sub").
+    Cada división produce sus propios grupos/cuadro, etiquetados con la clave.
+    `config.matches` y `config.groups` quedan como la UNIÓN de todas — el
+    scheduler las planifica sobre las mismas pistas sin solapamientos.
+    """
+    from .tournament_models import TournamentDivision, TournamentCategory, TournamentSubcategory
+
+    div_keys = list(config.divisions or [])
+    # Repartir parejas por división
+    pairs_by_div: dict[str, list[TournamentPair]] = {k: [] for k in div_keys}
+    for p in config.pairs:
+        if p.division in pairs_by_div:
+            pairs_by_div[p.division].append(p)
+
+    draws: list[TournamentDivision] = []
+    union_groups: list[TournamentGroup] = []
+    union_matches: list[TournamentMatch] = []
+
+    for key in div_keys:
+        cat_val, _, sub_val = key.partition(":")
+        cat = next((c for c in TournamentCategory if c.value == cat_val), None)
+        sub = next((s for s in TournamentSubcategory if s.value == sub_val), None)
+        d_pairs = pairs_by_div.get(key, [])
+
+        groups, matches, eff_bracket = _generate_one_division(
+            d_pairs, config.format, config.group_size,
+            config.groups_qualifiers, config.bracket_size, config.third_place_match,
+        )
+        # Etiquetar todo con la división
+        for g in groups:
+            for p in g.pairs:
+                p.division = key
+        for m in matches:
+            m.division = key
+
+        draws.append(TournamentDivision(
+            key=key, category=cat, subcategory=sub,
+            format=config.format, group_size=config.group_size,
+            groups_qualifiers=config.groups_qualifiers, bracket_size=eff_bracket,
+            third_place_match=config.third_place_match,
+            pairs=d_pairs, groups=groups, matches=matches,
+        ))
+        union_groups.extend(groups)
+        union_matches.extend(matches)
+
+    config.division_draws = draws
+    config.groups = union_groups
+    config.matches = union_matches
     return config
 
 

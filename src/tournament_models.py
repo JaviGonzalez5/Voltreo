@@ -117,6 +117,7 @@ class TournamentPair(BaseModel):
     player_2: TournamentPlayer
     seed: Optional[int] = None         # Cabeza de serie (1 = favorito)
     group_id: Optional[str] = None     # Asignado en la generación
+    division: Optional[str] = None     # Clave de división "categoria:subcategoria" (ej. "masculino:1a")
 
     @property
     def display_name(self) -> str:
@@ -138,6 +139,7 @@ class TournamentMatch(BaseModel):
     round: MatchRound
     match_number: int                  # Número secuencial dentro de la ronda
     group_id: Optional[str] = None     # Sólo en fase de grupos
+    division: Optional[str] = None     # Clave de división "categoria:subcategoria"
 
     # Rivales: pueden ser None si aún no se conoce el ganador de un partido previo
     pair_1: Optional[TournamentPair] = None
@@ -205,6 +207,46 @@ class TournamentMatch(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# División (una categoría/subcategoría con su propio cuadro)
+# ---------------------------------------------------------------------------
+
+class TournamentDivision(BaseModel):
+    """
+    Una categoría dentro de un torneo (ej. "Masculino 1ª").
+    Tiene su propio formato, parejas, grupos y cuadro — independiente de las
+    demás divisiones, pero comparte pistas y horario con ellas.
+    """
+    key: str                            # "masculino:1a"
+    category:    Optional[TournamentCategory]    = None
+    subcategory: Optional[TournamentSubcategory] = None
+
+    # Formato propio de la división
+    format: TournamentFormat = TournamentFormat.GROUPS
+    group_size:        int  = 4
+    groups_qualifiers: int  = 2
+    bracket_size:      int  = 8
+    third_place_match: bool = False
+
+    # Parejas y estructura generada (propias de esta división)
+    pairs:   list[TournamentPair]  = Field(default_factory=list)
+    groups:  list[TournamentGroup] = Field(default_factory=list)
+    matches: list[TournamentMatch] = Field(default_factory=list)
+
+    @property
+    def label(self) -> str:
+        parts = []
+        if self.category:
+            parts.append(self.category.label)
+        if self.subcategory:
+            parts.append(self.subcategory.label)
+        return " ".join(parts) or self.key or "Categoría"
+
+    @property
+    def scheduled_count(self) -> int:
+        return sum(1 for m in self.matches if m.status == TMatchStatus.SCHEDULED)
+
+
+# ---------------------------------------------------------------------------
 # Configuración del torneo (objeto raíz)
 # ---------------------------------------------------------------------------
 
@@ -248,8 +290,12 @@ class TournamentConfig(BaseModel):
     third_place_match:         bool = False
 
     # Datos generados (vacíos hasta que se genera la estructura)
+    # Para torneos multi-categoría, `matches`/`groups` son la UNIÓN de todas las
+    # divisiones (para el scheduler y vistas globales); cada división mantiene
+    # además su propia estructura en `division_draws`.
     groups:  list[TournamentGroup] = Field(default_factory=list)
     matches: list[TournamentMatch] = Field(default_factory=list)
+    division_draws: list[TournamentDivision] = Field(default_factory=list)
 
     # ---------------------------------------------------------------------------
     # Propiedades de conveniencia
@@ -266,3 +312,11 @@ class TournamentConfig(BaseModel):
     @property
     def total_match_count(self) -> int:
         return len(self.matches)
+
+    @property
+    def is_multi_division(self) -> bool:
+        return len(self.division_draws) > 0
+
+    def division_for_pair(self, pair: "TournamentPair") -> Optional[str]:
+        """Clave de división de una pareja (o la primaria del torneo si no tiene)."""
+        return pair.division

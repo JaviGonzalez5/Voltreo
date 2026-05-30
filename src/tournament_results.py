@@ -87,14 +87,14 @@ def _propagate(config: TournamentConfig, match: TournamentMatch) -> None:
     nxt = _next_round(match.round)
     if nxt is not None:
         target_num = ceil(match.match_number / 2)
-        target = _find_match(config, nxt, target_num)
+        target = _find_match(config, nxt, target_num, division=match.division)
         if target is not None:
             _set_slot(target, match.match_number, winner)
 
-    # Perdedor de semifinal → 3er/4º puesto
+    # Perdedor de semifinal → 3er/4º puesto (de la misma división)
     if match.round == MatchRound.SEMIFINAL:
         loser = match.loser_pair
-        tp = _find_match(config, MatchRound.THIRD_PLACE, 1)
+        tp = _find_match(config, MatchRound.THIRD_PLACE, 1, division=match.division)
         if tp is not None and loser is not None:
             _set_slot(tp, match.match_number, loser)
 
@@ -109,50 +109,58 @@ def _set_slot(target: TournamentMatch, source_match_number: int, pair: Tournamen
         target.pair_2_label = pair.display_name
 
 
-def _find_match(config: TournamentConfig, rnd: MatchRound, match_number: int) -> Optional[TournamentMatch]:
+def _find_match(config: TournamentConfig, rnd: MatchRound, match_number: int,
+                division: Optional[str] = None) -> Optional[TournamentMatch]:
+    # En torneos multi-categoría, (ronda, match_number) se repite entre divisiones:
+    # hay que filtrar por división para no propagar el ganador a otra categoría.
     return next(
-        (m for m in config.matches if m.round == rnd and m.match_number == match_number),
+        (m for m in config.matches
+         if m.round == rnd and m.match_number == match_number
+         and (division is None or m.division == division)),
         None,
     )
+
+
+def _divisions_present(config: TournamentConfig) -> list[Optional[str]]:
+    """Lista de claves de división presentes en los partidos (o [None] si no hay)."""
+    divs = sorted({m.division for m in config.matches if m.division is not None})
+    return divs or [None]
 
 
 def recompute_bracket(config: TournamentConfig) -> TournamentConfig:
     """
     Recalcula todas las propagaciones del cuadro desde los resultados registrados.
-
-    Útil tras borrar un resultado o cargar desde BD. Limpia las parejas TBD de
-    rondas posteriores a la primera y las vuelve a rellenar según los ganadores.
+    Se procesa por división para que cada categoría tenga su propio cuadro.
     """
-    # 1. Determinar la primera ronda del cuadro presente
-    bracket_rounds = [r for r in _MAIN_SEQUENCE if any(m.round == r for m in config.matches)]
-    if not bracket_rounds:
-        return config
-    first_round = bracket_rounds[0]
-
-    # 2. Limpiar slots de todas las rondas excepto la primera y los grupos
-    for m in config.matches:
-        if m.round in (MatchRound.GROUP, first_round):
+    for div in _divisions_present(config):
+        div_matches = [m for m in config.matches
+                       if (div is None or m.division == div)]
+        bracket_rounds = [r for r in _MAIN_SEQUENCE if any(m.round == r for m in div_matches)]
+        if not bracket_rounds:
             continue
-        if m.round in _MAIN_SEQUENCE or m.round == MatchRound.THIRD_PLACE:
-            m.pair_1 = None
-            m.pair_2 = None
-            # Mantener etiquetas TBD originales: las regenera _propagate si hay ganador
+        first_round = bracket_rounds[0]
 
-    # 3. Propagar en orden de rondas (primera → final)
-    ordered = sorted(
-        [m for m in config.matches if m.round != MatchRound.GROUP],
-        key=lambda m: (m.round.order, m.match_number),
-    )
-    for m in ordered:
-        if m.winner_id is not None:
-            # Revalidar que el winner sigue siendo un rival actual
-            valid = {p.id for p in (m.pair_1, m.pair_2) if p is not None}
-            if m.winner_id in valid:
-                _propagate(config, m)
-            else:
-                # El rival cambió (aguas arriba se borró) → invalidar resultado
-                m.winner_id = None
-                m.score = ""
+        # Limpiar slots de rondas posteriores a la primera (dentro de la división)
+        for m in div_matches:
+            if m.round in (MatchRound.GROUP, first_round):
+                continue
+            if m.round in _MAIN_SEQUENCE or m.round == MatchRound.THIRD_PLACE:
+                m.pair_1 = None
+                m.pair_2 = None
+
+        # Propagar en orden de rondas
+        ordered = sorted(
+            [m for m in div_matches if m.round != MatchRound.GROUP],
+            key=lambda m: (m.round.order, m.match_number),
+        )
+        for m in ordered:
+            if m.winner_id is not None:
+                valid = {p.id for p in (m.pair_1, m.pair_2) if p is not None}
+                if m.winner_id in valid:
+                    _propagate(config, m)
+                else:
+                    m.winner_id = None
+                    m.score = ""
     return config
 
 
@@ -160,22 +168,37 @@ def recompute_bracket(config: TournamentConfig) -> TournamentConfig:
 # Resumen / campeón
 # ---------------------------------------------------------------------------
 
-def tournament_champion(config: TournamentConfig) -> Optional[TournamentPair]:
-    """Devuelve el campeón si la final está jugada, si no None."""
-    final = _find_match(config, MatchRound.FINAL, 1)
+def tournament_champion(config: TournamentConfig, division: Optional[str] = None) -> Optional[TournamentPair]:
+    """Devuelve el campeón de la división (o del torneo si es de una sola categoría)."""
+    final = _find_match(config, MatchRound.FINAL, 1, division=division)
     if final is not None and final.is_played:
         return final.winner_pair
     return None
 
 
+def champions_by_division(config: TournamentConfig) -> dict[str, Optional[str]]:
+    """{clave_division: nombre_campeon|None} para todas las divisiones."""
+    out: dict[str, Optional[str]] = {}
+    for div in _divisions_present(config):
+        champ = tournament_champion(config, division=div)
+        out[div or "_"] = champ.display_name if champ else None
+    return out
+
+
 def results_summary(config: TournamentConfig) -> dict:
-    """Resumen de progreso de resultados."""
+    """Resumen de progreso de resultados (global, sumando todas las divisiones)."""
     playable = [m for m in config.matches if m.pair_1 and m.pair_2]
     played   = [m for m in playable if m.is_played]
-    champ    = tournament_champion(config)
+    divs = _divisions_present(config)
+    if len(divs) > 1:
+        champ_names = [c for c in champions_by_division(config).values() if c]
+        champ = ", ".join(champ_names) if champ_names else None
+    else:
+        c = tournament_champion(config, division=divs[0])
+        champ = c.display_name if c else None
     return {
         "total_playable": len(playable),
         "played": len(played),
         "pending": len(playable) - len(played),
-        "champion": champ.display_name if champ else None,
+        "champion": champ,
     }
