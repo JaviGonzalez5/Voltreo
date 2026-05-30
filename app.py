@@ -1645,6 +1645,15 @@ _inject_css()
 _db_ok = is_db_configured()
 _db = get_db() if _db_ok else None
 
+# ── Vista pública compartible (?t=<tournament_id>) — sin login ──────────────
+try:
+    _qp_tid = st.query_params.get("t")
+except Exception:
+    _qp_tid = None
+if _qp_tid:
+    from src.public_view import render_public_tournament
+    render_public_tournament(_qp_tid)  # llama a st.stop() internamente
+
 if _db_ok:
     if not is_authenticated() and _db is not None:
         restore_session_from_cookie(_db)
@@ -4632,6 +4641,18 @@ elif page == "t_results":
         (f"Campeón: {_summ['champion']}" if _summ['champion'] else "Sin campeón aún",
          "green" if _summ['champion'] else "red", "🏆"),
     )
+
+    # ── Enlace público compartible ──────────────────────────────────────────
+    _share_tid = st.session_state.get("db_tournament_id")
+    with st.expander("🔗 Compartir torneo (enlace público para jugadores)", expanded=False):
+        if not _share_tid:
+            st.info("Guarda el torneo primero (registra algún resultado) para generar el enlace público.")
+        else:
+            from src.branding import BRAND_NAME as _BN
+            _pub_url = f"https://{_BN.lower()}.streamlit.app/?t={_share_tid}"
+            st.caption("Cualquiera con este enlace puede ver el cuadro, los horarios y los resultados **sin iniciar sesión** (solo lectura).")
+            st.code(_pub_url, language="text")
+            st.markdown(f"[🔎 Abrir vista pública en una pestaña nueva]({_pub_url})")
 
     _tr_div_keys = list(getattr(t, "divisions", []) or [])
     _tr_multi = len(_tr_div_keys) > 1

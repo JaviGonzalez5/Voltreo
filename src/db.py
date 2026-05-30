@@ -303,6 +303,20 @@ class SupabaseDB:
         )
         return resp.data[0] if resp.data else None
 
+    def get_tournament_public(self, tournament_id: str) -> Optional[dict]:
+        """
+        Carga un torneo SOLO por su id (sin scope de club) para la vista pública
+        compartible. El id es un UUID no adivinable: quien tiene el enlace puede ver
+        el torneo en modo lectura. No expone otros clubs ni datos sensibles.
+        """
+        resp = (
+            self._c.table("tournaments")
+            .select("id, club_id, name, start_date, end_date, tournament_data")
+            .eq("id", tournament_id)
+            .execute()
+        )
+        return resp.data[0] if resp.data else None
+
     def get_latest_tournament(self, club_id: str) -> Optional[dict]:
         """
         Carga el último torneo del club (por updated_at / created_at).
