@@ -1177,7 +1177,6 @@ def _sidebar_workflow(title: str, steps: list[tuple[str, str, str, bool]], curre
     done_count = sum(1 for _, _, _, done in steps if done)
     pct_done = int((done_count / max(len(steps), 1)) * 100)
     current_hint = next((hint for step_key, _, hint, _ in steps if step_key == current_page), "")
-    unlock_limit = _workflow_unlock_limit(steps)
     open_key = f"_{key_prefix}_workflow_open"
     if open_key not in st.session_state:
         st.session_state[open_key] = expanded
@@ -1202,15 +1201,13 @@ def _sidebar_workflow(title: str, steps: list[tuple[str, str, str, bool]], curre
             unsafe_allow_html=True,
         )
         for idx, (step_key, label, hint, done) in enumerate(steps, 1):
-            is_unlocked = idx <= unlock_limit
-            marker = "OK" if done else (f"{idx:02d}" if is_unlocked else "🔒")
+            marker = "OK" if done else f"{idx:02d}"
             button_label = f"{marker}  {label}"
             if st.sidebar.button(
                 button_label,
                 key=f"{key_prefix}_{step_key}",
                 use_container_width=True,
                 type="primary" if current_page == step_key else "secondary",
-                disabled=(not is_unlocked and current_page != step_key),
             ):
                 _nav_to(step_key)
         if current_hint:
@@ -1500,6 +1497,37 @@ def _reset_club_runtime_state() -> None:
     for _k in list(st.session_state.keys()):
         if _k.startswith("court_id_"):
             st.session_state.pop(_k, None)
+
+
+def _reset_ranking_runtime_state() -> None:
+    """Limpia solo el módulo de ranking del club activo."""
+    st.session_state["groups"] = []
+    st.session_state["courts"] = []
+    st.session_state["bookings"] = []
+    st.session_state["matches"] = []
+    st.session_state["schedule_result"] = None
+    st.session_state["phase"] = None
+    st.session_state["data_loaded"] = False
+    st.session_state["matches_generated"] = False
+    st.session_state["matches_scheduled"] = False
+    st.session_state["db_phase_id"] = None
+    st.session_state["_db_phase_loaded"] = False
+    st.session_state.pop("schedule_violations", None)
+    st.session_state.pop("_filter_cache_key", None)
+    st.session_state.pop("_group_names", None)
+    st.session_state.pop("_pair_names", None)
+    st.session_state.pop("_match_id_to_obj", None)
+    st.session_state.pop("_court_name_to_obj", None)
+
+
+def _reset_tournament_runtime_state() -> None:
+    """Limpia solo el módulo de torneos del club activo."""
+    st.session_state["tournament"] = None
+    st.session_state["db_tournament_id"] = None
+    st.session_state["_db_tournament_loaded"] = False
+    st.session_state["_t_config_divisions_source_id"] = None
+    st.session_state.pop("t_config_divisions", None)
+    st.session_state.pop("t_courts_list", None)
 
 
 _DEFAULT_SYLTEK_LOGIN_URL = "https://padelplus.syltek.com/system/account/login"
@@ -1803,6 +1831,27 @@ if _db_ok and is_authenticated():
         f'</div>',
         unsafe_allow_html=True,
     )
+
+    with st.sidebar.expander("⚙️ Acciones del club", expanded=False):
+        _act1, _act2 = st.columns(2)
+        with _act1:
+            if st.button("🧹 Ranking", key="club_action_reset_ranking", use_container_width=True):
+                _reset_ranking_runtime_state()
+                st.session_state["_nav_page"] = "config"
+                st.rerun()
+        with _act2:
+            if st.button("🧹 Torneo", key="club_action_reset_tournament", use_container_width=True):
+                _reset_tournament_runtime_state()
+                st.session_state["_nav_page"] = "t_config"
+                st.rerun()
+        if st.button("🔄 Recargar datos del club", key="club_action_reload", use_container_width=True):
+            _reset_club_runtime_state()
+            if is_superadmin():
+                st.session_state["_active_club_id"] = st.session_state.get("superadmin_selected_club_id")
+            else:
+                st.session_state["_active_club_id"] = current_club_id()
+            st.rerun()
+
     if st.sidebar.button("↪  Cerrar sesión", use_container_width=True, key="btn_logout"):
         logout()
 else:
@@ -1872,9 +1921,6 @@ _T_STEPS = [
     ("t_export",   "Exportar",           "Descarga el Excel del torneo",          _T_SCHED > 0),
 ]
 _IS_TOURNAMENT = page in {k for k, *_ in _T_STEPS}
-
-if _redirect_locked_workflow_page(page, _R_STEPS) or _redirect_locked_workflow_page(page, _T_STEPS):
-    st.rerun()
 
 st.sidebar.markdown('<div class="pp-nav-section">Flujos guiados</div>', unsafe_allow_html=True)
 _sidebar_workflow("◫  Ranking",  _R_STEPS, page, "nav_r", expanded=_IS_RANKING)
