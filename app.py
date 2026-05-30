@@ -1204,6 +1204,9 @@ def _step_header(num: int, title: str) -> None:
 sys.path.insert(0, str(Path(__file__).parent))
 
 from src.config import settings
+from src.branding import (
+    BRAND_NAME, BRAND_MONOGRAM, BRAND_SUFFIX, BRAND_TAGLINE, BRAND_GRADIENT,
+)
 from src.models import (
     Player, Pair, Group, Court, Booking, RankingPhase,
     Match, MatchStatus, ScheduleResult,
@@ -1593,8 +1596,8 @@ def _division_badges_html(t_obj) -> str:
 # ---------------------------------------------------------------------------
 
 st.set_page_config(
-    page_title="PadelPlus Club",
-    page_icon="P",
+    page_title=f"{BRAND_NAME} · {BRAND_SUFFIX}",
+    page_icon="🎾",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -1695,10 +1698,10 @@ page = _s.get("_nav_page", "home")
 st.sidebar.markdown(
     '<div class="pp-brand">'
     '<div class="pp-brand-row">'
-    '<div class="pp-brand-mark">P+</div>'
+    f'<div class="pp-brand-mark">{BRAND_MONOGRAM}</div>'
     '<div>'
-    '<div class="pp-brand-title">PadelPlus</div>'
-    '<div class="pp-brand-subtitle">Club manager</div>'
+    f'<div class="pp-brand-title">{BRAND_NAME}</div>'
+    f'<div class="pp-brand-subtitle">{BRAND_SUFFIX}</div>'
     '</div></div></div>',
     unsafe_allow_html=True,
 )
@@ -1862,8 +1865,8 @@ if page == "home":
     if _db_ok and is_authenticated() and is_superadmin() and not _club_name_sidebar:
         # ── Onboarding para superadmin sin clubs ──────────────────────────
         _dashboard_hero(
-            "Bienvenido a PadelPlus",
-            "Tu plataforma de gestión de pádel. Empieza creando el primer club para activar todas las funciones.",
+            f"Bienvenido a {BRAND_NAME}",
+            "Tu plataforma de gestión deportiva. Empieza creando el primer club para activar todas las funciones.",
             "✦  Configuración inicial",
         )
         _info_grid([
@@ -1882,7 +1885,7 @@ if page == "home":
         _dashboard_hero(
             f"{_home_club or 'Tu club'} — Panel de control",
             "Gestiona rankings, torneos, pistas y calendarios desde un único lugar.",
-            "✦  PadelPlus",
+            f"✦  {BRAND_NAME}",
         )
         _kpi_grid([
             ("Grupos",   len(_groups_home),                                      "en el ranking activo"),
@@ -4087,7 +4090,7 @@ elif page == "t_config":
     _section_start("🏆", "Datos del torneo")
     c1, c2 = st.columns(2)
     with c1:
-        t_name     = st.text_input("Nombre del torneo", value=t.name if t else "Torneo PadelPlus 2025")
+        t_name     = st.text_input("Nombre del torneo", value=t.name if t else f"Torneo {BRAND_NAME} 2026")
         t_location = st.text_input("📍 Sede / Club", value=t.location if t else "", placeholder="Club Pádel Madrid")
         t_prize    = st.text_input("🥇 Premio / Descripción", value=t.prize if t else "", placeholder="Trofeo + material deportivo")
     with c2:

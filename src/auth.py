@@ -370,127 +370,113 @@ def render_login_screen(db) -> None:
     Muestra la pantalla de login centrada.
     Llama a st.stop() internamente para detener el renderizado del resto de la app.
     """
+    from .branding import (
+        BRAND_NAME, BRAND_MONOGRAM, BRAND_SUFFIX, BRAND_TAGLINE, BRAND_PITCH, BRAND_GRADIENT,
+    )
     st.markdown(
-        """
+        f"""
         <style>
         #MainMenu, footer, [data-testid="stToolbar"], [data-testid="stDecoration"],
-        [data-testid="stStatusWidget"], [data-testid="collapsedControl"], .stDeployButton {
-            visibility: hidden !important;
-            display: none !important;
-        }
-        header[data-testid="stHeader"] {
-            background: transparent !important;
-            height: 0 !important;
-        }
-        .stApp {
-            background: #f3f7fb !important;
-        }
-        .main .block-container {
-            max-width: 980px !important;
-            padding-top: 5.5rem !important;
-        }
-        .login-shell {
-            display: grid;
-            grid-template-columns: 1fr 420px;
-            gap: 2rem;
-            align-items: stretch;
-        }
-        .login-panel {
-            background: #ffffff;
-            border: 1px solid #dfe9f4;
-            border-bottom: 0;
-            border-radius: 8px 8px 0 0;
-            padding: 1.6rem 1.6rem .6rem;
-            box-shadow: 0 16px 45px rgba(15,23,42,.08);
-        }
-        .login-brand {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 42px;
-            height: 42px;
-            border-radius: 8px;
-            background: linear-gradient(135deg,#00c47a,#007a73);
-            color: white;
-            font-weight: 900;
-            margin-bottom: 1.1rem;
-        }
-        .login-copy {
-            background: linear-gradient(135deg,#07121f,#0d2b37);
-            border-radius: 8px;
-            padding: 2rem;
-            color: #eaf6ff;
-            min-height: 100%;
-        }
-        .login-copy h1 {
-            margin: 0;
-            font-size: 2rem;
-            line-height: 1.12;
-            letter-spacing: 0;
-        }
-        .login-copy p {
-            color: #9eb6ce;
-            line-height: 1.55;
-            margin-top: .8rem;
-        }
-        .login-feature {
-            margin-top: 1.2rem;
-            padding-top: 1rem;
-            border-top: 1px solid rgba(255,255,255,.10);
-            color: #cfe0ee;
-            font-size: .9rem;
-        }
-        .login-title {
-            color: #0b1a2b;
-            font-size: 1.35rem;
-            font-weight: 850;
-            margin-bottom: .25rem;
-        }
-        .login-subtitle {
-            color: #657d95;
-            font-size: .9rem;
-            margin-bottom: 1.2rem;
-        }
-        [data-testid="stForm"] {
-            background: #ffffff !important;
-            border: 1px solid #dfe9f4 !important;
-            border-top: 0 !important;
-            border-radius: 8px !important;
-            border-top-left-radius: 0 !important;
-            border-top-right-radius: 0 !important;
-            padding: .2rem 1.6rem 1.6rem !important;
-            box-shadow: 0 16px 45px rgba(15,23,42,.08) !important;
-        }
-        .stButton > button {
-            border-radius: 8px !important;
-            background: linear-gradient(135deg,#08b86f,#078c83) !important;
-            color: #fff !important;
-            border: none !important;
-            font-weight: 750 !important;
-        }
-        [data-testid="stTextInput"] input {
-            border-radius: 8px !important;
-            border-color: #dfe9f4 !important;
-            background: #f8fbff !important;
-        }
-        @media (max-width: 900px) {
-            .login-shell { grid-template-columns: 1fr; }
-            .login-copy { min-height: auto; }
-        }
+        [data-testid="stStatusWidget"], [data-testid="collapsedControl"], .stDeployButton {{
+            visibility: hidden !important; display: none !important;
+        }}
+        header[data-testid="stHeader"] {{ background: transparent !important; height: 0 !important; }}
+        /* Fondo de marca con destellos sutiles */
+        .stApp {{
+            background:
+                radial-gradient(900px 500px at 12% -10%, rgba(0,200,83,.10), transparent 60%),
+                radial-gradient(800px 500px at 100% 110%, rgba(0,137,123,.10), transparent 55%),
+                #0a1622 !important;
+        }}
+        .main .block-container {{ max-width: 1060px !important; padding-top: 4.5rem !important; }}
+
+        /* ── Columna izquierda: marca ─────────────────────────────────── */
+        .lv-hero {{ padding: 1.5rem .5rem; }}
+        .lv-logo-row {{ display:flex; align-items:center; gap:.85rem; margin-bottom:2.2rem; }}
+        .lv-logo {{
+            width:52px; height:52px; border-radius:15px;
+            background:{BRAND_GRADIENT};
+            display:flex; align-items:center; justify-content:center;
+            font-size:1.7rem; font-weight:900; color:#fff;
+            box-shadow:0 8px 30px rgba(0,200,83,.45), inset 0 1px 0 rgba(255,255,255,.3);
+        }}
+        .lv-logo-txt b {{ color:#eaf6ff; font-size:1.45rem; font-weight:850; letter-spacing:-.02em; display:block; line-height:1; }}
+        .lv-logo-txt span {{ color:#4a7aa0; font-size:.72rem; letter-spacing:.18em; text-transform:uppercase; }}
+        .lv-hero h1 {{
+            color:#fff; font-size:2.5rem; font-weight:850; line-height:1.1;
+            letter-spacing:-.03em; margin:0 0 1rem;
+        }}
+        .lv-hero h1 .grad {{
+            background:{BRAND_GRADIENT}; -webkit-background-clip:text;
+            background-clip:text; -webkit-text-fill-color:transparent;
+        }}
+        .lv-hero p {{ color:#9ec0dc; font-size:1.02rem; line-height:1.6; max-width:460px; margin:0 0 1.8rem; }}
+        .lv-feats {{ display:flex; flex-direction:column; gap:.7rem; }}
+        .lv-feat {{ display:flex; align-items:center; gap:.6rem; color:#cfe2f2; font-size:.92rem; }}
+        .lv-feat .dot {{
+            width:22px; height:22px; border-radius:7px; flex-shrink:0;
+            background:rgba(0,200,83,.16); border:1px solid rgba(0,200,83,.3);
+            display:flex; align-items:center; justify-content:center; font-size:.7rem; color:#7fffc0;
+        }}
+        .lv-pitch {{
+            margin-top:1.8rem; padding-top:1.2rem; border-top:1px solid rgba(255,255,255,.08);
+            color:#5a82a4; font-size:.82rem; letter-spacing:.02em;
+        }}
+
+        /* ── Columna derecha: tarjeta de acceso ───────────────────────── */
+        .lv-card-head {{
+            background:#fff; border:1px solid #e6eef8; border-bottom:0;
+            border-radius:18px 18px 0 0; padding:1.7rem 1.8rem .4rem;
+            box-shadow:0 30px 70px rgba(0,0,0,.35);
+        }}
+        .lv-card-head .t {{ color:#0b1a2b; font-size:1.4rem; font-weight:850; }}
+        .lv-card-head .s {{ color:#6b86a4; font-size:.9rem; margin-top:.2rem; }}
+        [data-testid="stForm"] {{
+            background:#fff !important; border:1px solid #e6eef8 !important; border-top:0 !important;
+            border-radius:0 0 18px 18px !important;
+            padding:.4rem 1.8rem 1.8rem !important;
+            box-shadow:0 30px 70px rgba(0,0,0,.35) !important;
+        }}
+        [data-testid="stForm"] label {{ color:#3d5a78 !important; font-weight:600 !important; font-size:.85rem !important; }}
+        [data-testid="stTextInput"] input {{
+            border-radius:10px !important; border-color:#dbe7f4 !important;
+            background:#f8fbff !important; padding:.6rem .8rem !important;
+        }}
+        [data-testid="stTextInput"] input:focus {{
+            border-color:#00c853 !important; box-shadow:0 0 0 3px rgba(0,200,83,.14) !important;
+        }}
+        .stButton > button {{
+            border-radius:11px !important; background:{BRAND_GRADIENT} !important;
+            color:#fff !important; border:none !important; font-weight:750 !important;
+            padding:.6rem !important; box-shadow:0 6px 20px rgba(0,200,83,.4) !important;
+            transition:transform .15s, box-shadow .15s !important;
+        }}
+        .stButton > button:hover {{ transform:translateY(-2px) !important; box-shadow:0 10px 28px rgba(0,200,83,.5) !important; }}
+        [data-testid="stCheckbox"] label {{ color:#5d7a96 !important; font-size:.85rem !important; }}
+        @media (max-width: 900px) {{ .lv-hero {{ padding-bottom:0; }} .lv-hero h1 {{ font-size:2rem; }} }}
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    left, right = st.columns([1.08, 1], gap="large")
+    left, right = st.columns([1.1, 1], gap="large")
     with left:
         st.markdown(
-            """
-            <section class="login-copy">
-                <div class="login-brand">P+</div>
-                <h1>PadelPlus Club</h1>
-                <p>Organiza rankings, torneos, pistas y horarios desde un panel privado para cada club.</p>
-                <div class="login-feature">Datos separados por club · Roles de administrador · Preparado para crecer</div>
+            f"""
+            <section class="lv-hero">
+                <div class="lv-logo-row">
+                    <div class="lv-logo">{BRAND_MONOGRAM}</div>
+                    <div class="lv-logo-txt"><b>{BRAND_NAME}</b><span>{BRAND_SUFFIX}</span></div>
+                </div>
+                <h1>Gestiona tu club como un <span class="grad">profesional</span></h1>
+                <p>{BRAND_TAGLINE}</p>
+                <div class="lv-feats">
+                    <div class="lv-feat"><span class="dot">✓</span> Rankings automáticos con clasificación en vivo</div>
+                    <div class="lv-feat"><span class="dot">✓</span> Torneos con grupos, cuadros y categorías</div>
+                    <div class="lv-feat"><span class="dot">✓</span> Horarios y pistas sin solapamientos</div>
+                    <div class="lv-feat"><span class="dot">✓</span> Datos privados y separados por club</div>
+                </div>
+                <div class="lv-pitch">{BRAND_PITCH}</div>
             </section>
             """,
             unsafe_allow_html=True,
@@ -499,9 +485,9 @@ def render_login_screen(db) -> None:
     with right:
         st.markdown(
             """
-            <div class="login-panel">
-                <div class="login-title">Acceso al panel</div>
-                <div class="login-subtitle">Introduce tus credenciales para continuar.</div>
+            <div class="lv-card-head">
+                <div class="t">Acceso al panel</div>
+                <div class="s">Introduce tus credenciales para continuar.</div>
             </div>
             """,
             unsafe_allow_html=True,
