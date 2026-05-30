@@ -4974,3 +4974,42 @@ elif page == "admin":
                             st.success(f"✅ Contraseña de '{_cp_username}' actualizada.")
             else:
                 st.info("No hay usuarios para gestionar.")
+
+        # ── Eliminar usuario ────────────────────────────────────────────────
+        st.markdown("---")
+        st.markdown("#### 🗑️ Eliminar usuario")
+        if _users_list:
+            _me = get_session_user() or {}
+            _my_id = _me.get("user_id")
+            _n_superadmins = sum(1 for u in _users_list if u.get("role") == "superadmin")
+            # No permitir borrarse a uno mismo ni dejar el sistema sin superadmin
+            _deletable = [u for u in _users_list if u.get("id") != _my_id]
+            if not _deletable:
+                st.info("No hay otros usuarios que puedas eliminar.")
+            else:
+                _del_labels = {
+                    f'{u["username"]} · {u.get("role","")} · '
+                    f'{_club_id_to_name.get(u.get("club_id"), "sin club")}': u
+                    for u in _deletable
+                }
+                _del_choice = st.selectbox("Usuario a eliminar", list(_del_labels.keys()), key="del_user_sel")
+                _del_user = _del_labels[_del_choice]
+                _is_last_superadmin = (
+                    _del_user.get("role") == "superadmin" and _n_superadmins <= 1
+                )
+                st.warning(f"⚠️ Vas a eliminar **{_del_user['username']}**. Esta acción no se puede deshacer.")
+                _del_confirm = st.checkbox(
+                    f"Confirmo que quiero eliminar a '{_del_user['username']}'", key="del_user_confirm"
+                )
+                if _is_last_superadmin:
+                    st.error("No puedes eliminar el último superadmin del sistema.")
+                if st.button("🗑️ Eliminar usuario definitivamente", type="primary",
+                             disabled=(not _del_confirm or _is_last_superadmin), key="del_user_btn"):
+                    try:
+                        _db.delete_user(_del_user["id"])
+                        st.success(f"✅ Usuario '{_del_user['username']}' eliminado.")
+                        st.rerun()
+                    except Exception as _ex:
+                        st.error(f"Error al eliminar el usuario: {_ex}")
+        else:
+            st.info("No hay usuarios para eliminar.")
