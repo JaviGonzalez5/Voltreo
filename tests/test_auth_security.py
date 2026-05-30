@@ -212,3 +212,47 @@ class TestMultiTenantIsolation:
         set_session_user({"id":"su","username":"sa","display_name":"SA",
                           "role":"superadmin","club_id":None,"is_active":True})
         assert is_superadmin()
+
+
+# ---------------------------------------------------------------------------
+# Aislamiento por club: un club_admin solo ve/gestiona su propio club
+# ---------------------------------------------------------------------------
+
+class TestClubIsolation:
+
+    def _set_user(self, session, role, club_id):
+        from src.auth import _AUTH_KEY
+        session[_AUTH_KEY] = {
+            "user_id": "u1", "username": "x", "display_name": "X",
+            "role": role, "club_id": club_id, "club_name": "Mi Club",
+        }
+
+    def test_club_admin_current_club_is_own(self, clean_session):
+        from src.auth import current_club_id
+        self._set_user(clean_session, "club_admin", "clubA")
+        assert current_club_id() == "clubA"
+
+    def test_club_admin_cannot_override_club_via_superadmin_selector(self, clean_session):
+        """Aunque exista superadmin_selected_club_id en sesión, el club_admin
+        sigue atado a SU club — no puede ver otro club manipulando estado."""
+        from src.auth import current_club_id
+        self._set_user(clean_session, "club_admin", "clubA")
+        clean_session["superadmin_selected_club_id"] = "clubB"  # intento de manipulación
+        assert current_club_id() == "clubA"  # ignora el selector de superadmin
+
+    def test_club_admin_is_not_superadmin(self, clean_session):
+        from src.auth import is_superadmin
+        self._set_user(clean_session, "club_admin", "clubA")
+        assert is_superadmin() is False
+
+    def test_superadmin_uses_selected_club(self, clean_session):
+        from src.auth import current_club_id, is_superadmin
+        self._set_user(clean_session, "superadmin", None)
+        clean_session["superadmin_selected_club_id"] = "clubB"
+        assert is_superadmin() is True
+        assert current_club_id() == "clubB"
+
+    def test_club_admin_name_is_own(self, clean_session):
+        from src.auth import current_club_name
+        self._set_user(clean_session, "club_admin", "clubA")
+        assert current_club_name() == "Mi Club"

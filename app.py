@@ -1768,6 +1768,13 @@ if _db_ok and is_authenticated() and is_superadmin() and not _club_name_sidebar 
     _s["_nav_page"] = "home"
     st.rerun()
 
+# AISLAMIENTO: un club_admin NUNCA accede a Administración (gestión de clubs/usuarios).
+# Si intenta navegar ahí (manipulando estado o enlace), se le redirige a su panel.
+if _db_ok and is_authenticated() and not is_superadmin() and page == "admin":
+    _s["_nav_page"] = "home"
+    page = "home"
+    st.rerun()
+
 st.sidebar.markdown('<div class="pp-nav-section">Principal</div>', unsafe_allow_html=True)
 _sidebar_button("⌂  Inicio",                   "home",        page, "nav_home")
 _sidebar_button("◈  Configuración del club",   "club_config", page, "nav_club_config")
@@ -4904,15 +4911,15 @@ elif page == "t_export":
 # ---------------------------------------------------------------------------
 
 elif page == "admin":
-    _page_header("🛠️", "Administración", "Gestión de clubs y usuarios")
-
+    # Gate de aislamiento ANTES de renderizar nada: solo superadmin.
+    if not is_superadmin():
+        st.error("⛔ No tienes permiso para acceder a esta sección.")
+        st.stop()
     if not _db_ok or _db is None:
         st.error("❌ Base de datos no configurada. Añade SUPABASE_URL y SUPABASE_KEY.")
         st.stop()
 
-    if not is_superadmin():
-        st.error("⛔ Solo el superadmin puede acceder a esta sección.")
-        st.stop()
+    _page_header("🛠️", "Administración", "Gestión de clubs y usuarios")
 
     tab_clubs, tab_users = st.tabs(["🏢 Clubs", "👤 Usuarios"])
 
