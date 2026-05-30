@@ -1180,8 +1180,6 @@ def _sidebar_workflow(title: str, steps: list[tuple[str, str, str, bool]], curre
     open_key = f"_{key_prefix}_workflow_open"
     if open_key not in st.session_state:
         st.session_state[open_key] = expanded
-    if expanded:
-        st.session_state[open_key] = True
 
     is_open = bool(st.session_state.get(open_key))
     header_marker = "v" if is_open else ">"
