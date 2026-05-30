@@ -4092,7 +4092,11 @@ elif page == "t_config":
         t_prize    = st.text_input("🥇 Premio / Descripción", value=t.prize if t else "", placeholder="Trofeo + material deportivo")
     with c2:
         t_start  = st.date_input("Fecha de inicio", value=t.start_date if t else _dt_mod.date.today())
-        t_end    = st.date_input("Fecha de fin", value=t.end_date if t else _dt_mod.date.today(), min_value=t_start)
+        # El valor de fin nunca puede ser anterior al inicio (Streamlit lanza error si value < min_value)
+        _t_end_default = t.end_date if t else _dt_mod.date.today()
+        if _t_end_default < t_start:
+            _t_end_default = t_start
+        t_end    = st.date_input("Fecha de fin", value=_t_end_default, min_value=t_start)
         t_format = st.selectbox(
             "Formato",
             options=[TournamentFormat.GROUPS, TournamentFormat.BRACKET, TournamentFormat.GROUPS_BRACKET],
