@@ -4860,19 +4860,70 @@ elif page == "admin":
 
         st.markdown("### Usuarios del sistema")
         _users_list = _db.list_users()
+        _clubs_for_select = _db.list_clubs()
+        _club_id_to_name = {c["id"]: c["name"] for c in _clubs_for_select}
         if _users_list:
-            _df_users = pd.DataFrame(_users_list)
-            # Nunca mostrar el hash de contraseña
-            _df_users = _df_users.drop(columns=["password_hash"], errors="ignore")
-            st.dataframe(_df_users, use_container_width=True, hide_index=True)
+            # Tabla legible: club por nombre, sin hash, columnas ordenadas
+            _rows_u = []
+            for _u in _users_list:
+                _rows_u.append({
+                    "Usuario":     _u.get("username", ""),
+                    "Nombre":      _u.get("display_name", ""),
+                    "Rol":         _u.get("role", ""),
+                    "Club":        _club_id_to_name.get(_u.get("club_id"), "— sin club —"),
+                    "Email":       _u.get("email", "") or "—",
+                    "Activo":      "✅" if _u.get("is_active", True) else "🚫",
+                })
+            st.dataframe(pd.DataFrame(_rows_u), use_container_width=True, hide_index=True)
         else:
             st.info("No hay usuarios registrados todavía.")
 
-        st.markdown("---")
-        st.markdown("#### ➕ Crear nuevo usuario")
-        _clubs_for_select = _db.list_clubs()
         _club_map = {"(superadmin — sin club)": None}
         _club_map.update({c["name"]: c["id"] for c in _clubs_for_select})
+
+        # ── Asignar usuario existente a un club (lo primero, es lo más usado) ──
+        st.markdown("---")
+        st.markdown("#### 🏢 Asignar / mover un usuario a un club")
+        if _users_list:
+            _users_by_username2 = {u["username"]: u for u in _users_list}
+            _mv1, _mv2, _mv3 = st.columns([2, 2, 2])
+            with _mv1:
+                _mv_username = st.selectbox("Usuario", sorted(_users_by_username2.keys()), key="mv_user")
+            _mv_user = _users_by_username2[_mv_username]
+            _mv_cur_club = _club_id_to_name.get(_mv_user.get("club_id"), "— sin club —")
+            with _mv2:
+                _mv_role = st.selectbox(
+                    "Rol", ["club_admin", "superadmin"],
+                    index=0 if _mv_user.get("role") == "club_admin" else 1, key="mv_role",
+                )
+            with _mv3:
+                _mv_club_labels = list(_club_map.keys())
+                _mv_cur_id = _mv_user.get("club_id")
+                _mv_vals = list(_club_map.values())
+                _mv_idx = _mv_vals.index(_mv_cur_id) if _mv_cur_id in _mv_vals else 0
+                _mv_club_label = st.selectbox("Club", _mv_club_labels, index=_mv_idx, key="mv_club")
+            _mv_club_id = _club_map[_mv_club_label]
+            st.caption(f"Actualmente: **{_mv_user.get('role','?')}** · club **{_mv_cur_club}**")
+            if st.button("💾 Guardar club / rol del usuario", type="primary", key="mv_save"):
+                if _mv_role == "club_admin" and _mv_club_id is None:
+                    st.error("Un club_admin debe estar vinculado a un club. Elige un club o cambia el rol a superadmin.")
+                else:
+                    try:
+                        _db.update_user(
+                            _mv_user["id"],
+                            role=_mv_role,
+                            club_id=None if _mv_role == "superadmin" else _mv_club_id,
+                        )
+                        st.success(f"✅ '{_mv_username}' ahora es **{_mv_role}**"
+                                   + (f" del club **{_mv_club_label}**." if _mv_club_id else " (sin club)."))
+                        st.rerun()
+                    except Exception as _ex:
+                        st.error(f"Error al actualizar: {_ex}")
+        else:
+            st.info("Crea un usuario primero para poder asignarlo a un club.")
+
+        st.markdown("---")
+        st.markdown("#### ➕ Crear nuevo usuario")
 
         with st.form("form_create_user"):
             _nu_username    = st.text_input("Nombre de usuario", placeholder="club_admin_madrid")
@@ -4905,42 +4956,6 @@ elif page == "admin":
                         st.rerun()
                     except Exception as _ex:
                         st.error(f"Error al crear el usuario: {_ex}")
-
-        st.markdown("---")
-        st.markdown("#### 🔁 Asignar usuario existente a club / rol")
-        if _users_list:
-            _users_by_username = {u["username"]: u for u in _users_list}
-            with st.form("form_assign_user"):
-                _au_username = st.selectbox("Usuario existente", sorted(_users_by_username.keys()))
-                _au_user = _users_by_username[_au_username]
-                _au_role = st.selectbox(
-                    "Rol destino",
-                    ["club_admin", "superadmin"],
-                    index=0 if _au_user.get("role") == "club_admin" else 1,
-                )
-                _au_current_club = _au_user.get("club_id")
-                _club_values = list(_club_map.values())
-                _club_labels = list(_club_map.keys())
-                _au_default_club_idx = _club_values.index(_au_current_club) if _au_current_club in _club_values else 0
-                _au_club_label = st.selectbox("Club destino", _club_labels, index=_au_default_club_idx)
-                _au_club_id = _club_map[_au_club_label]
-
-                if st.form_submit_button("Guardar asignación", type="primary"):
-                    if _au_role == "club_admin" and _au_club_id is None:
-                        st.error("Un club_admin debe estar vinculado a un club.")
-                    else:
-                        try:
-                            _db.update_user(
-                                _au_user["id"],
-                                role=_au_role,
-                                club_id=None if _au_role == "superadmin" else _au_club_id,
-                            )
-                            st.success(f"✅ Usuario '{_au_username}' actualizado correctamente.")
-                            st.rerun()
-                        except Exception as _ex:
-                            st.error(f"Error al actualizar el usuario: {_ex}")
-        else:
-            st.info("No hay usuarios creados todavía.")
 
         st.markdown("---")
         st.markdown("#### 🔑 Cambiar contraseña")
