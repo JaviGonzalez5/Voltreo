@@ -138,10 +138,19 @@ def validate_schedule(
 
     # ----------------------------------------------------------------
     # 3. Disponibilidad: día de la semana
+    # Excepción PF: si la pareja tiene pista fija en ese día (preferred_weekday),
+    # la colocación es intencionada aunque ese día no esté en available_weekdays
+    # (el scheduler la permite mediante el override PF). No se reporta.
     # ----------------------------------------------------------------
     for m in scheduled:
         wd = m.suggested_date.weekday()
+        st = m.suggested_start_time
         for pair in (m.pair_1, m.pair_2):
+            pw = getattr(pair, "preferred_weekday", None)
+            pt = getattr(pair, "preferred_time", None)
+            # Si el partido cae en la pista fija de la pareja, no es una infracción
+            if pw is not None and wd == pw and (pt is None or st == pt):
+                continue
             if pair.available_weekdays and wd not in pair.available_weekdays:
                 avail_str = ", ".join(WEEKDAY_ES[d] for d in pair.available_weekdays)
                 violations.append({
