@@ -4231,12 +4231,31 @@ elif page == "t_pairs":
         if st.button("← Ir a Configuración"): st.session_state["_nav_page"] = "t_config"; st.rerun()
         st.stop()
 
-    st.info(f"💡 Torneo: **{t.name}** · {len(t.pairs)} parejas inscritas · Formato: **{t.format.value}**")
+    # Divisiones del torneo (claves "cat:sub")
+    _t_div_keys = list(getattr(t, "divisions", []) or [])
+    _t_multi = len(_t_div_keys) > 1
+    _, _div_labels_all = _division_option_maps()
+
+    def _div_label(_k):
+        return _div_labels_all.get(_k, _k)
+
+    if _t_multi:
+        st.info(f"💡 Torneo: **{t.name}** · {len(t.pairs)} parejas · "
+                f"**{len(_t_div_keys)} categorías** · asigna cada pareja a su categoría")
+    else:
+        st.info(f"💡 Torneo: **{t.name}** · {len(t.pairs)} parejas inscritas · Formato: **{t.format.value}**")
 
     _section_start("👥", "Añadir parejas")
     pair_tab_a, pair_tab_b = st.tabs(["📝 Añadir manualmente", "📂 Importar CSV"])
 
     with pair_tab_a:
+        if _t_multi:
+            _sel_div = st.selectbox(
+                "Categoría de la pareja", options=_t_div_keys,
+                format_func=_div_label, key="tnp_div",
+            )
+        else:
+            _sel_div = _t_div_keys[0] if _t_div_keys else None
         pa1, pa2, pa3 = st.columns(3)
         with pa1:
             new_pair_name = st.text_input("Nombre de la pareja", placeholder="García / López", key="tnp_name")
@@ -4255,16 +4274,27 @@ elif page == "t_pairs":
                     seed=new_pair_seed if new_pair_seed > 0 else None,
                     player_1=TournamentPlayer(name=new_p1_name.strip(), phone=new_p1_phone.strip() or None),
                     player_2=TournamentPlayer(name=new_p2_name.strip(), phone=new_p2_phone.strip() or None),
+                    division=_sel_div,
                 )
                 t.pairs.append(new_pair)
-                t.groups = []; t.matches = []
-                st.success(f"✅ '{new_pair.display_name}' añadida.")
+                t.groups = []; t.matches = []; t.division_draws = []
+                st.success(f"✅ '{new_pair.display_name}' añadida{(' a ' + _div_label(_sel_div)) if _sel_div else ''}.")
                 st.rerun()
             else:
                 st.error("Rellena nombre de pareja y los dos jugadores.")
 
     with pair_tab_b:
-        _sample_csv = "pair_name,player1_name,player2_name,player1_phone,player2_phone,seed\nGarcía / López,Carlos García,Marta López,+34600000001,+34600000002,1\nRuiz / Martín,Ana Ruiz,Luis Martín,,,\n"
+        if _t_multi:
+            _csv_div = st.selectbox(
+                "Asignar las parejas del CSV a la categoría", options=["(usar columna 'division')"] + _t_div_keys,
+                format_func=lambda k: k if k.startswith("(") else _div_label(k), key="tnp_csv_div",
+            )
+            _sample_csv = ("pair_name,player1_name,player2_name,player1_phone,player2_phone,seed,division\n"
+                           "García / López,Carlos García,Marta López,+34600000001,+34600000002,1,masculino:1a\n"
+                           "Ruiz / Martín,Ana Ruiz,Luis Martín,,,,femenino:1a\n")
+        else:
+            _csv_div = None
+            _sample_csv = "pair_name,player1_name,player2_name,player1_phone,player2_phone,seed\nGarcía / López,Carlos García,Marta López,+34600000001,+34600000002,1\nRuiz / Martín,Ana Ruiz,Luis Martín,,,\n"
         st.download_button("⬇️ Descargar plantilla CSV", _sample_csv, "plantilla_parejas.csv", "text/csv")
         csv_upload = st.file_uploader("Subir CSV de parejas", type=["csv"], key="t_csv_pairs")
         if csv_upload:
@@ -4278,14 +4308,28 @@ elif page == "t_pairs":
                     for _, row in _df_pairs.iterrows():
                         if pd.isna(row["pair_name"]) or not str(row["pair_name"]).strip(): continue
                         _seed_val = int(row["seed"]) if "seed" in row and not pd.isna(row.get("seed", float("nan"))) and str(row.get("seed","")).strip() else None
+                        # División: columna CSV o selección fija
+                        _row_div = None
+                        if _t_multi:
+                            if _csv_div and not _csv_div.startswith("("):
+                                _row_div = _csv_div
+                            elif "division" in row and not pd.isna(row.get("division", float("nan"))):
+                                _cand = str(row["division"]).strip()
+                                _row_div = _cand if _cand in _t_div_keys else None
+                        elif _t_div_keys:
+                            _row_div = _t_div_keys[0]
                         new_pairs_csv.append(TournamentPair(
                             name=str(row["pair_name"]).strip(), seed=_seed_val,
                             player_1=TournamentPlayer(name=str(row["player1_name"]).strip(), phone=str(row.get("player1_phone","")).strip() or None),
                             player_2=TournamentPlayer(name=str(row["player2_name"]).strip(), phone=str(row.get("player2_phone","")).strip() or None),
+                            division=_row_div,
                         ))
+                    _unassigned = sum(1 for p in new_pairs_csv if _t_multi and not p.division)
+                    if _unassigned:
+                        st.warning(f"⚠️ {_unassigned} parejas sin categoría válida — corrige la columna 'division' o elige una categoría fija.")
                     if st.button(f"✅ Importar {len(new_pairs_csv)} parejas", type="primary"):
                         t.pairs.extend(new_pairs_csv)
-                        t.groups = []; t.matches = []
+                        t.groups = []; t.matches = []; t.division_draws = []
                         st.success(f"✅ {len(new_pairs_csv)} parejas importadas."); st.rerun()
             except Exception as _csv_err:
                 st.error(f"Error: {_csv_err}")
@@ -4293,14 +4337,26 @@ elif page == "t_pairs":
     st.divider()
     if t.pairs:
         _section_start("📋", f"Parejas inscritas ({len(t.pairs)})")
-        _rows_pairs = [{"#": _pi+1, "Pareja": _pp.display_name,
-                        "Jugador 1": _pp.player_1.full_name, "📱": _pp.player_1.phone or "—",
-                        "Jugador 2": _pp.player_2.full_name, "📱 ": _pp.player_2.phone or "—",
-                        "Cabeza serie": f"#{_pp.seed}" if _pp.seed else "—"}
-                       for _pi, _pp in enumerate(t.pairs)]
-        st.dataframe(_rows_pairs, use_container_width=True, hide_index=True)
+        def _pair_row(_pi, _pp):
+            _r = {"#": _pi+1, "Pareja": _pp.display_name,
+                  "Jugador 1": _pp.player_1.full_name, "Jugador 2": _pp.player_2.full_name,
+                  "Cabeza serie": f"#{_pp.seed}" if _pp.seed else "—"}
+            if _t_multi:
+                _r = {"#": _pi+1, "Categoría": _div_label(_pp.division) if _pp.division else "⚠️ sin asignar",
+                      "Pareja": _pp.display_name, "Jugador 1": _pp.player_1.full_name,
+                      "Jugador 2": _pp.player_2.full_name,
+                      "Cabeza serie": f"#{_pp.seed}" if _pp.seed else "—"}
+            return _r
+        # Ordenar por categoría cuando es multi
+        _pairs_sorted = sorted(enumerate(t.pairs), key=lambda x: (x[1].division or "zzz")) if _t_multi else list(enumerate(t.pairs))
+        st.dataframe([_pair_row(_i, _p) for _i, _p in _pairs_sorted], use_container_width=True, hide_index=True)
+        if _t_multi:
+            # Recuento por categoría
+            from collections import Counter as _Counter
+            _cnt = _Counter(_div_label(p.division) if p.division else "⚠️ sin asignar" for p in t.pairs)
+            _stat_chips(*[(f"{v} · {k}", "green" if "sin asignar" not in k else "red", "🎾") for k, v in _cnt.items()])
         if st.button("🗑️ Vaciar lista de parejas", type="secondary"):
-            t.pairs = []; t.groups = []; t.matches = []; st.rerun()
+            t.pairs = []; t.groups = []; t.matches = []; t.division_draws = []; st.rerun()
     else:
         _empty_state("👥", "Sin parejas", "Añade las parejas del torneo manualmente o importa un CSV.")
 
@@ -4324,9 +4380,23 @@ elif page == "t_generate":
         st.stop()
 
     n_pairs = len(t.pairs)
+    _tg_div_keys = list(getattr(t, "divisions", []) or [])
+    _tg_multi = len(_tg_div_keys) > 1
+    _, _tg_div_labels = _division_option_maps()
     _section_start("🎯", "Previsión del torneo")
 
-    if t.format == TournamentFormat.GROUPS:
+    if _tg_multi:
+        from collections import Counter as _Counter2
+        _pc = _Counter2(p.division for p in t.pairs)
+        st.markdown(f"**{len(_tg_div_keys)} categorías** · formato **{t.format.value}** · "
+                    "cada categoría genera su propio cuadro, todas comparten pistas y horario.")
+        _rows_prev = [{"Categoría": _tg_div_labels.get(k, k), "Parejas": _pc.get(k, 0)} for k in _tg_div_keys]
+        st.dataframe(_rows_prev, use_container_width=True, hide_index=True)
+        _no_pairs_divs = [k for k in _tg_div_keys if _pc.get(k, 0) < 2]
+        if _no_pairs_divs:
+            st.warning("⚠️ Estas categorías tienen menos de 2 parejas y no generarán cuadro: "
+                       + ", ".join(_tg_div_labels.get(k, k) for k in _no_pairs_divs))
+    elif t.format == TournamentFormat.GROUPS:
         from math import comb as _comb
         n_groups = max(1, -(-n_pairs // t.group_size))
         total = n_groups * _comb(t.group_size, 2)
@@ -4491,7 +4561,27 @@ elif page == "t_results":
          "green" if _summ['champion'] else "red", "🏆"),
     )
 
-    if _summ["champion"]:
+    _tr_div_keys = list(getattr(t, "divisions", []) or [])
+    _tr_multi = len(_tr_div_keys) > 1
+    _, _tr_div_labels = _division_option_maps()
+
+    # Banner(es) de campeón — por división si es multi-categoría
+    from src.tournament_results import champions_by_division as _tchamps
+    if _tr_multi:
+        _champs = _tchamps(t)
+        _champ_cards = [(k, v) for k, v in _champs.items() if v]
+        if _champ_cards:
+            _cards_html = "".join(
+                f'<div style="flex:1;min-width:200px;background:linear-gradient(135deg,#1a0533,#6a1b9a);'
+                f'border:2px solid #ffd700;border-radius:14px;padding:1rem;text-align:center">'
+                f'<div style="color:#ffd700;font-size:.68rem;font-weight:800;letter-spacing:.1em">'
+                f'🏆 {escape(_tr_div_labels.get(k, k))}</div>'
+                f'<div style="color:#fff;font-size:1.15rem;font-weight:900;margin-top:.25rem">{escape(v)}</div></div>'
+                for k, v in _champ_cards
+            )
+            st.markdown(f'<div style="display:flex;flex-wrap:wrap;gap:.7rem;margin:1rem 0">{_cards_html}</div>',
+                        unsafe_allow_html=True)
+    elif _summ["champion"]:
         st.markdown(
             f'<div style="background:linear-gradient(135deg,#1a0533,#6a1b9a);'
             f'border:2px solid #ffd700;border-radius:16px;padding:1.2rem 1.6rem;margin:1rem 0;'
@@ -4512,14 +4602,8 @@ elif page == "t_results":
         st.info("Aún no hay partidos con ambas parejas definidas. "
                 "En formato grupos+cuadro, juega primero la fase de grupos.")
 
-    # Agrupar por ronda
-    _by_round = {}
-    for m in _playable:
-        _by_round.setdefault(m.round, []).append(m)
-
-    for _rnd, _ms in _by_round.items():
-        _section_start("🎾", _rnd.display)
-        for m in _ms:
+    # Agrupar: división (si multi) → ronda
+    def _render_match_row(m):
             _c1, _c2, _c3 = st.columns([3, 2, 1])
             with _c1:
                 _status_icon = "✅" if m.is_played else "⏳"
@@ -4564,6 +4648,37 @@ elif page == "t_results":
                     st.session_state["tournament"] = t
                     _persist_tournament(t)
                     st.rerun()
+
+    if _tr_multi:
+        # Agrupar por división, y dentro por ronda
+        _by_div = {}
+        for m in _playable:
+            _by_div.setdefault(m.division, []).append(m)
+        for _dk in _tr_div_keys:
+            _dms = _by_div.get(_dk, [])
+            if not _dms:
+                continue
+            st.markdown(
+                f'<div style="margin:1.2rem 0 .3rem;padding:.5rem .9rem;border-radius:10px;'
+                f'background:#0b1a2b;color:#fff;font-weight:800;font-size:.95rem">'
+                f'🎾 {escape(_tr_div_labels.get(_dk, _dk))}</div>',
+                unsafe_allow_html=True,
+            )
+            _dr = {}
+            for m in _dms:
+                _dr.setdefault(m.round, []).append(m)
+            for _rnd in sorted(_dr.keys(), key=lambda r: r.order):
+                st.caption(_rnd.display)
+                for m in _dr[_rnd]:
+                    _render_match_row(m)
+    else:
+        _by_round = {}
+        for m in _playable:
+            _by_round.setdefault(m.round, []).append(m)
+        for _rnd in sorted(_by_round.keys(), key=lambda r: r.order):
+            _section_start("🎾", _rnd.display)
+            for m in _by_round[_rnd]:
+                _render_match_row(m)
 
     st.divider()
     _t_nav_buttons(5)
