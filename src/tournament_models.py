@@ -40,15 +40,44 @@ class TournamentCategory(str, Enum):
 
 
 class TournamentSubcategory(str, Enum):
+    # Pádel — categorías por número
     PRIMERA  = "1a"
     SEGUNDA  = "2a"
     TERCERA  = "3a"
     CUARTA   = "4a"
     QUINTA   = "5a"
+    # Pickleball — niveles por puntuación
+    PB_SUB3  = "pb_lt3"   # -3
+    PB_3     = "pb_3"     # +3
+    PB_35    = "pb_35"    # +3.5
+    PB_4     = "pb_4"     # +4
+    PB_45    = "pb_45"    # +4.5
 
     @property
     def label(self) -> str:
-        return {"1a": "1ª", "2a": "2ª", "3a": "3ª", "4a": "4ª", "5a": "5ª"}[self.value]
+        return {
+            "1a": "1ª", "2a": "2ª", "3a": "3ª", "4a": "4ª", "5a": "5ª",
+            "pb_lt3": "-3", "pb_3": "+3", "pb_35": "+3.5", "pb_4": "+4", "pb_45": "+4.5",
+        }[self.value]
+
+    @property
+    def sport(self) -> str:
+        return "pickleball" if self.value.startswith("pb_") else "padel"
+
+
+# Subcategorías agrupadas por deporte (para construir los selectores de la UI)
+SUBCATEGORIES_BY_SPORT: dict[str, list["TournamentSubcategory"]] = {
+    "padel": [
+        TournamentSubcategory.PRIMERA, TournamentSubcategory.SEGUNDA,
+        TournamentSubcategory.TERCERA, TournamentSubcategory.CUARTA,
+        TournamentSubcategory.QUINTA,
+    ],
+    "pickleball": [
+        TournamentSubcategory.PB_SUB3, TournamentSubcategory.PB_3,
+        TournamentSubcategory.PB_35, TournamentSubcategory.PB_4,
+        TournamentSubcategory.PB_45,
+    ],
+}
 
 
 class MatchRound(str, Enum):

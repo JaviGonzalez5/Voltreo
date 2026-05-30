@@ -1518,11 +1518,33 @@ def _save_syltek_settings_for_club(
     db_obj._c.table("clubs").update({"settings": _settings}).eq("id", club_id).execute()
 
 
-def _division_option_maps() -> tuple[list[str], dict[str, str]]:
+def _club_sport() -> str:
+    """Deporte del club activo ('padel' por defecto). Cacheado por club en sesión."""
+    try:
+        if _db_ok and _db is not None:
+            _cid = current_club_id()
+            if _cid:
+                _cache = st.session_state.setdefault("_club_sport_cache", {})
+                if _cid in _cache:
+                    return _cache[_cid]
+                _row = _db.get_club_by_id(_cid)
+                _sport = (_row.get("settings") or {}).get("sport", "padel") if _row else "padel"
+                _cache[_cid] = _sport
+                return _sport
+    except Exception:
+        pass
+    return "padel"
+
+
+def _division_option_maps(sport: str | None = None) -> tuple[list[str], dict[str, str]]:
+    """Opciones de categoría:subcategoría filtradas por el deporte del club."""
+    from src.tournament_models import SUBCATEGORIES_BY_SPORT
+    sport = sport or _club_sport()
+    subs = SUBCATEGORIES_BY_SPORT.get(sport, SUBCATEGORIES_BY_SPORT["padel"])
     keys: list[str] = []
     labels: dict[str, str] = {}
     for _cat in TournamentCategory:
-        for _sub in TournamentSubcategory:
+        for _sub in subs:
             _key = f"{_cat.value}:{_sub.value}"
             keys.append(_key)
             labels[_key] = f"{_cat.icon} {_cat.label} {_sub.label}"
@@ -1937,8 +1959,17 @@ elif page == "club_config":
         )
 
     with col2:
+        _section_start("🎾", "Deporte del club")
+        _sport_opts = {"padel": "🎾 Pádel", "pickleball": "🥒 Pickleball"}
+        _cur_sport = _settings.get("sport", "padel")
+        _cc_sport = st.selectbox(
+            "Deporte principal", options=list(_sport_opts.keys()),
+            index=list(_sport_opts.keys()).index(_cur_sport) if _cur_sport in _sport_opts else 0,
+            format_func=lambda s: _sport_opts[s],
+            help="Define las categorías de torneo: Pádel usa 1ª-5ª; Pickleball usa niveles (-3, +3, +3.5, +4, +4.5).",
+        )
         _section_start("🏟️", "Instalaciones")
-        _cc_courts  = st.number_input("Número de pistas de pádel", min_value=1, max_value=30,
+        _cc_courts  = st.number_input("Número de pistas", min_value=1, max_value=30,
                                       value=int(_settings.get("num_courts", 4)))
         _cc_indoor  = st.number_input("Pistas cubiertas", min_value=0, max_value=30,
                                       value=int(_settings.get("indoor_courts", 0)))
@@ -1952,6 +1983,7 @@ elif page == "club_config":
     if st.button("💾 Guardar configuración del club", type="primary", use_container_width=True):
         _new_settings = dict(_settings)
         _new_settings.update({
+            "sport": _cc_sport,
             "address": _cc_address, "phone": _cc_phone, "email": _cc_email,
             "web": _cc_web, "num_courts": _cc_courts, "indoor_courts": _cc_indoor,
             "open_time": str(_cc_open), "close_time": str(_cc_close), "notes": _cc_notes,
@@ -1963,6 +1995,7 @@ elif page == "club_config":
         else:
             _new_settings.pop("syltek_password", None)
         st.session_state["club_name"] = _cc_name
+        st.session_state.pop("_club_sport_cache", None)  # refrescar deporte cacheado
         for _k in ("syl_url", "syl_user", "syl_pass", "syl_imp_url", "syl_imp_user", "syl_imp_pass"):
             st.session_state.pop(_k, None)
         if _db_ok and _db and _cid:
@@ -4072,8 +4105,12 @@ elif page == "t_config":
         )
 
     st.divider()
-    _section_start("🎾", "Categorías y subcategorías")
-    _div_keys, _div_labels = _division_option_maps()
+    from src.tournament_models import SUBCATEGORIES_BY_SPORT as _SUBS_BY_SPORT
+    _t_sport = _club_sport()
+    _t_subs  = _SUBS_BY_SPORT.get(_t_sport, _SUBS_BY_SPORT["padel"])
+    _sub_range_lbl = f"{_t_subs[0].label}-{_t_subs[-1].label}" if _t_subs else ""
+    _section_start("🎾", f"Categorías y niveles ({'Pickleball' if _t_sport=='pickleball' else 'Pádel'})")
+    _div_keys, _div_labels = _division_option_maps(_t_sport)
     _div_key_set = set(_div_keys)
     _current_divisions = [d for d in (getattr(t, "divisions", []) if t else []) if d in _div_key_set]
     if not _current_divisions:
@@ -4086,22 +4123,22 @@ elif page == "t_config":
         st.session_state["t_config_divisions"] = list(_current_divisions)
         st.session_state["_t_config_divisions_source_id"] = _div_source_id
 
-    _preset_masc = [f"{TournamentCategory.MASCULINO.value}:{_sub.value}" for _sub in TournamentSubcategory]
-    _preset_fem = [f"{TournamentCategory.FEMENINO.value}:{_sub.value}" for _sub in TournamentSubcategory]
-    _preset_mix = [f"{TournamentCategory.MIXTO.value}:{_sub.value}" for _sub in TournamentSubcategory]
+    _preset_masc = [f"{TournamentCategory.MASCULINO.value}:{_sub.value}" for _sub in _t_subs]
+    _preset_fem = [f"{TournamentCategory.FEMENINO.value}:{_sub.value}" for _sub in _t_subs]
+    _preset_mix = [f"{TournamentCategory.MIXTO.value}:{_sub.value}" for _sub in _t_subs]
     _preset_all = list(dict.fromkeys(_preset_masc + _preset_fem + _preset_mix))
 
     _preset_cols = st.columns(5)
     with _preset_cols[0]:
-        if st.button("Masculino 1ª-5ª", key="t_div_preset_masc", use_container_width=True):
+        if st.button(f"Masculino {_sub_range_lbl}", key="t_div_preset_masc", use_container_width=True):
             st.session_state["t_config_divisions"] = list(_preset_masc)
             st.rerun()
     with _preset_cols[1]:
-        if st.button("Femenino 1ª-5ª", key="t_div_preset_fem", use_container_width=True):
+        if st.button(f"Femenino {_sub_range_lbl}", key="t_div_preset_fem", use_container_width=True):
             st.session_state["t_config_divisions"] = list(_preset_fem)
             st.rerun()
     with _preset_cols[2]:
-        if st.button("Mixto 1ª-5ª", key="t_div_preset_mix", use_container_width=True):
+        if st.button(f"Mixto {_sub_range_lbl}", key="t_div_preset_mix", use_container_width=True):
             st.session_state["t_config_divisions"] = list(_preset_mix)
             st.rerun()
     with _preset_cols[3]:
