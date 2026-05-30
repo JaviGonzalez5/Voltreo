@@ -35,6 +35,17 @@ def _dt(d: date, t: time) -> datetime:
     return datetime.combine(d, t)
 
 
+def _day_end_dt(d: date, end_t: time) -> datetime:
+    """
+    Datetime del FIN del día de juego. Una hora de cierre de 00:00 se interpreta
+    como medianoche = fin del día (24:00), es decir, las 00:00 del día siguiente.
+    Así un club abierto hasta las 00:00 permite partidos hasta medianoche.
+    """
+    if end_t == time(0, 0):
+        return datetime.combine(d, time(0, 0)) + timedelta(days=1)
+    return datetime.combine(d, end_t)
+
+
 def _overlaps(s1: datetime, e1: datetime, s2: datetime, e2: datetime) -> bool:
     """True si los dos intervalos se solapan (excluyendo contacto en los extremos)."""
     return s1 < e2 and s2 < e1
@@ -130,7 +141,7 @@ def build_availability_slots(
             day_bookings = court_day_bookings[court.id].get(current, [])
 
             slot_start = _dt(current, phase.day_start_time)
-            day_end    = _dt(current, phase.day_end_time)
+            day_end    = _day_end_dt(current, phase.day_end_time)
 
             # Avanzar de 30 en 30 min; cada slot dura match_duration_minutes
             while slot_start + duration <= day_end:
@@ -397,7 +408,8 @@ class Scheduler:
         late_penalty = getattr(w, "late_hour_penalty", 2.5)
         if late_penalty > 0:
             day_start_min = self.phase.day_start_time.hour * 60 + self.phase.day_start_time.minute
-            day_end_min   = self.phase.day_end_time.hour * 60 + self.phase.day_end_time.minute
+            # Cierre a las 00:00 = medianoche (24:00) → 1440 min
+            day_end_min   = (self.phase.day_end_time.hour * 60 + self.phase.day_end_time.minute) or 1440
             slot_min      = slot.start_time.hour * 60 + slot.start_time.minute
             hour_range    = max(day_end_min - day_start_min, 1)
             hour_fraction = (slot_min - day_start_min) / hour_range  # [0.0 … 1.0]

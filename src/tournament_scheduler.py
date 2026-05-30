@@ -75,6 +75,13 @@ def _dt(d: date, t: time) -> datetime:
     return datetime.combine(d, t)
 
 
+def _day_end_dt(d: date, end_t: time) -> datetime:
+    """Fin del día de juego. 00:00 se interpreta como medianoche (fin del día)."""
+    if end_t == time(0, 0):
+        return datetime.combine(d, time(0, 0)) + timedelta(days=1)
+    return datetime.combine(d, end_t)
+
+
 def _days_between(start: date, end: date) -> list[date]:
     days: list[date] = []
     current = start
@@ -248,7 +255,7 @@ def _find_best_slot(
 
     for d in all_days:
         day_start_dt = _dt(d, day_start)
-        day_end_dt   = _dt(d, day_end)
+        day_end_dt   = _day_end_dt(d, day_end)
 
         # Encontrar la pista que permita el inicio más temprano hoy
         best_start:  Optional[datetime]       = None

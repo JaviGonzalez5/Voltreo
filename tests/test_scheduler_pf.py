@@ -151,3 +151,25 @@ class TestPFDoesNotBreakNonPF:
         assert aa_bb is not None
         assert aa_bb.suggested_date.weekday() == 2
         assert aa_bb.suggested_start_time == time(20, 30)
+
+
+class TestMidnightClose:
+    """Hora de cierre 00:00 = medianoche (fin del día), no inicio del día."""
+
+    def test_day_end_helper_treats_midnight_as_end(self):
+        from datetime import date as _d, time as _t, datetime as _dt
+        from src.scheduler import _day_end_dt
+        # 00:00 -> medianoche del día siguiente
+        assert _day_end_dt(_d(2026, 6, 1), _t(0, 0)) == _dt(2026, 6, 2, 0, 0)
+        # Otras horas, igual que combine normal
+        assert _day_end_dt(_d(2026, 6, 1), _t(22, 30)) == _dt(2026, 6, 1, 22, 30)
+
+    def test_ranking_schedules_until_midnight(self):
+        p = [_pair(f"P{i}") for i in range(4)]
+        g = Group(name="G", pairs=p)
+        phase = _phase([g], day_start_time=time(20, 0), day_end_time=time(0, 0),
+                       match_duration_minutes=90)
+        result = Scheduler(phase).schedule(generate_all_matches([g]))
+        assert len(result.scheduled) == 6  # todos caben en la franja 20:00–00:00
+        # Alguno puede empezar a las 22:30 (termina justo a 00:00)
+        assert all(m.suggested_end_time is not None for m in result.scheduled)
