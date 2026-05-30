@@ -1006,8 +1006,219 @@ header[data-testid="stHeader"] * {
     line-height: 1.5;
 }
 
+/* Modern UI refresh (2026-05) */
+:root {
+    --pp-bg: #f4f7fb;
+    --pp-surface: #ffffff;
+    --pp-surface-soft: #f8fafc;
+    --pp-border: #dfe7f1;
+    --pp-text: #0f172a;
+    --pp-muted: #64748b;
+    --pp-accent: #0f9b57;
+    --pp-accent-hover: #0a7f46;
+    --pp-shadow-sm: 0 1px 2px rgba(15, 23, 42, .06);
+    --pp-shadow-md: 0 8px 24px rgba(15, 23, 42, .08);
+    --pp-radius-sm: 8px;
+    --pp-radius-md: 12px;
+}
+
+.stApp {
+    background: var(--pp-bg) !important;
+    color: var(--pp-text) !important;
+}
+
+.main .block-container {
+    max-width: 1400px !important;
+    padding-top: 2.4rem !important;
+    padding-left: 2.2rem !important;
+    padding-right: 2.2rem !important;
+}
+
+.pp-page-title,
+.pp-section,
+.pp-kpi-card,
+.pp-action-card,
+.pp-onboarding-card,
+.t-card,
+[data-testid="metric-container"],
+[data-testid="stDataFrame"] {
+    background: var(--pp-surface) !important;
+    border: 1px solid var(--pp-border) !important;
+    border-radius: var(--pp-radius-md) !important;
+    box-shadow: var(--pp-shadow-sm) !important;
+}
+
+[data-testid="metric-container"]:hover,
+.pp-kpi-card:hover,
+.pp-action-card:hover,
+.pp-onboarding-card:hover,
+.t-card:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: var(--pp-shadow-md) !important;
+}
+
+[data-testid="metric-container"] [data-testid="stMetricLabel"] {
+    color: var(--pp-muted) !important;
+    letter-spacing: .06em !important;
+}
+
+.stButton > button[kind="primary"] {
+    background: var(--pp-accent) !important;
+    border: 1px solid var(--pp-accent-hover) !important;
+    box-shadow: none !important;
+}
+
+.stButton > button[kind="primary"]:hover {
+    background: var(--pp-accent-hover) !important;
+    border-color: var(--pp-accent-hover) !important;
+}
+
+[data-testid="stTextInput"] input,
+[data-testid="stTextArea"] textarea,
+[data-testid="stNumberInput"] input,
+[data-testid="stDateInput"] input,
+[data-testid="stSelectbox"] > div > div {
+    background: var(--pp-surface-soft) !important;
+    border: 1px solid var(--pp-border) !important;
+    border-radius: var(--pp-radius-sm) !important;
+}
+
+[data-testid="stTabs"] button {
+    border-bottom: 2px solid transparent !important;
+}
+
+[data-testid="stTabs"] button[aria-selected="true"] {
+    border-bottom-color: var(--pp-accent) !important;
+    color: var(--pp-text) !important;
+}
+
+.pp-hero,
+.t-top-banner {
+    background: var(--pp-surface) !important;
+    border: 1px solid var(--pp-border) !important;
+    border-radius: 14px !important;
+    box-shadow: var(--pp-shadow-sm) !important;
+}
+
+.pp-hero::after {
+    background: radial-gradient(circle, rgba(15, 155, 87, .10) 0%, transparent 70%) !important;
+}
+
+.pp-hero h1,
+.t-top-banner .t-top-name {
+    color: var(--pp-text) !important;
+}
+
+.pp-hero p,
+.t-top-banner .t-top-meta {
+    color: var(--pp-muted) !important;
+}
+
+.t-top-banner::before {
+    color: #64748b !important;
+    text-shadow: none !important;
+}
+
+[data-testid="stSidebar"] {
+    --sb-text: #d7e6f4;
+    --sb-muted: #86a6c2;
+    --sb-border: rgba(255, 255, 255, .10);
+    --sb-accent: #22c55e;
+}
+
+.pp-nav-section {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: #9ab4cc;
+    font-size: .65rem;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    font-weight: 700;
+    padding: .95rem .9rem .45rem;
+}
+
+.pp-nav-badge {
+    font-size: .62rem;
+    color: #9ab4cc;
+    border: 1px solid var(--sb-border);
+    border-radius: 999px;
+    padding: .08rem .45rem;
+    background: rgba(255, 255, 255, .04);
+}
+
+[data-testid="stSidebar"] [data-testid="stButton"] button {
+    min-height: 38px !important;
+    height: auto !important;
+    border-radius: 10px !important;
+}
+
+[data-testid="stSidebar"] [data-key="nav_r_workflow_toggle"] button,
+[data-testid="stSidebar"] [data-key="nav_t_workflow_toggle"] button {
+    min-height: 40px !important;
+    border: 1px solid var(--sb-border) !important;
+    border-radius: 12px !important;
+    background: rgba(255, 255, 255, .03) !important;
+    color: #e9f5ff !important;
+    font-weight: 700 !important;
+}
+
+[data-testid="stSidebar"] [data-key="nav_r_workflow_toggle"] button[kind="primary"],
+[data-testid="stSidebar"] [data-key="nav_t_workflow_toggle"] button[kind="primary"] {
+    border-color: rgba(34, 197, 94, .45) !important;
+    box-shadow: 0 0 0 1px rgba(34, 197, 94, .2) inset;
+}
+
+[data-testid="stSidebar"] [data-key^="nav_r_"]:not([data-key$="workflow_toggle"]) button,
+[data-testid="stSidebar"] [data-key^="nav_t_"]:not([data-key$="workflow_toggle"]) button {
+    min-height: 34px !important;
+    margin-left: .35rem !important;
+    border-radius: 8px !important;
+    font-size: .82rem !important;
+    color: var(--sb-muted) !important;
+    background: transparent !important;
+    border: 1px solid transparent !important;
+}
+
+[data-testid="stSidebar"] [data-key^="nav_r_"]:not([data-key$="workflow_toggle"]) button:hover,
+[data-testid="stSidebar"] [data-key^="nav_t_"]:not([data-key$="workflow_toggle"]) button:hover {
+    background: rgba(255, 255, 255, .05) !important;
+    color: #d8ebfb !important;
+}
+
+[data-testid="stSidebar"] [data-key^="nav_r_"]:not([data-key$="workflow_toggle"]) button[kind="primary"],
+[data-testid="stSidebar"] [data-key^="nav_t_"]:not([data-key$="workflow_toggle"]) button[kind="primary"] {
+    color: #cffff0 !important;
+    background: rgba(34, 197, 94, .16) !important;
+    border-color: rgba(34, 197, 94, .42) !important;
+    border-left: 3px solid var(--sb-accent) !important;
+}
+
+.pp-flow-meta {
+    font-size: .74rem;
+    color: #8fb0cd;
+    padding: .45rem .75rem .3rem;
+}
+
+.pp-flow-progress {
+    height: 6px;
+    margin: .2rem .75rem .55rem;
+    background: rgba(255, 255, 255, .09);
+}
+
+.pp-step-help {
+    font-size: .78rem;
+    line-height: 1.45;
+    border-radius: 10px;
+    margin: .45rem .45rem .7rem;
+}
+
 @media (max-width: 900px) {
-    .main .block-container { padding-left: 1rem !important; padding-right: 1rem !important; }
+    .main .block-container {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+        padding-top: 1.2rem !important;
+    }
     .pp-kpi-grid, .pp-two-grid { grid-template-columns: 1fr; }
     .pp-hero h1 { font-size: 1.5rem; }
 }
@@ -1866,7 +2077,7 @@ if _db_ok and is_authenticated() and not is_superadmin() and page == "admin":
     page = "home"
     st.rerun()
 
-st.sidebar.markdown('<div class="pp-nav-section">Principal</div>', unsafe_allow_html=True)
+st.sidebar.markdown('<div class="pp-nav-section"><span>Principal</span></div>', unsafe_allow_html=True)
 _sidebar_button("⌂  Inicio",                   "home",        page, "nav_home")
 _sidebar_button("◈  Configuración del club",   "club_config", page, "nav_club_config")
 
@@ -1920,12 +2131,12 @@ _T_STEPS = [
 ]
 _IS_TOURNAMENT = page in {k for k, *_ in _T_STEPS}
 
-st.sidebar.markdown('<div class="pp-nav-section">Flujos guiados</div>', unsafe_allow_html=True)
+st.sidebar.markdown('<div class="pp-nav-section"><span>Flujos guiados</span><span class="pp-nav-badge">2</span></div>', unsafe_allow_html=True)
 _sidebar_workflow("◫  Ranking",  _R_STEPS, page, "nav_r", expanded=_IS_RANKING)
 _sidebar_workflow("◈  Torneos",  _T_STEPS, page, "nav_t", expanded=_IS_TOURNAMENT)
 
 if _db_ok and is_superadmin():
-    st.sidebar.markdown('<div class="pp-nav-section">Sistema</div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="pp-nav-section"><span>Sistema</span></div>', unsafe_allow_html=True)
     _sidebar_button("⚙  Administración", "admin", page, "nav_admin")
 
 _dry = _s.get("dry_run", True)
@@ -3827,6 +4038,14 @@ elif page == "review":
                 pd.DataFrame(rows_v),
                 use_container_width=True,
                 hide_index=True,
+                row_height=34,
+                column_config={
+                    "Sev.": st.column_config.TextColumn("Sev.", width="small"),
+                    "Tipo": st.column_config.TextColumn("Tipo", width="medium"),
+                    "Descripción": st.column_config.TextColumn("Descripción", width="large"),
+                    "Partido(s)": st.column_config.TextColumn("Partido(s)", width="large"),
+                    "Fecha": st.column_config.TextColumn("Fecha", width="small"),
+                },
                 height=min(600, 60 + len(rows_v) * 35),
             )
 
