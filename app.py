@@ -4212,10 +4212,35 @@ elif page == "t_config":
         t_day_start = st.time_input("Hora de inicio del día", value=t.day_start_time if t else _dt_mod.time(9, 0))
         t_day_end   = st.time_input("Hora de fin del día",    value=t.day_end_time   if t else _dt_mod.time(22, 0))
     with col_t3:
-        t_group_size   = st.number_input("Parejas por grupo", min_value=3, max_value=8, value=t.group_size if t else 4) if t_format in (TournamentFormat.GROUPS, TournamentFormat.GROUPS_BRACKET) else 4
-        t_bracket_size = st.selectbox("Tamaño del cuadro", [4, 8, 16], index=[4, 8, 16].index(t.bracket_size) if t else 1) if t_format in (TournamentFormat.BRACKET, TournamentFormat.GROUPS_BRACKET) else 8
-        t_third_place  = st.checkbox("Partido 3er/4º puesto", value=t.third_place_match if t else False) if t_format in (TournamentFormat.BRACKET, TournamentFormat.GROUPS_BRACKET) else False
-        t_qualifiers   = st.number_input("Clasificados por grupo al cuadro", min_value=1, max_value=4, value=t.groups_qualifiers if t else 2) if t_format == TournamentFormat.GROUPS_BRACKET else 2
+        t_group_size = st.number_input("Parejas por grupo", min_value=3, max_value=8, value=t.group_size if t else 4) if t_format in (TournamentFormat.GROUPS, TournamentFormat.GROUPS_BRACKET) else 4
+
+        if t_format == TournamentFormat.GROUPS_BRACKET:
+            # Fase final tras los grupos: los mejores de cada grupo clasifican
+            _final_phase_opts = {
+                2:  "🏁 Solo final (2 mejores)",
+                4:  "🥈 Semifinales + final (4 mejores)",
+                8:  "🎾 Cuartos + semis + final (8 mejores)",
+                16: "🪜 Dieciseisavos… (16 mejores)",
+            }
+            _fp_keys = list(_final_phase_opts.keys())
+            _fp_default = t.bracket_size if (t and t.bracket_size in _fp_keys) else 4
+            t_bracket_size = st.selectbox(
+                "Fase final (clasifican los mejores de cada grupo)",
+                options=_fp_keys, index=_fp_keys.index(_fp_default),
+                format_func=lambda b: _final_phase_opts[b],
+            )
+            t_qualifiers = st.number_input("Clasificados por grupo", min_value=1, max_value=4,
+                                           value=t.groups_qualifiers if t else 2)
+            t_third_place = st.checkbox("Partido 3er/4º puesto", value=t.third_place_match if t else False) if t_bracket_size >= 4 else False
+        elif t_format == TournamentFormat.BRACKET:
+            t_bracket_size = st.selectbox("Tamaño del cuadro", [4, 8, 16],
+                                          index=[4, 8, 16].index(t.bracket_size) if (t and t.bracket_size in (4, 8, 16)) else 1)
+            t_third_place = st.checkbox("Partido 3er/4º puesto", value=t.third_place_match if t else False)
+            t_qualifiers = 2
+        else:  # GROUPS
+            t_bracket_size = 8
+            t_third_place = False
+            t_qualifiers = 2
 
     st.divider()
     if st.button("💾 Guardar y continuar →", type="primary", use_container_width=True):

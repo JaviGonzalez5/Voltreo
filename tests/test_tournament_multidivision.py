@@ -162,3 +162,34 @@ class TestBackwardCompatibility:
         )
         cfg = generate_tournament_structure(cfg)
         assert len(cfg.matches) > 0
+
+
+class TestFinalPhaseSizing:
+    """Fase final configurable tras los grupos."""
+
+    def _groups_bracket(self, bracket_size, group_size, qualifiers, n_pairs):
+        from src.tournament_models import TournamentConfig, TournamentFormat, TournamentCourt
+        cfg = TournamentConfig(
+            name="GB", start_date=date(2026, 6, 1), end_date=date(2026, 6, 1),
+            format=TournamentFormat.GROUPS_BRACKET,
+            group_size=group_size, groups_qualifiers=qualifiers, bracket_size=bracket_size,
+            courts=[TournamentCourt(id="c1", name="P1")],
+            pairs=[_pair(f"P{i}", None) for i in range(n_pairs)],
+        )
+        return generate_tournament_structure(cfg)
+
+    def test_solo_final_no_semifinals(self):
+        cfg = self._groups_bracket(bracket_size=2, group_size=3, qualifiers=1, n_pairs=6)
+        assert any(m.round == MatchRound.FINAL for m in cfg.matches)
+        assert not any(m.round == MatchRound.SEMIFINAL for m in cfg.matches)
+
+    def test_semis_plus_final(self):
+        cfg = self._groups_bracket(bracket_size=4, group_size=4, qualifiers=2, n_pairs=8)
+        assert len([m for m in cfg.matches if m.round == MatchRound.SEMIFINAL]) == 2
+        assert len([m for m in cfg.matches if m.round == MatchRound.FINAL]) == 1
+
+    def test_bracket_capped_by_qualifiers(self):
+        # Pide cuadro de 8 pero solo hay 2 clasificados → se reduce a final (2)
+        cfg = self._groups_bracket(bracket_size=8, group_size=3, qualifiers=1, n_pairs=6)
+        assert not any(m.round == MatchRound.QUARTERFINAL for m in cfg.matches)
+        assert any(m.round == MatchRound.FINAL for m in cfg.matches)

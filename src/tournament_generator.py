@@ -169,6 +169,7 @@ def _generate_group_matches(groups: list[TournamentGroup]) -> list[TournamentMat
 def _bracket_round_for_size(bracket_size: int) -> MatchRound:
     """Devuelve la ronda inicial del cuadro según su tamaño."""
     return {
+        2:  MatchRound.FINAL,        # solo final (2 mejores)
         4:  MatchRound.SEMIFINAL,
         8:  MatchRound.QUARTERFINAL,
         16: MatchRound.ROUND_OF_16,
@@ -190,7 +191,7 @@ def _generate_bracket_matches(
     Emparejamiento estándar (seeds):
         1 vs N, 2 vs N-1, 3 vs N-2, … (cabeza de serie arriba)
     """
-    assert bracket_size in (4, 8, 16), "bracket_size debe ser 4, 8 o 16"
+    assert bracket_size in (2, 4, 8, 16), "bracket_size debe ser 2, 4, 8 o 16"
 
     matches: list[TournamentMatch] = []
     first_round = _bracket_round_for_size(bracket_size)
@@ -335,7 +336,10 @@ def _generate_one_division(
         n_qualifiers = len(groups) * _safe_q
         if n_qualifiers < 2:
             return groups, group_matches, bracket_size
-        bs = max(4, 1 << (n_qualifiers.bit_length() - 1))
+        # Tamaño del cuadro: el SOLICITADO (2=solo final, 4=semis+final, ...),
+        # acotado a la mayor potencia de 2 que cabe en los clasificados disponibles.
+        max_bs = 1 << (n_qualifiers.bit_length() - 1)  # potencia de 2 <= n_qualifiers
+        bs = min(max(2, bracket_size), max_bs)
         if bs > 16:
             bs = 16
         eff_bracket = bs
