@@ -2165,6 +2165,25 @@ st.sidebar.markdown(
 # TORNEOS — helpers (deben definirse antes del routing)
 # ---------------------------------------------------------------------------
 
+def _group_letter(idx: int) -> str:
+    """0 -> 'Grupo A', 1 -> 'Grupo B', … (coherente con el generador)."""
+    letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    if idx < 26:
+        return f"Grupo {letters[idx]}"
+    return f"Grupo {letters[idx // 26 - 1]}{letters[idx % 26]}"
+
+
+def _group_letter_to_index(label: str) -> int:
+    """'Grupo A' -> 0, 'Grupo B' -> 1, … Inverso de _group_letter (hasta Z)."""
+    letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    s = label.replace("Grupo", "").strip()
+    if len(s) == 1 and s in letters:
+        return letters.index(s)
+    if len(s) == 2 and s[0] in letters and s[1] in letters:
+        return (letters.index(s[0]) + 1) * 26 + letters.index(s[1])
+    return 0
+
+
 def _t_header(step_num: int, step_title: str, step_hint: str) -> None:
     import datetime as _dt_mod
     t = st.session_state.get("tournament")
@@ -5264,6 +5283,139 @@ elif page == "t_pairs":
             t.pairs = []; t.groups = []; t.matches = []; t.division_draws = []; st.rerun()
     else:
         _empty_state("👥", "Sin parejas", "Añade las parejas del torneo manualmente o importa un CSV.")
+
+    # ───────────────────────────────────────────────────────────────────────
+    # Grupos y fase final por categoría (solo formatos con grupos)
+    # ───────────────────────────────────────────────────────────────────────
+    if t.pairs and t.format in (TournamentFormat.GROUPS, TournamentFormat.GROUPS_BRACKET):
+        from src.tournament_models import TournamentDivision as _TDivP
+
+        def _persist_t_pairs(_tobj):
+            if _db_ok and _db is not None:
+                _cid = current_club_id()
+                if _cid:
+                    try:
+                        _p = tournament_to_db(_tobj, _cid, st.session_state.get("db_tournament_id"))
+                        _sv = _db.upsert_tournament(
+                            club_id=_cid, name=_p["name"],
+                            start_date=_p["start_date"], end_date=_p["end_date"],
+                            tournament_data=_p["tournament_data"], tournament_id=_p["tournament_id"],
+                        )
+                        st.session_state["db_tournament_id"] = _sv["id"]
+                    except Exception as _e:
+                        st.warning(f"⚠️ Guardado local OK, BD falló: {_e}")
+
+        st.divider()
+        _section_start("🎯", "Grupos y fase final por categoría")
+        st.caption("Para cada categoría: elige cuántos grupos, qué fase final se juega, "
+                   "y asigna cada pareja a su grupo (déjalo en «Auto» para reparto automático).")
+
+        # Mapa de config por división existente
+        _draws_map = {d.key: d for d in (getattr(t, "division_draws", []) or [])}
+        _final_opts = {
+            2:  "🏁 Solo final",
+            4:  "🥈 Semifinales + final",
+            8:  "🎾 Cuartos + semis + final",
+            16: "🪜 Dieciseisavos en adelante",
+        }
+        _final_keys = list(_final_opts.keys())
+
+        # Una sola lista de divisiones (multi o una)
+        _editor_divs = _t_div_keys if _t_div_keys else [None]
+
+        for _dk in _editor_divs:
+            _dlabel = _div_label(_dk) if _dk else "Torneo"
+            _div_pairs = [p for p in t.pairs if (p.division == _dk or _dk is None)]
+            if not _div_pairs:
+                continue
+            _prev = _draws_map.get(_dk)
+
+            with st.expander(f"**{_dlabel}** · {len(_div_pairs)} parejas", expanded=True):
+                _ec1, _ec2 = st.columns(2)
+                with _ec1:
+                    _ng = st.number_input(
+                        "Número de grupos", min_value=1, max_value=16,
+                        value=int(getattr(_prev, "num_groups", 0) or 2) if _prev else 2,
+                        key=f"pe_ngroups_{_dk}",
+                    )
+                with _ec2:
+                    if t.format == TournamentFormat.GROUPS_BRACKET:
+                        _fp_def = int(getattr(_prev, "bracket_size", 4) or 4) if _prev else 4
+                        if _fp_def not in _final_keys:
+                            _fp_def = 4
+                        _fp = st.selectbox(
+                            "Fase final", options=_final_keys,
+                            index=_final_keys.index(_fp_def),
+                            format_func=lambda b: _final_opts[b],
+                            key=f"pe_final_{_dk}",
+                        )
+                    else:
+                        _fp = 2
+                        st.caption("Formato solo grupos (sin fase eliminatoria).")
+
+                # Asignación de parejas a grupos
+                _grp_labels = ["Auto"] + [_group_letter(i) for i in range(int(_ng))]
+                _rows_assign = []
+                for _p in _div_pairs:
+                    _cur_g = "Auto"
+                    if _p.assigned_group is not None and _p.assigned_group < int(_ng):
+                        _cur_g = _group_letter(_p.assigned_group)
+                    _rows_assign.append({
+                        "_pid": _p.id,
+                        "Pareja": _p.display_name,
+                        "Cabeza serie": f"#{_p.seed}" if _p.seed else "—",
+                        "Grupo": _cur_g,
+                    })
+                _df_assign = pd.DataFrame(_rows_assign)
+                _edited_assign = st.data_editor(
+                    _df_assign, hide_index=True, use_container_width=True,
+                    key=f"pe_assign_{_dk}",
+                    column_config={
+                        "_pid": None,
+                        "Pareja": st.column_config.TextColumn(disabled=True, width="large"),
+                        "Cabeza serie": st.column_config.TextColumn(disabled=True, width="small"),
+                        "Grupo": st.column_config.SelectboxColumn(options=_grp_labels, width="small"),
+                    },
+                )
+                # Preview de reparto
+                from collections import Counter as _CntP
+                _assigned_counts = _CntP(
+                    _r["Grupo"] for _, _r in _edited_assign.iterrows() if _r["Grupo"] != "Auto"
+                )
+                _n_auto = sum(1 for _, _r in _edited_assign.iterrows() if _r["Grupo"] == "Auto")
+                _preview = " · ".join(f"{g}: {c}" for g, c in sorted(_assigned_counts.items()))
+                if _preview or _n_auto:
+                    st.caption(f"Asignadas → {_preview or '—'}" + (f"  ·  Auto: {_n_auto}" if _n_auto else ""))
+
+                if st.button(f"💾 Guardar grupos de {_dlabel}", key=f"pe_save_{_dk}", type="primary"):
+                    # Escribir assigned_group en las parejas
+                    _pair_by_id = {p.id: p for p in t.pairs}
+                    for _, _r in _edited_assign.iterrows():
+                        _pp = _pair_by_id.get(_r["_pid"])
+                        if not _pp:
+                            continue
+                        if _r["Grupo"] == "Auto":
+                            _pp.assigned_group = None
+                        else:
+                            _pp.assigned_group = _group_letter_to_index(_r["Grupo"])
+                    # Actualizar/crear la config de división
+                    _dcat, _dsub = _parse_division_key(_dk) if _dk else (t.category, t.subcategory)
+                    _qual = int(getattr(_prev, "groups_qualifiers", 2) or 2) if _prev else 2
+                    _new_draw = _TDivP(
+                        key=_dk or "default", category=_dcat, subcategory=_dsub,
+                        format=t.format, num_groups=int(_ng), group_size=t.group_size,
+                        bracket_size=int(_fp), groups_qualifiers=_qual,
+                        third_place_match=t.third_place_match,
+                        pairs=[p for p in t.pairs if (p.division == _dk or _dk is None)],
+                    )
+                    _draws_map[_dk] = _new_draw
+                    t.division_draws = list(_draws_map.values())
+                    # Invalidar estructura previa (hay que regenerar)
+                    t.groups = []; t.matches = []
+                    st.session_state["tournament"] = t
+                    _persist_t_pairs(t)
+                    st.success(f"✅ Grupos de {_dlabel} guardados. Ve a «Generar estructura» para crear los partidos.")
+                    st.rerun()
 
     _t_nav_buttons(2)
 

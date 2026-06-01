@@ -41,6 +41,29 @@ def _make_groups(
     se asigna rellenando los grupos más vacíos primero.
     """
     n = len(pairs)
+
+    # ── Asignación manual: si alguna pareja tiene assigned_group, respetar ──
+    _manual = [p for p in pairs if getattr(p, "assigned_group", None) is not None]
+    if _manual:
+        # Nº de grupos = el solicitado, o el máximo índice asignado + 1
+        max_idx = max(p.assigned_group for p in _manual)
+        n_groups = max(num_groups if num_groups > 0 else 0, max_idx + 1, 1)
+        groups = [
+            TournamentGroup(id=str(uuid4()), name=_group_name(i), pairs=[])
+            for i in range(n_groups)
+        ]
+        # Colocar las asignadas en su grupo
+        for p in _manual:
+            gi = min(p.assigned_group, n_groups - 1)
+            p.group_id = groups[gi].id
+            groups[gi].pairs.append(p)
+        # Repartir las no asignadas en los grupos más vacíos
+        for p in [x for x in pairs if getattr(x, "assigned_group", None) is None]:
+            target = min(groups, key=lambda g: len(g.pairs))
+            p.group_id = target.id
+            target.pairs.append(p)
+        return [g for g in groups if g.pairs]
+
     if num_groups and num_groups > 0:
         n_groups = max(1, min(num_groups, n))
     else:
@@ -399,14 +422,22 @@ def generate_tournament_structure(config: TournamentConfig) -> TournamentConfig:
     if len(div_keys) > 1:
         return generate_multi_division(config)
 
+    # Config de la única división si se definió en el paso de Parejas
+    _single_draw = (config.division_draws or [None])[0]
+    _s_num_groups = int(getattr(_single_draw, "num_groups", 0) or 0) if _single_draw else 0
+    _s_bracket    = int(getattr(_single_draw, "bracket_size", 0) or 0) if _single_draw else 0
+    _s_qualif     = int(getattr(_single_draw, "groups_qualifiers", 0) or 0) if _single_draw else 0
+
     groups, all_matches, eff_bracket = _generate_one_division(
         list(config.pairs), config.format, config.group_size,
-        config.groups_qualifiers, config.bracket_size, config.third_place_match,
+        _s_qualif or config.groups_qualifiers,
+        _s_bracket or config.bracket_size,
+        config.third_place_match,
+        num_groups=_s_num_groups,
     )
     config.groups = groups
     config.matches = all_matches
     config.bracket_size = eff_bracket
-    config.division_draws = []
     # Etiquetar con la división primaria si existe
     _primary = div_keys[0] if div_keys else None
     if _primary:

@@ -147,6 +147,7 @@ class TournamentPair(BaseModel):
     seed: Optional[int] = None         # Cabeza de serie (1 = favorito)
     group_id: Optional[str] = None     # Asignado en la generación
     division: Optional[str] = None     # Clave de división "categoria:subcategoria" (ej. "masculino:1a")
+    assigned_group: Optional[int] = None  # Índice de grupo manual (0=A, 1=B, …). None = reparto automático
 
     @property
     def display_name(self) -> str:
