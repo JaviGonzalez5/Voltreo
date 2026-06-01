@@ -5046,7 +5046,7 @@ elif page == "t_config":
             if t_divisions:
                 _primary_cat, _primary_sub = _parse_division_key(t_divisions[0])
             # Construir division_draws con configuración por categoría
-            from src.tournament_models import TournamentDivision as _TDiv
+            from src.tournament_models import TournamentDivision
             _existing_draws_map = {d.key: d for d in (getattr(t, "division_draws", []) or [])}
             _new_division_draws = []
             for _dk in (t_divisions or []):
