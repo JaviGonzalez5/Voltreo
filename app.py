@@ -1519,7 +1519,7 @@ from src.tournament_models import (
 from src.tournament_generator import (
     generate_tournament_structure, tournament_summary as _t_summary,
 )
-from src.tournament_scheduler import schedule_tournament, tournament_schedule_summary
+from src.tournament_scheduler import _duration_for_match, schedule_tournament, tournament_schedule_summary
 from src.db import get_db, is_db_configured
 from src.auth import (
     render_login_screen, is_authenticated, get_session_user,
@@ -6021,6 +6021,29 @@ elif page == "t_schedule":
                 st.info(
                     f"Estimacion ajustada: grupos {t.match_duration_minutes} min, "
                     f"semifinales {_semi_txt} min y finales {_final_txt} min."
+                )
+            _conflict_matches = sorted(
+                [m for m in t.matches if m.status == TMatchStatus.CONFLICT],
+                key=lambda m: _tournament_match_sort_key(t, m),
+            )
+            if _conflict_matches:
+                st.warning(
+                    "Hay partidos sin hueco. Revisa la tabla de conflictos para ver "
+                    "que partidos son y por que no se han podido programar."
+                )
+                st.dataframe(
+                    [{
+                        "Ronda": m.round_display,
+                        "Grupo": next((g.name for g in t.groups if g.id == m.group_id), "") if m.group_id else "",
+                        "Partido": m.match_number,
+                        "Pareja 1": m.p1_display,
+                        "Pareja 2": m.p2_display,
+                        "Duracion usada": f"{int(_duration_for_match(t, m).total_seconds() // 60)} min",
+                        "Causa": m.conflict_reason or "No se encontro un hueco libre con las pistas y horario actuales.",
+                        "Solucion sugerida": "Amplia la hora de fin, anade pistas o baja la duracion de esta ronda.",
+                    } for m in _conflict_matches],
+                    use_container_width=True,
+                    hide_index=True,
                 )
 
     if any(m.status == TMatchStatus.SCHEDULED for m in t.matches):
