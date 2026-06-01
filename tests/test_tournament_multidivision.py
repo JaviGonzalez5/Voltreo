@@ -97,6 +97,12 @@ class TestNightTournamentScheduling:
         assert all(m.status == TMatchStatus.SCHEDULED for m in cfg.matches)
         assert min(m.start_time for m in cfg.matches) >= time(19, 0)
         assert any(m.end_time <= time(1, 15) for m in cfg.matches)
+        ordered = sorted(cfg.matches, key=lambda m: (
+            m.match_date,
+            m.start_time if m.start_time >= cfg.day_start_time else time(23, 59),
+            m.start_time,
+        ))
+        assert ordered[-1].end_time <= time(1, 15)
 
 
 class TestMultiDivisionAdvancement:

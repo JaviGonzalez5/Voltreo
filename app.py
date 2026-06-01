@@ -1926,6 +1926,22 @@ def _safe_excel_sheet_name(name: str, used: set[str]) -> str:
     return cleaned
 
 
+def _tournament_match_sort_key(t_obj, match) -> tuple:
+    """Orden cronológico real para sesiones que cruzan medianoche."""
+    match_date = getattr(match, "match_date", None) or date.max
+    start_time = getattr(match, "start_time", None) or time(0, 0)
+    day_start = getattr(t_obj, "day_start_time", time(0, 0)) or time(0, 0)
+    real_start = datetime.combine(match_date, start_time)
+    if start_time < day_start:
+        real_start += timedelta(days=1)
+    return (
+        real_start,
+        getattr(getattr(match, "court", None), "name", ""),
+        getattr(getattr(match, "round", None), "order", 99),
+        getattr(match, "match_number", 0),
+    )
+
+
 def _tournament_matches_excel_bytes(t_obj) -> bytes:
     """Genera un Excel moderno con la estructura de partidos del torneo."""
     import openpyxl
@@ -2010,10 +2026,9 @@ def _tournament_matches_excel_bytes(t_obj) -> bytes:
     matches = sorted(
         list(getattr(t_obj, "matches", []) or []),
         key=lambda m: (
-            m.round.order,
+            _tournament_match_sort_key(t_obj, m),
             _division_label(getattr(m, "division", None)),
             group_map.get(getattr(m, "group_id", None), ""),
-            m.match_number,
         ),
     )
 
@@ -5806,7 +5821,7 @@ elif page == "t_schedule":
         _days_in_t = sorted({m.match_date for m in t.matches if m.match_date})
         for _d in _days_in_t:
             _day_matches = sorted([m for m in t.matches if m.match_date == _d],
-                                  key=lambda m: (m.start_time or _dt_mod.time(0,0), m.round.order))
+                                  key=lambda m: _tournament_match_sort_key(t, m))
             st.markdown(f'<div style="font-weight:700;font-size:1rem;color:#0b1a2b;margin:.8rem 0 .3rem">📅 {_d.strftime("%A %d/%m/%Y").capitalize()}</div>', unsafe_allow_html=True)
             st.dataframe([{
                 "Estado": {TMatchStatus.SCHEDULED:"✅", TMatchStatus.CONFLICT:"❌", TMatchStatus.PENDING:"⏳"}.get(m.status,""),
@@ -6045,11 +6060,7 @@ elif page == "t_export":
             _hdrs = ["Fecha","Hora","Fin","Pista","Ronda","Grupo","Pareja 1","Pareja 2","Estado"]
             for _ci, _h in enumerate(_hdrs, 1): _hcell(_ws_all, 1, _ci, _h)
 
-            for _ri, _m in enumerate(sorted(t.matches, key=lambda m: (
-                m.match_date or _dt_mod.date.max,
-                m.start_time or _dt_mod.time(0,0),
-                m.round.order,
-            )), start=2):
+            for _ri, _m in enumerate(sorted(t.matches, key=lambda m: _tournament_match_sort_key(t, m)), start=2):
                 _bg = _sch_fill if _m.status == TMatchStatus.SCHEDULED else (_cfl_fill if _m.status == TMatchStatus.CONFLICT else (_odd_fill if _ri%2 else _evn_fill))
                 _vals = [
                     _m.match_date.strftime("%d/%m/%Y") if _m.match_date else "",
