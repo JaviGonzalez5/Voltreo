@@ -2110,6 +2110,15 @@ def _tournament_schedule_excel_bytes(t_obj) -> bytes:
     courts = [c for c in getattr(t_obj, "courts", []) or [] if getattr(c, "active", True)]
     if not courts:
         courts = sorted({m.court for m in scheduled if m.court}, key=lambda c: c.name)
+    group_map = {g.id: g.name for g in getattr(t_obj, "groups", []) or []}
+
+    def _division_label(key: str | None) -> str:
+        if not key:
+            return ""
+        cat, sub = _parse_division_key(key)
+        if cat and sub:
+            return f"{cat.label} {sub.label}"
+        return key
 
     def _title(ws, title: str, subtitle: str = "") -> None:
         end_col = max(2, len(courts) + 1)
@@ -2184,9 +2193,12 @@ def _tournament_schedule_excel_bytes(t_obj) -> bytes:
                 cell.fill = round_fills.get(m.round_display, match_fill) if m else grid_fill
                 cell.alignment = Alignment(wrap_text=True, vertical="top")
                 if m:
+                    division_txt = _division_label(getattr(m, "division", None))
+                    group_txt = group_map.get(getattr(m, "group_id", None), "") if m.group_id else ""
+                    round_txt = f"{m.round_display}{' - ' + group_txt if group_txt else ''}"
                     cell.value = (
-                        f"{m.round_display}"
-                        f"{' - ' + next((g.name for g in t_obj.groups if g.id == m.group_id), '') if m.group_id else ''}\n"
+                        f"{division_txt}\n"
+                        f"{round_txt}\n"
                         f"{m.p1_display}\nvs\n{m.p2_display}\n"
                         f"{m.start_time.strftime('%H:%M')} - {m.end_time.strftime('%H:%M') if m.end_time else ''}"
                     )
@@ -2196,11 +2208,11 @@ def _tournament_schedule_excel_bytes(t_obj) -> bytes:
         for ci in range(2, len(courts) + 2):
             ws.column_dimensions[get_column_letter(ci)].width = 34
         for ri in range(5, 5 + len(slots)):
-            ws.row_dimensions[ri].height = 78
+            ws.row_dimensions[ri].height = 92
 
     # Listado ordenado
     ws_list = wb.create_sheet("Listado")
-    list_headers = ["Fecha", "Hora", "Fin", "Pista", "Ronda", "Grupo", "Pareja 1", "Pareja 2"]
+    list_headers = ["Fecha", "Hora", "Fin", "Pista", "Categoria", "Ronda", "Grupo", "Pareja 1", "Pareja 2"]
     for ci, h in enumerate(list_headers, 1):
         cell = ws_list.cell(1, ci, h)
         cell.font = Font(bold=True, color="FFFFFF")
@@ -2213,8 +2225,9 @@ def _tournament_schedule_excel_bytes(t_obj) -> bytes:
             m.start_time.strftime("%H:%M"),
             m.end_time.strftime("%H:%M") if m.end_time else "",
             m.court.name if m.court else "",
+            _division_label(getattr(m, "division", None)),
             m.round_display,
-            next((g.name for g in t_obj.groups if g.id == m.group_id), "") if m.group_id else "",
+            group_map.get(getattr(m, "group_id", None), "") if m.group_id else "",
             m.p1_display,
             m.p2_display,
         ]
@@ -2226,7 +2239,7 @@ def _tournament_schedule_excel_bytes(t_obj) -> bytes:
     ws_list.freeze_panes = "A2"
     ws_list.auto_filter.ref = ws_list.dimensions
     for ci in range(1, len(list_headers) + 1):
-        ws_list.column_dimensions[get_column_letter(ci)].width = [12, 10, 10, 14, 18, 14, 28, 28][ci - 1]
+        ws_list.column_dimensions[get_column_letter(ci)].width = [12, 10, 10, 14, 22, 18, 14, 28, 28][ci - 1]
 
     buf = io.BytesIO()
     wb.save(buf)
