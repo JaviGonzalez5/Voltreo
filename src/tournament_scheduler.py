@@ -186,6 +186,8 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
 
     for _wave in _wave_numbers:
         wave_matches = [m for m in config.matches if _wave_of(m) == _wave]
+        wave_divisions = _ordered_wave_divisions(config, wave_matches)
+        courts_by_division = _courts_by_division(active_courts, wave_divisions)
 
         # ── Agrupar por ronda y ordenar (dentro de la tanda)
         rounds_ordered: list[MatchRound] = sorted(
@@ -212,9 +214,10 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
 
             for match in matches:
                 duration = _duration_for_match(config, match)
+                match_courts = courts_by_division.get(match.division) or active_courts
                 slot = _find_best_slot(
                     match        = match,
-                    active_courts= active_courts,
+                    active_courts= match_courts,
                     court_tls    = court_tls,
                     player_tl    = player_tl,
                     duration     = duration,
@@ -260,6 +263,41 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
             wave_prev_end = max(wave_prev_end, _next) if wave_prev_end else _next
 
     return config
+
+
+def _ordered_wave_divisions(config: TournamentConfig, matches: list[TournamentMatch]) -> list[str | None]:
+    """Divisiones de una tanda manteniendo el orden configurado por el usuario."""
+    present = {m.division for m in matches}
+    ordered: list[str | None] = [
+        d for d in (getattr(config, "divisions", []) or [])
+        if d in present
+    ]
+    for d in present:
+        if d not in ordered:
+            ordered.append(d)
+    return ordered
+
+
+def _courts_by_division(
+    active_courts: list[TournamentCourt],
+    divisions: list[str | None],
+) -> dict[str | None, list[TournamentCourt]]:
+    """Reparte pistas entre categorias simultaneas de una misma tanda."""
+    if len(divisions) <= 1 or len(active_courts) < len(divisions):
+        return {}
+
+    total_courts = len(active_courts)
+    total_divisions = len(divisions)
+    base = total_courts // total_divisions
+    extra = total_courts % total_divisions
+
+    result: dict[str | None, list[TournamentCourt]] = {}
+    start = 0
+    for idx, division in enumerate(divisions):
+        size = base + (1 if idx < extra else 0)
+        result[division] = active_courts[start:start + size]
+        start += size
+    return result
 
 
 def _duration_for_match(config: TournamentConfig, match: TournamentMatch) -> timedelta:

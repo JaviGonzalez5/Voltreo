@@ -196,6 +196,43 @@ class TestMultiDivisionScheduling:
         assert len(masc) > 0
         assert len(fem) > 0
 
+    def test_same_wave_divisions_split_courts(self):
+        masc = "masculino:1a"
+        fem = "femenino:1a"
+        cfg = TournamentConfig(
+            name="Split courts",
+            start_date=date(2026, 6, 1),
+            end_date=date(2026, 6, 1),
+            divisions=[masc, fem],
+            division_waves={masc: 1, fem: 1},
+            format=TournamentFormat.BRACKET,
+            bracket_size=4,
+            courts=[
+                TournamentCourt(id="c1", name="Pista 1"),
+                TournamentCourt(id="c2", name="Pista 2"),
+                TournamentCourt(id="c3", name="Pista 3"),
+                TournamentCourt(id="c4", name="Pista 4"),
+            ],
+            pairs=[_pair(f"M{i}", masc) for i in range(4)] + [_pair(f"F{i}", fem) for i in range(4)],
+            match_duration_minutes=30,
+            rest_between_matches_min=0,
+            day_start_time=time(9, 0),
+            day_end_time=time(14, 0),
+        )
+
+        cfg = schedule_tournament(generate_tournament_structure(cfg))
+        masc_first = [
+            m for m in cfg.matches
+            if m.division == masc and m.round == MatchRound.SEMIFINAL and m.start_time == time(9, 0)
+        ]
+        fem_first = [
+            m for m in cfg.matches
+            if m.division == fem and m.round == MatchRound.SEMIFINAL and m.start_time == time(9, 0)
+        ]
+
+        assert {m.court.id for m in masc_first} == {"c1", "c2"}
+        assert {m.court.id for m in fem_first} == {"c3", "c4"}
+
 
 class TestBackwardCompatibility:
 
