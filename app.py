@@ -5222,13 +5222,24 @@ elif page == "t_pairs":
             _csv_div = None
             _sample_csv = "pair_name,player1_name,player2_name,player1_phone,player2_phone,seed\nGarcía / López,Carlos García,Marta López,+34600000001,+34600000002,1\nRuiz / Martín,Ana Ruiz,Luis Martín,,,\n"
         st.download_button("⬇️ Descargar plantilla CSV", _sample_csv, "plantilla_parejas.csv", "text/csv")
-        csv_upload = st.file_uploader("Subir CSV de parejas", type=["csv"], key="t_csv_pairs")
+        csv_upload = st.file_uploader("Subir parejas (CSV o Excel)", type=["csv", "xlsx", "xls"], key="t_csv_pairs")
         if csv_upload:
             try:
-                _df_pairs = pd.read_csv(csv_upload)
+                _fname = (csv_upload.name or "").lower()
+                if _fname.endswith((".xlsx", ".xls")):
+                    _df_pairs = pd.read_excel(csv_upload)
+                else:
+                    _df_pairs = pd.read_csv(csv_upload)
+                # Normalizar nombres de columna (minúsculas, sin espacios)
+                _df_pairs.columns = [str(c).strip().lower() for c in _df_pairs.columns]
                 missing = {"pair_name", "player1_name", "player2_name"} - set(_df_pairs.columns)
                 if missing:
-                    st.error(f"Faltan columnas: {', '.join(missing)}")
+                    st.error(
+                        f"Faltan columnas: {', '.join(missing)}. "
+                        "El archivo debe tener las columnas: pair_name, player1_name, "
+                        "player2_name (y opcionalmente player1_phone, player2_phone, seed, division). "
+                        "Descarga la plantilla CSV de arriba como referencia."
+                    )
                 else:
                     new_pairs_csv = []
                     for _, row in _df_pairs.iterrows():
