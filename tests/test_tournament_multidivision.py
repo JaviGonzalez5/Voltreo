@@ -307,6 +307,39 @@ class TestMultiDivisionScheduling:
 
         assert masc_first_semi < fem_last_group
 
+    def test_group_stage_rotates_groups_within_division(self):
+        div = "mixto:pb_3"
+        cfg = TournamentConfig(
+            name="Rotate groups",
+            start_date=date(2026, 6, 1),
+            end_date=date(2026, 6, 1),
+            divisions=[div],
+            format=TournamentFormat.GROUPS_BRACKET,
+            courts=[
+                TournamentCourt(id="c1", name="Pista 1"),
+                TournamentCourt(id="c2", name="Pista 2"),
+                TournamentCourt(id="c3", name="Pista 3"),
+            ],
+            pairs=[_pair(f"X{i}", div) for i in range(9)],
+            match_duration_minutes=15,
+            rest_between_matches_min=0,
+            day_start_time=time(19, 0),
+            day_end_time=time(23, 0),
+            division_draws=[
+                TournamentDivision(key=div, format=TournamentFormat.GROUPS_BRACKET, num_groups=3, bracket_size=4),
+            ],
+        )
+
+        cfg = schedule_tournament(generate_tournament_structure(cfg))
+        group_names = {g.id: g.name for g in cfg.groups}
+        first_slot_groups = {
+            group_names[m.group_id]
+            for m in cfg.matches
+            if m.round == MatchRound.GROUP and m.start_time == time(19, 0)
+        }
+
+        assert first_slot_groups == {"Grupo A", "Grupo B", "Grupo C"}
+
 
 class TestBackwardCompatibility:
 
