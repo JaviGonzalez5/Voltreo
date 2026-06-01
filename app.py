@@ -4841,39 +4841,49 @@ elif page == "t_config":
     _preset_masc = [f"{TournamentCategory.MASCULINO.value}:{_sub.value}" for _sub in _t_subs]
     _preset_fem = [f"{TournamentCategory.FEMENINO.value}:{_sub.value}" for _sub in _t_subs]
     _preset_mix = [f"{TournamentCategory.MIXTO.value}:{_sub.value}" for _sub in _t_subs]
-    _preset_all = list(dict.fromkeys(_preset_masc + _preset_fem + _preset_mix))
-
-    st.caption("Los botones **añaden** categorías a tu selección (puedes combinar Masculino, Femenino y Mixto). "
-               "Usa «Limpiar» para empezar de cero.")
 
     def _add_divs(keys_to_add):
         _cur = list(st.session_state.get("t_config_divisions", []))
         st.session_state["t_config_divisions"] = list(dict.fromkeys(_cur + list(keys_to_add)))
 
-    _preset_cols = st.columns(5)
-    with _preset_cols[0]:
-        if st.button(f"➕ Masculino {_sub_range_lbl}", key="t_div_preset_masc", use_container_width=True):
-            _add_divs(_preset_masc); st.rerun()
-    with _preset_cols[1]:
-        if st.button(f"➕ Femenino {_sub_range_lbl}", key="t_div_preset_fem", use_container_width=True):
-            _add_divs(_preset_fem); st.rerun()
-    with _preset_cols[2]:
-        if st.button(f"➕ Mixto {_sub_range_lbl}", key="t_div_preset_mix", use_container_width=True):
-            _add_divs(_preset_mix); st.rerun()
-    with _preset_cols[3]:
-        if st.button("➕ Todas", key="t_div_preset_all", use_container_width=True):
-            _add_divs(_preset_all); st.rerun()
-    with _preset_cols[4]:
-        if st.button("🗑️ Limpiar", key="t_div_preset_none", use_container_width=True):
+    # ── Selectores rápidos por categoría ────────────────────────────────────
+    st.caption("Elige los niveles de cada categoría. Puedes combinar Masculino, Femenino y Mixto.")
+    _qsel_cols = st.columns([1, 1, 1, 1])
+
+    _cat_presets = [
+        ("masculino", "👨 Masculino", _preset_masc, TournamentCategory.MASCULINO),
+        ("femenino",  "👩 Femenino",  _preset_fem,  TournamentCategory.FEMENINO),
+        ("mixto",     "🤝 Mixto",     _preset_mix,  TournamentCategory.MIXTO),
+    ]
+    for _ci, (_cval, _clabel, _ckeys, _ccat) in enumerate(_cat_presets):
+        with _qsel_cols[_ci]:
+            with st.expander(_clabel, expanded=False):
+                _cur_sel = set(st.session_state.get("t_config_divisions", []))
+                _already = [k for k in _ckeys if k in _cur_sel]
+                _picked = st.multiselect(
+                    "Niveles",
+                    options=_ckeys,
+                    default=_already,
+                    format_func=lambda k: _div_labels.get(k, k).replace(f"{_ccat.label} ", ""),
+                    key=f"quick_sel_{_cval}",
+                    label_visibility="collapsed",
+                )
+                if st.button(f"Añadir selección", key=f"quick_add_{_cval}", use_container_width=True, type="primary"):
+                    _add_divs(_picked)
+                    st.rerun()
+
+    with _qsel_cols[3]:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🗑️ Limpiar todo", key="t_div_preset_none", use_container_width=True):
             st.session_state["t_config_divisions"] = []
             st.rerun()
 
     t_divisions = st.multiselect(
-        "Selecciona una o varias categorías del torneo",
+        "Categorías seleccionadas",
         options=_div_keys,
         key="t_config_divisions",
         format_func=lambda k: _div_labels.get(k, k),
-        help="Puedes combinar categorías, por ejemplo: Masculino 1ª-5ª, Femenino 1ª-5ª y Mixto 1ª-5ª.",
+        help="También puedes añadir o quitar categorías directamente aquí.",
     )
 
     if t_divisions:
