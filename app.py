@@ -4877,29 +4877,26 @@ elif page == "t_config":
                 st.session_state[f"divchk_{_k}"] = (_k in _cur_set0)
         st.session_state[_chk_init_id] = _div_source_id
 
+    _n_subs = len(_t_subs)
     for _cval, _clabel, _ccat in _cat_rows:
         _row_keys = [f"{_ccat.value}:{_sub.value}" for _sub in _t_subs]
-        # cabecera de fila + botones todos/ninguno
-        _hc1, _hc2, _hc3 = st.columns([3, 1, 1])
-        with _hc1:
+        # Una sola fila: etiqueta · casillas de nivel · botones todos/ninguno
+        _cols = st.columns([1.4] + [0.8] * _n_subs + [0.9, 0.9])
+        with _cols[0]:
             st.markdown(f"**{_clabel}**")
-        with _hc2:
-            if st.button("Todos", key=f"rowall_{_cval}", use_container_width=True):
+        for _li, _sub in enumerate(_t_subs):
+            with _cols[1 + _li]:
+                st.checkbox(_sub.label, key=f"divchk_{_ccat.value}:{_sub.value}")
+        with _cols[1 + _n_subs]:
+            if st.button("✓ Todos", key=f"rowall_{_cval}", use_container_width=True):
                 for _k in _row_keys:
                     st.session_state[f"divchk_{_k}"] = True
                 st.rerun()
-        with _hc3:
-            if st.button("Ninguno", key=f"rownone_{_cval}", use_container_width=True):
+        with _cols[2 + _n_subs]:
+            if st.button("✗ Ninguno", key=f"rownone_{_cval}", use_container_width=True):
                 for _k in _row_keys:
                     st.session_state[f"divchk_{_k}"] = False
                 st.rerun()
-        # casillas de nivel en columnas
-        _lvl_cols = st.columns(len(_t_subs))
-        for _li, _sub in enumerate(_t_subs):
-            _k = f"{_ccat.value}:{_sub.value}"
-            with _lvl_cols[_li]:
-                st.checkbox(_sub.label, key=f"divchk_{_k}")
-        st.markdown("")
 
     # La selección final = todas las casillas marcadas
     t_divisions = [
@@ -4990,50 +4987,33 @@ elif page == "t_config":
 
     st.divider()
     _section_start("⏱️", "Parámetros de tiempo")
-    col_t1, col_t2, col_t3 = st.columns(3)
+    col_t1, col_t2 = st.columns(2)
     with col_t1:
         t_match_dur = st.number_input("Duración del partido (min)", min_value=10, max_value=180, step=5, value=t.match_duration_minutes if t else 60)
         t_rest = st.number_input("Descanso mínimo entre partidos (min)", min_value=0, max_value=120, step=5, value=t.rest_between_matches_min if t else 15)
     with col_t2:
         t_day_start = st.time_input("Hora de inicio del día", value=t.day_start_time if t else _dt_mod.time(9, 0))
         t_day_end   = st.time_input("Hora de fin del día",    value=t.day_end_time   if t else _dt_mod.time(22, 0))
-    with col_t3:
-        t_group_size = st.number_input("Parejas por grupo", min_value=3, max_value=8, value=t.group_size if t else 4) if t_format in (TournamentFormat.GROUPS, TournamentFormat.GROUPS_BRACKET) else 4
 
-        if t_format == TournamentFormat.GROUPS_BRACKET:
-            # Fase final tras los grupos: los mejores de cada grupo clasifican
-            _final_phase_opts = {
-                2:  "🏁 Solo final (2 mejores)",
-                4:  "🥈 Semifinales + final (4 mejores)",
-                8:  "🎾 Cuartos + semis + final (8 mejores)",
-                16: "🪜 Dieciseisavos… (16 mejores)",
-            }
-            _fp_keys = list(_final_phase_opts.keys())
-            _fp_default = t.bracket_size if (t and t.bracket_size in _fp_keys) else 4
-            t_bracket_size = st.selectbox(
-                "Fase final (clasifican los mejores de cada grupo)",
-                options=_fp_keys, index=_fp_keys.index(_fp_default),
-                format_func=lambda b: _final_phase_opts[b],
-            )
-            t_qualifiers = st.number_input("Clasificados por grupo", min_value=1, max_value=4,
-                                           value=t.groups_qualifiers if t else 2)
-            t_third_place = st.checkbox("Partido 3er/4º puesto", value=t.third_place_match if t else False) if t_bracket_size >= 4 else False
-        elif t_format == TournamentFormat.BRACKET:
-            t_bracket_size = st.selectbox("Tamaño del cuadro", [4, 8, 16],
-                                          index=[4, 8, 16].index(t.bracket_size) if (t and t.bracket_size in (4, 8, 16)) else 1)
-            t_third_place = st.checkbox("Partido 3er/4º puesto", value=t.third_place_match if t else False)
-            t_qualifiers = 2
-        else:  # GROUPS
-            t_bracket_size = 8
-            t_third_place = False
-            t_qualifiers = 2
+    # Valores por defecto (la estructura real se decide en «Generar estructura»)
+    t_group_size = t.group_size if t else 4
+    t_qualifiers = t.groups_qualifiers if t else 2
+    t_third_place = t.third_place_match if t else False
+
+    if t_format == TournamentFormat.BRACKET:
+        # Solo cuadro: el tamaño es global y se decide aquí
+        t_bracket_size = st.selectbox("Tamaño del cuadro", [4, 8, 16],
+                                      index=[4, 8, 16].index(t.bracket_size) if (t and t.bracket_size in (4, 8, 16)) else 1)
+        t_third_place = st.checkbox("Partido 3er/4º puesto", value=t.third_place_match if t else False)
+    else:
+        t_bracket_size = t.bracket_size if t else 8
 
     # La configuración de grupos y fase final por categoría se hace en el paso
     # «Generar estructura», después de añadir las parejas (con recomendación IA).
     _div_configs: dict[str, dict] = {}
-    if t_divisions and len(t_divisions) > 1 and t_format in (TournamentFormat.GROUPS, TournamentFormat.GROUPS_BRACKET):
-        st.info("👥 Tras guardar, añade las parejas de cada categoría. En **Generar estructura** "
-                "elegirás cuántos grupos y qué fase final tendrá cada categoría (con recomendación automática).")
+    if t_format in (TournamentFormat.GROUPS, TournamentFormat.GROUPS_BRACKET):
+        st.info("👥 Tras guardar, añade las parejas. En **Generar estructura** elegirás "
+                "cuántos grupos y qué fase final tendrá cada categoría (con recomendación automática).")
 
     st.divider()
     if st.button("💾 Guardar y continuar →", type="primary", use_container_width=True):
