@@ -5810,11 +5810,11 @@ elif page == "t_generate":
     _existing_draws_g = {d.key: d for d in (getattr(t, "division_draws", []) or [])}
 
     _final_opts_g = {
-        0:  "🔁 Liguilla (sin final)",
-        2:  "🏁 Solo final",
-        4:  "🥈 Semifinales + final",
-        8:  "🎾 Cuartos + semis + final",
-        16: "🪜 Dieciseisavos en adelante",
+        0:  "Liguilla (sin final)",
+        2:  "Solo final",
+        4:  "Semifinales + final",
+        8:  "Cuartos + semis + final",
+        16: "Dieciseisavos en adelante",
     }
     _final_keys_g = list(_final_opts_g.keys())
 
@@ -5849,18 +5849,27 @@ elif page == "t_generate":
                     _fp_init = _rec["bracket_size"] if _rec["bracket_size"] in _final_keys_g else 4
                 st.session_state[_fp_key] = _fp_init
 
-            with st.expander(f"**{_dlabel}** · {_div_pairs_n} parejas", expanded=True):
-                st.markdown(
-                    f'<div style="background:rgba(0,200,83,.08);border:1px solid rgba(0,200,83,.25);'
-                    f'border-radius:10px;padding:.6rem .9rem;margin-bottom:.7rem;font-size:.88rem;color:#00843d">'
-                    f'🤖 <strong>Recomendación:</strong> {escape(_rec["reason"])}</div>',
-                    unsafe_allow_html=True,
-                )
-                if st.button(f"✨ Usar recomendación", key=f"tg_userec_{_dk}"):
-                    st.session_state[_ng_key] = _rec["num_groups"]
-                    if _rec["bracket_size"] in _final_keys_g:
-                        st.session_state[_fp_key] = _rec["bracket_size"]
-                    st.rerun()
+            with st.expander(f"{_dlabel} · {_div_pairs_n} parejas", expanded=True):
+                _head_l, _head_r = st.columns([5, 1.15])
+                with _head_l:
+                    st.markdown(
+                        f'<div style="display:flex;align-items:center;gap:.6rem;margin:.1rem 0 .55rem">'
+                        f'<span style="font-weight:800;color:#0b1f33">{escape(_dlabel)}</span>'
+                        f'<span style="background:#eef5ff;border:1px solid #cfe0f5;border-radius:999px;'
+                        f'padding:.15rem .55rem;font-size:.78rem;color:#31516f">{_div_pairs_n} parejas</span>'
+                        f'</div>'
+                        f'<div style="background:#f0fbf6;border:1px solid #bfe9d3;border-radius:8px;'
+                        f'padding:.55rem .75rem;margin-bottom:.35rem;font-size:.86rem;color:#006d3a">'
+                        f'<strong>Recomendacion:</strong> {escape(_rec["reason"])}</div>',
+                        unsafe_allow_html=True,
+                    )
+                with _head_r:
+                    st.write("")
+                    if st.button("Usar", key=f"tg_userec_{_dk}", help="Aplicar la recomendacion a esta categoria", use_container_width=True):
+                        st.session_state[_ng_key] = _rec["num_groups"]
+                        if _rec["bracket_size"] in _final_keys_g:
+                            st.session_state[_fp_key] = _rec["bracket_size"]
+                        st.rerun()
 
                 _gc1, _gc2 = st.columns(2)
                 with _gc1:
@@ -5871,7 +5880,7 @@ elif page == "t_generate":
                     _base = _div_pairs_n // int(_ng_val)
                     _extra = _div_pairs_n % int(_ng_val)
                     _dist = [str(_base + 1)] * _extra + [str(_base)] * (int(_ng_val) - _extra)
-                    st.caption(f"Reparto: {' · '.join(_dist)} parejas")
+                    st.caption(f"Reparto por grupos: {' · '.join(_dist)} parejas")
                 with _gc2:
                     st.selectbox(
                         "Fase final", options=_final_keys_g,
