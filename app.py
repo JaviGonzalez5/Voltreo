@@ -5834,6 +5834,26 @@ elif page == "t_generate":
             _prev = _existing_draws_g.get(_dk)
             _ng_key = f"tg_ng_{_dk}"
             _fp_key = f"tg_fp_{_dk}"
+            _sig_key = f"tg_sig_{_dk}"
+            _has_generated_structure = bool(
+                getattr(_prev, "groups", None) or getattr(_prev, "matches", None)
+            )
+            _state_sig = (
+                _div_pairs_n,
+                getattr(_prev, "num_groups", 0) if _has_generated_structure else _rec["num_groups"],
+                getattr(_prev, "bracket_size", 0) if _has_generated_structure else _rec["bracket_size"],
+                t.format.value if hasattr(t.format, "value") else str(t.format),
+            )
+            if st.session_state.get(_sig_key) != _state_sig:
+                st.session_state[_ng_key] = int(getattr(_prev, "num_groups", 0) or 0) if _has_generated_structure else _rec["num_groups"]
+                if t.format == TournamentFormat.GROUPS:
+                    st.session_state[_fp_key] = 0
+                elif _has_generated_structure:
+                    _saved_fp = int(getattr(_prev, "bracket_size", 0) or 0)
+                    st.session_state[_fp_key] = _saved_fp if _saved_fp in _final_keys_g else _rec["bracket_size"]
+                else:
+                    st.session_state[_fp_key] = _rec["bracket_size"] if _rec["bracket_size"] in _final_keys_g else 4
+                st.session_state[_sig_key] = _state_sig
 
             # Valores por defecto: lo guardado, o la recomendación
             if _ng_key not in st.session_state:
@@ -5852,14 +5872,23 @@ elif page == "t_generate":
             with st.expander(f"{_dlabel} · {_div_pairs_n} parejas", expanded=True):
                 _head_l, _head_r = st.columns([5, 1.15])
                 with _head_l:
+                    _selected_groups = int(st.session_state.get(_ng_key, _rec["num_groups"]))
+                    _selected_final = int(st.session_state.get(_fp_key, _rec["bracket_size"]))
+                    _matches_rec = _selected_groups == _rec["num_groups"] and _selected_final == _rec["bracket_size"]
+                    _tone_bg = "#f0fbf6" if _matches_rec else "#fff8e6"
+                    _tone_bd = "#bfe9d3" if _matches_rec else "#f3d28b"
+                    _tone_tx = "#006d3a" if _matches_rec else "#7a4b00"
+                    _tone_label = "Recomendacion aplicada" if _matches_rec else "Ajuste manual"
                     st.markdown(
                         f'<div style="display:flex;align-items:center;gap:.6rem;margin:.1rem 0 .55rem">'
                         f'<span style="font-weight:800;color:#0b1f33">{escape(_dlabel)}</span>'
                         f'<span style="background:#eef5ff;border:1px solid #cfe0f5;border-radius:999px;'
                         f'padding:.15rem .55rem;font-size:.78rem;color:#31516f">{_div_pairs_n} parejas</span>'
+                        f'<span style="background:{_tone_bg};border:1px solid {_tone_bd};border-radius:999px;'
+                        f'padding:.15rem .55rem;font-size:.78rem;color:{_tone_tx}">{_tone_label}</span>'
                         f'</div>'
-                        f'<div style="background:#f0fbf6;border:1px solid #bfe9d3;border-radius:8px;'
-                        f'padding:.55rem .75rem;margin-bottom:.35rem;font-size:.86rem;color:#006d3a">'
+                        f'<div style="background:{_tone_bg};border:1px solid {_tone_bd};border-radius:8px;'
+                        f'padding:.55rem .75rem;margin-bottom:.35rem;font-size:.86rem;color:{_tone_tx}">'
                         f'<strong>Recomendacion:</strong> {escape(_rec["reason"])}</div>',
                         unsafe_allow_html=True,
                     )
@@ -5882,12 +5911,13 @@ elif page == "t_generate":
                     _dist = [str(_base + 1)] * _extra + [str(_base)] * (int(_ng_val) - _extra)
                     st.caption(f"Reparto por grupos: {' · '.join(_dist)} parejas")
                 with _gc2:
-                    st.selectbox(
+                    st.radio(
                         "Fase final", options=_final_keys_g,
                         format_func=lambda b: _final_opts_g[b],
                         key=_fp_key,
                         help="«Liguilla» = todos contra todos, sin eliminatoria. "
                              "El resto añade una fase final tras los grupos.",
+                        horizontal=True,
                     )
                     if int(st.session_state.get(_fp_key, 0)) == 0 and int(_ng_val) == 1:
                         st.caption("🔁 Liguilla pura: todos contra todos, gana quien más puntos sume.")
