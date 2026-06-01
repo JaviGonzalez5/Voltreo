@@ -291,6 +291,10 @@ class TournamentConfig(BaseModel):
     # Soporte multi-categoría/subcategoría (formato: "masculino:1a", "mixto:3a", ...).
     # Se mantiene `category`/`subcategory` por compatibilidad con datos antiguos.
     divisions: list[str] = Field(default_factory=list)
+    # Tandas de juego: {division_key: nº de tanda (1, 2, 3…)}. Las categorías de
+    # la tanda 1 se juegan primero; las de la 2 después, etc. Vacío o todas con
+    # el mismo número = todas se juegan a la vez.
+    division_waves: dict[str, int] = Field(default_factory=dict)
     is_top:      bool   = False        # Torneo TOP (máximo prestigio)
     prize:       str    = ""           # Premio / descripción del torneo
     location:    str    = ""           # Club / sede

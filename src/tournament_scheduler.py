@@ -161,66 +161,89 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
     day_start = config.day_start_time
     day_end   = config.day_end_time
 
-    # ── Agrupar por ronda y ordenar
-    rounds_ordered: list[MatchRound] = sorted(
-        set(m.round for m in config.matches),
-        key=lambda r: r.order,
-    )
-    matches_by_round: dict[MatchRound, list[TournamentMatch]] = defaultdict(list)
-    for m in config.matches:
-        matches_by_round[m.round].append(m)
+    # ── Tandas de juego: agrupar divisiones por nº de tanda (1, 2, 3…)
+    _waves_cfg = dict(getattr(config, "division_waves", {}) or {})
 
-    # ── Estado compartido
+    def _wave_of(m: TournamentMatch) -> int:
+        return int(_waves_cfg.get(m.division, 1)) if m.division else 1
+
+    _wave_numbers = sorted({_wave_of(m) for m in config.matches})
+
+    # ── Estado compartido (persiste entre tandas: pistas y jugadores)
     court_tls  = {c.id: _CourtTimeline() for c in active_courts}
     player_tl  = _PlayerTimeline(config.rest_between_matches_min)
-    prev_round_end: Optional[datetime] = None
 
-    for rnd in rounds_ordered:
-        matches = matches_by_round[rnd]
+    # Fin de la tanda anterior: la siguiente tanda no empieza antes
+    wave_prev_end: Optional[datetime] = None
 
-        # El cuadro no empieza antes de que acaben los grupos
-        rnd_earliest: Optional[datetime] = None
-        if rnd != MatchRound.GROUP and prev_round_end is not None:
-            rnd_earliest = prev_round_end + timedelta(minutes=config.rest_between_matches_min)
+    for _wave in _wave_numbers:
+        wave_matches = [m for m in config.matches if _wave_of(m) == _wave]
 
-        rnd_latest_end: Optional[datetime] = None
+        # ── Agrupar por ronda y ordenar (dentro de la tanda)
+        rounds_ordered: list[MatchRound] = sorted(
+            set(m.round for m in wave_matches),
+            key=lambda r: r.order,
+        )
+        matches_by_round: dict[MatchRound, list[TournamentMatch]] = defaultdict(list)
+        for m in wave_matches:
+            matches_by_round[m.round].append(m)
 
-        for match in matches:
-            slot = _find_best_slot(
-                match        = match,
-                active_courts= active_courts,
-                court_tls    = court_tls,
-                player_tl    = player_tl,
-                duration     = duration,
-                all_days     = all_days,
-                day_start    = day_start,
-                day_end      = day_end,
-                rnd_earliest = rnd_earliest,
-            )
+        prev_round_end: Optional[datetime] = None
+        wave_latest_end: Optional[datetime] = None
 
-            if slot is None:
-                match.status = TMatchStatus.CONFLICT
-                match.conflict_reason = (
-                    "Sin hueco disponible. Amplía el rango de fechas, "
-                    "añade más pistas o reduce la duración de los partidos."
+        for rnd in rounds_ordered:
+            matches = matches_by_round[rnd]
+
+            # Suelo temporal: el cuadro tras los grupos, y la tanda tras la anterior
+            rnd_earliest: Optional[datetime] = wave_prev_end
+            if rnd != MatchRound.GROUP and prev_round_end is not None:
+                _after_groups = prev_round_end + timedelta(minutes=config.rest_between_matches_min)
+                rnd_earliest = max(rnd_earliest, _after_groups) if rnd_earliest else _after_groups
+
+            rnd_latest_end: Optional[datetime] = None
+
+            for match in matches:
+                slot = _find_best_slot(
+                    match        = match,
+                    active_courts= active_courts,
+                    court_tls    = court_tls,
+                    player_tl    = player_tl,
+                    duration     = duration,
+                    all_days     = all_days,
+                    day_start    = day_start,
+                    day_end      = day_end,
+                    rnd_earliest = rnd_earliest,
                 )
-            else:
-                s_start, s_end, court = slot
-                match.match_date = s_start.date()
-                match.start_time = s_start.time()
-                match.end_time   = s_end.time()
-                match.court      = court
-                match.status     = TMatchStatus.SCHEDULED
 
-                court_tls[court.id].mark_occupied(match.match_date, s_end)
-                # Bloquear a TODOS los jugadores del partido (en todas las categorías)
-                player_tl.record(_match_player_keys(match), s_end)
+                if slot is None:
+                    match.status = TMatchStatus.CONFLICT
+                    match.conflict_reason = (
+                        "Sin hueco disponible. Amplía el rango de fechas, "
+                        "añade más pistas o reduce la duración de los partidos."
+                    )
+                else:
+                    s_start, s_end, court = slot
+                    match.match_date = s_start.date()
+                    match.start_time = s_start.time()
+                    match.end_time   = s_end.time()
+                    match.court      = court
+                    match.status     = TMatchStatus.SCHEDULED
 
-                if rnd_latest_end is None or s_end > rnd_latest_end:
-                    rnd_latest_end = s_end
+                    court_tls[court.id].mark_occupied(match.match_date, s_end)
+                    player_tl.record(_match_player_keys(match), s_end)
 
-        if rnd_latest_end is not None:
-            prev_round_end = rnd_latest_end
+                    if rnd_latest_end is None or s_end > rnd_latest_end:
+                        rnd_latest_end = s_end
+                    if wave_latest_end is None or s_end > wave_latest_end:
+                        wave_latest_end = s_end
+
+            if rnd_latest_end is not None:
+                prev_round_end = rnd_latest_end
+
+        # La próxima tanda no empieza antes de que acabe esta
+        if wave_latest_end is not None:
+            _next = wave_latest_end + timedelta(minutes=config.rest_between_matches_min)
+            wave_prev_end = max(wave_prev_end, _next) if wave_prev_end else _next
 
     return config
 

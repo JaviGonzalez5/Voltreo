@@ -4923,6 +4923,46 @@ elif page == "t_config":
     else:
         st.caption("Sin categorías seleccionadas todavía.")
 
+    # ── Tandas de juego (orden entre categorías) ────────────────────────────
+    _division_waves: dict[str, int] = {}
+    _cats_present = []
+    for _cval, _clabel, _ccat in _cat_rows:
+        if any(d.startswith(f"{_ccat.value}:") for d in t_divisions):
+            _cats_present.append((_cval, _clabel, _ccat))
+
+    if len(_cats_present) > 1:
+        st.markdown("")
+        with st.expander("🕒 Orden de juego por tandas (opcional)", expanded=False):
+            st.caption("Asigna un número de tanda a cada categoría. Las de la tanda 1 se "
+                       "juegan primero, las de la 2 después, etc. Si dejas todas en 1, "
+                       "se juegan a la vez compartiendo pistas.")
+            _prev_waves = dict(getattr(t, "division_waves", {}) or {}) if t else {}
+            _wave_cols = st.columns(len(_cats_present))
+            for _wi, (_cval, _clabel, _ccat) in enumerate(_cats_present):
+                # tanda previa de esta categoría (la de cualquiera de sus niveles)
+                _cat_keys = [d for d in t_divisions if d.startswith(f"{_ccat.value}:")]
+                _prev_w = next((_prev_waves[k] for k in _cat_keys if k in _prev_waves), 1)
+                with _wave_cols[_wi]:
+                    _w = st.number_input(
+                        _clabel, min_value=1, max_value=9, value=int(_prev_w),
+                        key=f"wave_{_cval}",
+                    )
+                for _k in _cat_keys:
+                    _division_waves[_k] = int(_w)
+            # Resumen visual de tandas
+            from collections import defaultdict as _dd
+            _by_wave = _dd(list)
+            for _cval, _clabel, _ccat in _cats_present:
+                _w_cat = int(st.session_state.get(f"wave_{_cval}", 1))
+                _by_wave[_w_cat].append(_clabel)
+            if len(_by_wave) > 1:
+                _order_txt = "  →  ".join(
+                    f"**Tanda {w}**: {', '.join(_by_wave[w])}" for w in sorted(_by_wave)
+                )
+                st.markdown(f"📋 Orden: {_order_txt}")
+            else:
+                st.caption("Todas en la misma tanda → se juegan simultáneamente.")
+
     st.divider()
     _section_start("🏟️", "Pistas del torneo")
     if "t_courts_list" not in st.session_state:
@@ -5054,6 +5094,7 @@ elif page == "t_config":
                 category=_primary_cat,
                 subcategory=_primary_sub,
                 divisions=t_divisions,
+                division_waves=_division_waves,
                 is_top=t_is_top, prize=t_prize, location=t_location,
                 start_date=t_start, end_date=t_end, courts=_courts_obj, pairs=_pairs_keep,
                 format=t_format, match_duration_minutes=t_match_dur, rest_between_matches_min=t_rest,
