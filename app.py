@@ -590,7 +590,6 @@ footer,
 [data-testid="stToolbar"],
 [data-testid="stDecoration"],
 [data-testid="stStatusWidget"],
-[data-testid="collapsedControl"],
 .stDeployButton {
     visibility: hidden !important;
     display: none !important;
@@ -969,6 +968,27 @@ header[data-testid="stHeader"] * {
     margin-top: .35rem;
 }
 
+.pp-next-step {
+    background: #ffffff;
+    border: 1px solid #dfe7f1;
+    border-left: 4px solid #0f9b57;
+    border-radius: 12px;
+    padding: 1rem 1.15rem;
+    margin: 0 0 1.2rem;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .05);
+}
+.pp-next-step-title {
+    color: #0f172a;
+    font-size: .92rem;
+    font-weight: 800;
+    margin-bottom: .25rem;
+}
+.pp-next-step-text {
+    color: #64748b;
+    font-size: .86rem;
+    line-height: 1.45;
+}
+
 /* ── Info / action cards ─────────────────────────────────────────── */
 .pp-two-grid {
     display: grid;
@@ -1221,6 +1241,25 @@ header[data-testid="stHeader"] * {
     }
     .pp-kpi-grid, .pp-two-grid { grid-template-columns: 1fr; }
     .pp-hero h1 { font-size: 1.5rem; }
+    [data-testid="stSidebar"] {
+        min-width: min(82vw, 306px) !important;
+        max-width: min(82vw, 306px) !important;
+    }
+    [data-testid="collapsedControl"] {
+        display: flex !important;
+        visibility: visible !important;
+    }
+    [data-testid="stSidebar"] button[kind="headerNoPadding"],
+    [data-testid="stSidebar"] [data-testid="stBaseButton-headerNoPadding"] {
+        display: flex !important;
+        visibility: visible !important;
+    }
+    .pp-brand {
+        padding-top: 1rem;
+    }
+    .pp-hero {
+        padding: 1.35rem 1.25rem 1.25rem !important;
+    }
 }
 </style>
 """
@@ -1881,7 +1920,7 @@ st.set_page_config(
     page_title=f"{BRAND_NAME} · {BRAND_SUFFIX}",
     page_icon="🎾",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="auto",
 )
 
 # ---------------------------------------------------------------------------
@@ -2453,6 +2492,9 @@ if page == "home":
     _result_home = _s.get("schedule_result")
     _scheduled_home = len(getattr(_result_home, "scheduled", []) or []) if _result_home is not None else 0
     _pending_home = len(_s.get("matches") or []) if _s.get("matches_generated") and not _scheduled_home else max(len(_s.get("matches") or []) - _scheduled_home, 0)
+    _tournament_home = _s.get("tournament")
+    _tournament_pairs_home = len(getattr(_tournament_home, "pairs", []) or []) if _tournament_home is not None else 0
+    _tournament_matches_home = len(getattr(_tournament_home, "matches", []) or []) if _tournament_home is not None else 0
 
     if _db_ok and is_authenticated() and is_superadmin() and not _club_name_sidebar:
         # ── Onboarding para superadmin sin clubs ──────────────────────────
@@ -2480,11 +2522,31 @@ if page == "home":
             f"✦  {BRAND_NAME}",
         )
         _kpi_grid([
-            ("Grupos",   len(_groups_home),                                      "en el ranking activo"),
-            ("Parejas",  _pairs_home,                                             "jugadores inscritos"),
-            ("Partidos", _scheduled_home or len(_s.get("matches") or []),         "en el calendario"),
-            ("Pistas",   _courts_home,                                            "configuradas"),
+            ("Ranking",  len(_groups_home),                              "grupos en la fase activa"),
+            ("Parejas",  _pairs_home,                                     "parejas en ranking"),
+            ("Torneos",  1 if _tournament_home is not None else 0,         "torneo activo cargado"),
+            ("Partidos", _tournament_matches_home or (_scheduled_home or len(_s.get("matches") or [])), "torneo/ranking planificados"),
         ])
+
+        if not _groups_home and _tournament_home is not None:
+            st.markdown(
+                '<div class="pp-next-step">'
+                '<div class="pp-next-step-title">Ranking sin datos, torneo activo disponible</div>'
+                f'<div class="pp-next-step-text">Tienes un torneo con {escape(str(_tournament_pairs_home))} parejas y '
+                f'{escape(str(_tournament_matches_home))} partidos. El panel separa ahora el estado del ranking y del torneo '
+                'para evitar que parezca que todo el club est&aacute; vac&iacute;o.</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+        elif not _groups_home and _tournament_home is None:
+            st.markdown(
+                '<div class="pp-next-step">'
+                '<div class="pp-next-step-title">Empieza configurando tu primera competici&oacute;n</div>'
+                '<div class="pp-next-step-text">Configura una fase de ranking o crea un torneo para activar calendarios, '
+                'clasificaciones y comunicaciones.</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
 
         st.markdown(
             '<div style="font-size:.7rem;font-weight:800;letter-spacing:.12em;'
