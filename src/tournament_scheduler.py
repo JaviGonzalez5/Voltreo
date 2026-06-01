@@ -226,6 +226,22 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
                     day_end      = day_end,
                     rnd_earliest = rnd_earliest,
                 )
+                if match_courts != active_courts:
+                    flexible_slot = _find_best_slot(
+                        match        = match,
+                        active_courts= active_courts,
+                        court_tls    = court_tls,
+                        player_tl    = player_tl,
+                        duration     = duration,
+                        all_days     = all_days,
+                        day_start    = day_start,
+                        day_end      = day_end,
+                        rnd_earliest = rnd_earliest,
+                    )
+                    if slot is None or (
+                        flexible_slot is not None and flexible_slot[0] < slot[0]
+                    ):
+                        slot = flexible_slot
 
                 if slot is None:
                     match.status = TMatchStatus.CONFLICT

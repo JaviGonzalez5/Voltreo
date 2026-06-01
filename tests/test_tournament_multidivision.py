@@ -233,6 +233,39 @@ class TestMultiDivisionScheduling:
         assert {m.court.id for m in masc_first} == {"c1", "c2"}
         assert {m.court.id for m in fem_first} == {"c3", "c4"}
 
+    def test_same_wave_split_falls_back_to_free_courts(self):
+        masc = "masculino:1a"
+        fem = "femenino:1a"
+        cfg = TournamentConfig(
+            name="Flexible split",
+            start_date=date(2026, 6, 1),
+            end_date=date(2026, 6, 1),
+            divisions=[masc, fem],
+            division_waves={masc: 1, fem: 1},
+            format=TournamentFormat.BRACKET,
+            bracket_size=8,
+            courts=[
+                TournamentCourt(id="c1", name="Pista 1"),
+                TournamentCourt(id="c2", name="Pista 2"),
+                TournamentCourt(id="c3", name="Pista 3"),
+                TournamentCourt(id="c4", name="Pista 4"),
+            ],
+            pairs=[_pair(f"M{i}", masc) for i in range(8)] + [_pair(f"F{i}", fem) for i in range(4)],
+            match_duration_minutes=30,
+            rest_between_matches_min=0,
+            day_start_time=time(9, 0),
+            day_end_time=time(11, 0),
+        )
+
+        cfg = schedule_tournament(generate_tournament_structure(cfg))
+        masc_quarters = [
+            m for m in cfg.matches
+            if m.division == masc and m.round == MatchRound.QUARTERFINAL
+        ]
+
+        assert [m for m in cfg.matches if m.status == TMatchStatus.CONFLICT] == []
+        assert {"c3", "c4"} & {m.court.id for m in masc_quarters}
+
 
 class TestBackwardCompatibility:
 
