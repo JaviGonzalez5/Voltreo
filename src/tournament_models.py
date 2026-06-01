@@ -252,6 +252,7 @@ class TournamentDivision(BaseModel):
     # Formato propio de la división
     format: TournamentFormat = TournamentFormat.GROUPS
     group_size:        int  = 4
+    num_groups:        int  = 0    # 0 = derivar de group_size; >0 = nº exacto de grupos
     groups_qualifiers: int  = 2
     bracket_size:      int  = 8
     third_place_match: bool = False

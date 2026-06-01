@@ -24,15 +24,27 @@ from .tournament_models import (
 # Reparto en grupos
 # ---------------------------------------------------------------------------
 
-def _make_groups(pairs: list[TournamentPair], group_size: int) -> list[TournamentGroup]:
+def _make_groups(
+    pairs: list[TournamentPair],
+    group_size: int,
+    num_groups: int = 0,
+) -> list[TournamentGroup]:
     """
-    Divide las parejas en grupos de `group_size` (el último puede ser más pequeño).
+    Divide las parejas en grupos.
+
+    - Si `num_groups` > 0: crea exactamente ese número de grupos y reparte las
+      parejas equitativamente (ej. 11 parejas en 4 grupos → 3,3,3,2).
+    - Si no: deriva el número de grupos a partir de `group_size`
+      (el último grupo puede quedar más pequeño).
 
     Las cabezas de serie (seed=1, 2, …) se reparten un grupo cada una; el resto
-    se asigna por orden de llegada para mantener el comportamiento predecible.
+    se asigna rellenando los grupos más vacíos primero.
     """
     n = len(pairs)
-    n_groups = max(1, ceil(n / group_size))
+    if num_groups and num_groups > 0:
+        n_groups = max(1, min(num_groups, n))
+    else:
+        n_groups = max(1, ceil(n / group_size))
     groups: list[TournamentGroup] = [
         TournamentGroup(
             id=str(uuid4()),
@@ -305,18 +317,21 @@ def _generate_one_division(
     groups_qualifiers: int,
     bracket_size: int,
     third_place_match: bool,
+    num_groups: int = 0,
 ) -> "tuple[list[TournamentGroup], list[TournamentMatch], int]":
     """
     Genera (grupos, partidos, bracket_size_efectivo) para UN conjunto de parejas
     según el formato. Lógica común reutilizada por torneos de una o varias
     categorías. No muta ningún config.
+
+    `num_groups` > 0 fuerza ese número exacto de grupos (reparto equitativo).
     """
     groups: list[TournamentGroup] = []
     all_matches: list[TournamentMatch] = []
     eff_bracket = bracket_size
 
     if fmt == TournamentFormat.GROUPS:
-        groups = _make_groups(pairs, group_size)
+        groups = _make_groups(pairs, group_size, num_groups)
         all_matches = _generate_group_matches(groups)
 
     elif fmt == TournamentFormat.BRACKET:
@@ -330,9 +345,10 @@ def _generate_one_division(
         all_matches = _generate_bracket_matches(bs, pairs[:bs], third_place=third_place_match)
 
     elif fmt == TournamentFormat.GROUPS_BRACKET:
-        groups = _make_groups(pairs, group_size)
+        groups = _make_groups(pairs, group_size, num_groups)
         group_matches = _generate_group_matches(groups)
-        _safe_q = max(1, min(groups_qualifiers, group_size))
+        _min_group = min((len(g.pairs) for g in groups), default=group_size)
+        _safe_q = max(1, min(groups_qualifiers, _min_group))
         n_qualifiers = len(groups) * _safe_q
         if n_qualifiers < 2:
             return groups, group_matches, bracket_size
@@ -433,6 +449,7 @@ def generate_multi_division(config: TournamentConfig) -> TournamentConfig:
         # Usar config por división si existe, si no la global
         _dcfg = _div_cfg_map.get(key)
         _d_group_size       = _dcfg.group_size        if _dcfg else config.group_size
+        _d_num_groups       = getattr(_dcfg, "num_groups", 0) if _dcfg else 0
         _d_groups_qualifiers = _dcfg.groups_qualifiers if _dcfg else config.groups_qualifiers
         _d_bracket_size     = _dcfg.bracket_size      if _dcfg else config.bracket_size
         _d_format           = _dcfg.format             if _dcfg else config.format
@@ -440,6 +457,7 @@ def generate_multi_division(config: TournamentConfig) -> TournamentConfig:
         groups, matches, eff_bracket = _generate_one_division(
             d_pairs, _d_format, _d_group_size,
             _d_groups_qualifiers, _d_bracket_size, config.third_place_match,
+            num_groups=_d_num_groups,
         )
         # Etiquetar todo con la división
         for g in groups:
@@ -450,7 +468,7 @@ def generate_multi_division(config: TournamentConfig) -> TournamentConfig:
 
         draws.append(TournamentDivision(
             key=key, category=cat, subcategory=sub,
-            format=_d_format, group_size=_d_group_size,
+            format=_d_format, group_size=_d_group_size, num_groups=_d_num_groups,
             groups_qualifiers=_d_groups_qualifiers, bracket_size=eff_bracket,
             third_place_match=config.third_place_match,
             pairs=d_pairs, groups=groups, matches=matches,

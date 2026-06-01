@@ -4973,18 +4973,37 @@ elif page == "t_config":
             "Cada categoría puede tener su propio tamaño de grupo y fase final. "
             "Si no la configuras, usará los valores globales de arriba."
         )
+        st.caption(
+            "💡 Indica cuántos **grupos** quieres en cada categoría. Las parejas que "
+            "añadas después se repartirán equitativamente entre esos grupos "
+            "(ej. 11 parejas en 4 grupos → 3, 3, 3 y 2)."
+        )
+        # Recuento de parejas ya inscritas por categoría (si las hay)
+        _pairs_by_div_count = {}
+        for _p in (getattr(t, "pairs", []) or []):
+            if _p.division:
+                _pairs_by_div_count[_p.division] = _pairs_by_div_count.get(_p.division, 0) + 1
+
         _existing_div_draws = {d.key: d for d in (getattr(t, "division_draws", []) or [])}
         for _dk in t_divisions:
             _dlabel = _div_labels.get(_dk, _dk)
             _prev = _existing_div_draws.get(_dk)
-            with st.expander(f"**{_dlabel}**", expanded=False):
+            _n_pairs_div = _pairs_by_div_count.get(_dk, 0)
+            _pairs_hint = f" · {_n_pairs_div} parejas inscritas" if _n_pairs_div else ""
+            with st.expander(f"**{_dlabel}**{_pairs_hint}", expanded=True):
                 _dc1, _dc2, _dc3 = st.columns(3)
                 with _dc1:
-                    _dg_size = st.number_input(
-                        "Parejas por grupo", min_value=3, max_value=8,
-                        value=int(_prev.group_size) if _prev else int(t_group_size),
-                        key=f"div_gsize_{_dk}",
+                    _dn_groups = st.number_input(
+                        "Número de grupos", min_value=1, max_value=16,
+                        value=int(getattr(_prev, "num_groups", 0) or 0) if _prev and getattr(_prev, "num_groups", 0) else 2,
+                        key=f"div_ngroups_{_dk}",
+                        help="Cuántos grupos de liguilla tendrá esta categoría.",
                     )
+                    if _n_pairs_div:
+                        _base = _n_pairs_div // int(_dn_groups)
+                        _extra = _n_pairs_div % int(_dn_groups)
+                        _dist = [f"{_base+1}" for _ in range(_extra)] + [f"{_base}" for _ in range(int(_dn_groups)-_extra)]
+                        st.caption(f"Reparto: {' · '.join(_dist)} parejas")
                 with _dc2:
                     _dfp_opts = {2: "Solo final (2 mejores)", 4: "Semis + final (4 mejores)", 8: "Cuartos + semis + final (8 mejores)"}
                     _dfp_keys = list(_dfp_opts.keys())
@@ -5006,7 +5025,8 @@ elif page == "t_config":
                         key=f"div_qualif_{_dk}",
                     )
                 _div_configs[_dk] = {
-                    "group_size": int(_dg_size),
+                    "num_groups": int(_dn_groups),
+                    "group_size": int(t_group_size),
                     "bracket_size": int(_dformat_sel),
                     "groups_qualifiers": int(_dqualif),
                 }
@@ -5055,6 +5075,7 @@ elif page == "t_config":
                     subcategory=_dsub,
                     format=t_format,
                     group_size=_dc.get("group_size", t_group_size),
+                    num_groups=_dc.get("num_groups", 0),
                     bracket_size=_dc.get("bracket_size", t_bracket_size),
                     groups_qualifiers=_dc.get("groups_qualifiers", t_qualifiers),
                     third_place_match=t_third_place,
