@@ -2493,7 +2493,7 @@ if page == "tournaments":
             if played > 0:
                 return "En juego", "orange"
             if total > 0:
-                return "Estructura lista", "blue"
+                return "Torneos activos", "blue"
             if start_d and start_d > _today:
                 return "Próximo", "gray"
             return "Configurado", "gray"
@@ -2503,22 +2503,22 @@ if page == "tournaments":
     _current_tid = _s.get("db_tournament_id")
 
     # Agrupar por estado
-    _groups_t = {"En juego": [], "Próximo": [], "Estructura lista": [], "Configurado": [], "Terminado": []}
+    _groups_t = {"En juego": [], "Próximo": [], "Torneos activos": [], "Configurado": [], "Terminado": []}
     for _row in _all_t_rows:
         _st_lbl, _ = _t_status(_row)
         _groups_t.setdefault(_st_lbl, []).append(_row)
 
-    _state_order  = ["En juego", "Próximo", "Estructura lista", "Configurado", "Terminado"]
+    _state_order  = ["En juego", "Torneos activos", "Próximo", "Configurado", "Terminado"]
     _state_colors = {
         "En juego":         ("#ff8c00", "#2a1800"),
         "Próximo":          ("#7fffc0", "#0a2018"),
-        "Estructura lista": ("#4fc3f7", "#0a1828"),
+        "Torneos activos":  ("#4fc3f7", "#0a1828"),
         "Configurado":      ("#9e9e9e", "#1a1a1a"),
         "Terminado":        ("#ffd700", "#1a1400"),
     }
     _state_icons = {
         "En juego": "🎾", "Próximo": "📅",
-        "Estructura lista": "📋", "Configurado": "⚙️", "Terminado": "🏆",
+        "Torneos activos": "📋", "Configurado": "⚙️", "Terminado": "🏆",
     }
 
     for _st_lbl in _state_order:
@@ -2553,13 +2553,13 @@ if page == "tournaments":
 
             _border_style = "border:1.5px solid #7fffc0;" if _is_active else "border:1px solid rgba(255,255,255,.08);"
             st.markdown(
-                f'<div style="background:rgba(255,255,255,.04);{_border_style}'
+                f'<div style="background:#ffffff;{_border_style}'
                 f'border-radius:14px;padding:1rem 1.2rem;margin-bottom:.6rem">'
                 f'<div style="display:flex;align-items:center;justify-content:space-between;gap:1rem">'
                 f'<div>'
-                f'<div style="color:#eaf6ff;font-size:1rem;font-weight:800">'
+                f'<div style="color:#0f172a;font-size:1.15rem;font-weight:900;letter-spacing:-.01em">'
                 f'{"✅ " if _is_active else ""}{escape(_tname)}</div>'
-                f'<div style="color:#5a82a4;font-size:.78rem;margin-top:.2rem">📅 {_dates_str}'
+                f'<div style="color:#64748b;font-size:.82rem;margin-top:.25rem">📅 {_dates_str}'
                 f'{"  ·  🎾 " + str(_n_pairs) + " parejas" if _n_pairs else ""}'
                 f'{"  ·  📊 " + str(_played_n) + "/" + str(_n_matches) + " partidos jugados" if _n_matches else ""}'
                 f'</div>'
@@ -2587,7 +2587,7 @@ if page == "tournaments":
                     except Exception as _e_load:
                         st.error(f"Error al cargar: {_e_load}")
             with _btn_col2:
-                if st.button("🎯 Ir a resultados", key=f"goto_results_{_tid}", use_container_width=True):
+                if st.button("🎾 Acceder al torneo", key=f"goto_results_{_tid}", use_container_width=True):
                     if not _is_active:
                         try:
                             from src.db_converters import tournament_from_db as _tfdb3
@@ -2597,7 +2597,7 @@ if page == "tournaments":
                                 st.session_state["db_tournament_id"] = _tid
                         except Exception:
                             pass
-                    _nav_to("t_results")
+                    _nav_to("t_schedule" if _n_matches else "t_config")
             with _btn_col3:
                 if st.button("🗑️", key=f"del_t_{_tid}", help="Eliminar torneo", use_container_width=True):
                     st.session_state[f"_confirm_del_t_{_tid}"] = True
