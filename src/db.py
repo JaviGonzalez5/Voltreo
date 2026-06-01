@@ -365,7 +365,11 @@ class SupabaseDB:
             payload["id"] = tournament_id
 
         resp = self._c.table("tournaments").upsert(payload).execute()
-        return resp.data[0]
+        # Algunos proyectos no devuelven la fila tras el upsert (RLS / return=minimal).
+        # No fallar por ello: devolver lo guardado o el propio payload.
+        if resp.data:
+            return resp.data[0]
+        return payload
 
     def delete_tournament(self, tournament_id: str, club_id: str) -> None:
         self._c.table("tournaments").delete().eq("id", tournament_id).eq("club_id", club_id).execute()
