@@ -5380,9 +5380,9 @@ elif page == "t_config":
     col_t1, col_t2 = st.columns(2)
     with col_t1:
         t_match_dur = st.number_input("Duración del partido (min)", min_value=10, max_value=180, step=5, value=t.match_duration_minutes if t else 60)
-        st.caption("Duraciones especiales solo para este torneo. D?jalas en 0 para usar la duraci?n general.")
+        st.caption("Duraciones especiales solo para este torneo. Dejalas en 0 para usar la duracion general.")
         t_semifinal_dur = st.slider(
-            "Duraci?n aproximada semifinales (min)",
+            "Duracion aproximada semifinales (min)",
             min_value=0,
             max_value=90,
             step=5,
@@ -5390,7 +5390,7 @@ elif page == "t_config":
             help="Para semis al mejor de 3 sets a 15 puntos, suele tener sentido marcar 30-45 min.",
         )
         t_final_dur = st.slider(
-            "Duraci?n aproximada final / 3?-4? (min)",
+            "Duracion aproximada final / tercer puesto (min)",
             min_value=0,
             max_value=120,
             step=5,
@@ -5453,7 +5453,10 @@ elif page == "t_config":
                 TournamentCourt(id=f"tc_{i}", name=str(c["name"]).strip())
                 for i, c in enumerate(_raw_courts)
             ]
-            _pairs_keep = t.pairs if t else []
+            _pairs_keep = []
+            for _p in (getattr(t, "pairs", []) if t else []):
+                if getattr(_p, "player_1", None) is not None and getattr(_p, "player_2", None) is not None:
+                    _pairs_keep.append(_p)
             _primary_cat, _primary_sub = (None, None)
             if t_divisions:
                 _primary_cat, _primary_sub = _parse_division_key(t_divisions[0])
@@ -5488,7 +5491,7 @@ elif page == "t_config":
                     _draw_payload["pairs"] = []
                     _new_division_draws.append(TournamentDivision(**_draw_payload))
 
-            new_t = TournamentConfig(
+            _t_payload_new = dict(
                 id=t.id if t else str(__import__("uuid").uuid4()),
                 name=_t_name_clean,
                 category=_primary_cat,
@@ -5507,6 +5510,11 @@ elif page == "t_config":
                 groups=[], matches=[],
                 division_draws=_new_division_draws,
             )
+            try:
+                new_t = TournamentConfig(**_t_payload_new)
+            except Exception:
+                _t_payload_new["division_draws"] = []
+                new_t = TournamentConfig(**_t_payload_new)
             st.session_state["tournament"] = new_t
             # Persistir en Supabase
             if _db_ok and _db is not None:
@@ -5999,7 +6007,7 @@ elif page == "t_schedule":
                 _semi_txt = getattr(t, "semifinal_duration_minutes", 0) or t.match_duration_minutes
                 _final_txt = getattr(t, "final_duration_minutes", 0) or t.match_duration_minutes
                 st.info(
-                    f"Estimaci?n ajustada: grupos {t.match_duration_minutes} min, "
+                    f"Estimacion ajustada: grupos {t.match_duration_minutes} min, "
                     f"semifinales {_semi_txt} min y finales {_final_txt} min."
                 )
 
