@@ -4858,53 +4858,58 @@ elif page == "t_config":
         st.session_state["t_config_divisions"] = list(_current_divisions)
         st.session_state["_t_config_divisions_source_id"] = _div_source_id
 
-    _preset_masc = [f"{TournamentCategory.MASCULINO.value}:{_sub.value}" for _sub in _t_subs]
-    _preset_fem = [f"{TournamentCategory.FEMENINO.value}:{_sub.value}" for _sub in _t_subs]
-    _preset_mix = [f"{TournamentCategory.MIXTO.value}:{_sub.value}" for _sub in _t_subs]
+    # ── Rejilla de casillas: marca directamente cada nivel ──────────────────
+    st.caption("Marca los niveles que quieras de cada categoría. Un clic = añadido.")
 
-    def _add_divs(keys_to_add):
-        _cur = list(st.session_state.get("t_config_divisions", []))
-        st.session_state["t_config_divisions"] = list(dict.fromkeys(_cur + list(keys_to_add)))
-
-    # ── Selectores rápidos por categoría ────────────────────────────────────
-    st.caption("Elige los niveles de cada categoría. Puedes combinar Masculino, Femenino y Mixto.")
-    _qsel_cols = st.columns([1, 1, 1, 1])
-
-    _cat_presets = [
-        ("masculino", "👨 Masculino", _preset_masc, TournamentCategory.MASCULINO),
-        ("femenino",  "👩 Femenino",  _preset_fem,  TournamentCategory.FEMENINO),
-        ("mixto",     "🤝 Mixto",     _preset_mix,  TournamentCategory.MIXTO),
+    _cat_rows = [
+        ("masculino", "👨 Masculino", TournamentCategory.MASCULINO),
+        ("femenino",  "👩 Femenino",  TournamentCategory.FEMENINO),
+        ("mixto",     "🤝 Mixto",     TournamentCategory.MIXTO),
     ]
-    for _ci, (_cval, _clabel, _ckeys, _ccat) in enumerate(_cat_presets):
-        with _qsel_cols[_ci]:
-            with st.expander(_clabel, expanded=False):
-                _cur_sel = set(st.session_state.get("t_config_divisions", []))
-                _already = [k for k in _ckeys if k in _cur_sel]
-                _picked = st.multiselect(
-                    "Niveles",
-                    options=_ckeys,
-                    default=_already,
-                    format_func=lambda k: _div_labels.get(k, k).replace(f"{_ccat.label} ", ""),
-                    key=f"quick_sel_{_cval}",
-                    label_visibility="collapsed",
-                )
-                if st.button(f"Añadir selección", key=f"quick_add_{_cval}", use_container_width=True, type="primary"):
-                    _add_divs(_picked)
-                    st.rerun()
 
-    with _qsel_cols[3]:
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("🗑️ Limpiar todo", key="t_div_preset_none", use_container_width=True):
-            st.session_state["t_config_divisions"] = []
-            st.rerun()
+    # Inicializar el estado de cada casilla la primera vez (según el torneo cargado)
+    _chk_init_id = f"_t_chk_init::{_div_source_id}"
+    if st.session_state.get(_chk_init_id) != _div_source_id:
+        _cur_set0 = set(st.session_state.get("t_config_divisions", []))
+        for _cval, _clabel, _ccat in _cat_rows:
+            for _sub in _t_subs:
+                _k = f"{_ccat.value}:{_sub.value}"
+                st.session_state[f"divchk_{_k}"] = (_k in _cur_set0)
+        st.session_state[_chk_init_id] = _div_source_id
 
-    t_divisions = st.multiselect(
-        "Categorías seleccionadas",
-        options=_div_keys,
-        key="t_config_divisions",
-        format_func=lambda k: _div_labels.get(k, k),
-        help="También puedes añadir o quitar categorías directamente aquí.",
-    )
+    for _cval, _clabel, _ccat in _cat_rows:
+        _row_keys = [f"{_ccat.value}:{_sub.value}" for _sub in _t_subs]
+        # cabecera de fila + botones todos/ninguno
+        _hc1, _hc2, _hc3 = st.columns([3, 1, 1])
+        with _hc1:
+            st.markdown(f"**{_clabel}**")
+        with _hc2:
+            if st.button("Todos", key=f"rowall_{_cval}", use_container_width=True):
+                for _k in _row_keys:
+                    st.session_state[f"divchk_{_k}"] = True
+                st.rerun()
+        with _hc3:
+            if st.button("Ninguno", key=f"rownone_{_cval}", use_container_width=True):
+                for _k in _row_keys:
+                    st.session_state[f"divchk_{_k}"] = False
+                st.rerun()
+        # casillas de nivel en columnas
+        _lvl_cols = st.columns(len(_t_subs))
+        for _li, _sub in enumerate(_t_subs):
+            _k = f"{_ccat.value}:{_sub.value}"
+            with _lvl_cols[_li]:
+                st.checkbox(_sub.label, key=f"divchk_{_k}")
+        st.markdown("")
+
+    # La selección final = todas las casillas marcadas
+    t_divisions = [
+        f"{_ccat.value}:{_sub.value}"
+        for _cval, _clabel, _ccat in _cat_rows
+        for _sub in _t_subs
+        if st.session_state.get(f"divchk_{_ccat.value}:{_sub.value}")
+    ]
+    t_divisions = [k for k in t_divisions if k in _div_key_set]
+    st.session_state["t_config_divisions"] = t_divisions
 
     if t_divisions:
         _chips = []
@@ -4916,7 +4921,7 @@ elif page == "t_config":
             _chips.append(f'<span class="{_cls}">{_cat.icon} {_cat.label}</span><span class="t-subcat">{_sub.label}</span>')
         st.markdown(f'<div style="display:flex;flex-wrap:wrap;gap:.35rem;margin:.35rem 0 0">{"".join(_chips)}</div>', unsafe_allow_html=True)
     else:
-        st.caption("Sin categorías específicas (torneo abierto).")
+        st.caption("Sin categorías seleccionadas todavía.")
 
     st.divider()
     _section_start("🏟️", "Pistas del torneo")
