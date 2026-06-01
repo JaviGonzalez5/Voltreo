@@ -5269,19 +5269,12 @@ elif page == "t_config":
             _existing_draws_map = {d.key: d for d in (getattr(t, "division_draws", []) or [])}
             _new_division_draws = []
             for _dk in (t_divisions or []):
-                _prev_draw = _existing_draws_map.get(_dk)
                 _dc = _div_configs.get(_dk, {})
                 _dcat, _dsub = _parse_division_key(_dk)
-                _prev_pairs = []
-                _prev_groups = []
-                _prev_matches = []
-                if _prev_draw is not None:
-                    try:
-                        _prev_pairs = list(getattr(_prev_draw, "pairs", []) or [])
-                        _prev_groups = list(getattr(_prev_draw, "groups", []) or [])
-                        _prev_matches = list(getattr(_prev_draw, "matches", []) or [])
-                    except Exception:
-                        _prev_pairs, _prev_groups, _prev_matches = [], [], []
+                _prev_pairs = [
+                    p for p in (_pairs_keep or [])
+                    if getattr(p, "division", None) == _dk or (not getattr(p, "division", None) and len(t_divisions or []) == 1)
+                ]
                 _draw_payload = dict(
                     key=_dk,
                     category=_dcat,
@@ -5293,14 +5286,13 @@ elif page == "t_config":
                     groups_qualifiers=_dc.get("groups_qualifiers", t_qualifiers),
                     third_place_match=t_third_place,
                     pairs=_prev_pairs,
-                    groups=_prev_groups,
-                    matches=_prev_matches,
+                    groups=[],
+                    matches=[],
                 )
                 try:
                     _new_division_draws.append(TournamentDivision(**_draw_payload))
                 except Exception:
-                    _draw_payload["groups"] = []
-                    _draw_payload["matches"] = []
+                    _draw_payload["pairs"] = []
                     _new_division_draws.append(TournamentDivision(**_draw_payload))
 
             new_t = TournamentConfig(
