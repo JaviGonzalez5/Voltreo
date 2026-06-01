@@ -2198,17 +2198,19 @@ def _t_header(step_num: int, step_title: str, step_hint: str) -> None:
         )
     else:
         _page_header("🏆", f"Torneos — {step_title}", step_hint)
+    # Pestañas clicables: salta directamente a cualquier paso del torneo
     _steps_bc = ["⚙️ Config","👥 Parejas","🎯 Estructura","🗓️ Horarios","🏆 Resultados","📤 Exportar"]
-    _bc_html = '<div style="display:flex;gap:6px;margin-bottom:1.4rem;flex-wrap:wrap">'
-    for _i, _sbc in enumerate(_steps_bc, 1):
-        if _i < step_num:
-            _bc_html += f'<span style="background:#00c853;color:#fff;border-radius:20px;padding:3px 12px;font-size:.75rem;font-weight:700">✓ {_sbc}</span>'
-        elif _i == step_num:
-            _bc_html += f'<span style="background:#0b1a2b;color:#fff;border:2px solid #00c853;border-radius:20px;padding:3px 12px;font-size:.75rem;font-weight:700">▶ {_sbc}</span>'
-        else:
-            _bc_html += f'<span style="background:#e4edf8;color:#8faac8;border-radius:20px;padding:3px 12px;font-size:.75rem">○ {_sbc}</span>'
-    _bc_html += '</div>'
-    st.markdown(_bc_html, unsafe_allow_html=True)
+    _steps_keys = ["t_config","t_pairs","t_generate","t_schedule","t_results","t_export"]
+    _bc_cols = st.columns(len(_steps_bc))
+    for _i, (_sbc, _skey) in enumerate(zip(_steps_bc, _steps_keys), 1):
+        with _bc_cols[_i - 1]:
+            _prefix = "✓ " if _i < step_num else ("▶ " if _i == step_num else "")
+            _btype = "primary" if _i == step_num else "secondary"
+            if st.button(f"{_prefix}{_sbc}", key=f"t_bc_{step_num}_{_i}",
+                         use_container_width=True, type=_btype):
+                st.session_state["_nav_page"] = _skey
+                st.rerun()
+    st.markdown('<div style="margin-bottom:1rem"></div>', unsafe_allow_html=True)
 
 
 def _t_nav_buttons(current_step: int) -> None:
