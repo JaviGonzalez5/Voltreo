@@ -5219,6 +5219,23 @@ elif page == "t_config":
     col_t1, col_t2 = st.columns(2)
     with col_t1:
         t_match_dur = st.number_input("Duración del partido (min)", min_value=10, max_value=180, step=5, value=t.match_duration_minutes if t else 60)
+        st.caption("Duraciones especiales solo para este torneo. D?jalas en 0 para usar la duraci?n general.")
+        t_semifinal_dur = st.slider(
+            "Duraci?n aproximada semifinales (min)",
+            min_value=0,
+            max_value=90,
+            step=5,
+            value=int(getattr(t, "semifinal_duration_minutes", 0) or 0) if t else 0,
+            help="Para semis al mejor de 3 sets a 15 puntos, suele tener sentido marcar 30-45 min.",
+        )
+        t_final_dur = st.slider(
+            "Duraci?n aproximada final / 3?-4? (min)",
+            min_value=0,
+            max_value=120,
+            step=5,
+            value=int(getattr(t, "final_duration_minutes", 0) or 0) if t else 0,
+            help="Para finales al mejor de 3 sets a 15 puntos, suele tener sentido marcar 40-60 min.",
+        )
         t_rest = st.number_input("Descanso mínimo entre partidos (min)", min_value=0, max_value=120, step=5, value=t.rest_between_matches_min if t else 15)
     with col_t2:
         t_day_start = st.time_input("Hora de inicio del día", value=t.day_start_time if t else _dt_mod.time(9, 0))
