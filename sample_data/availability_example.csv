@@ -1,0 +1,5 @@
+court_id,court_name,indoor,active
+court_1,Pista 1,false,true
+court_2,Pista 2,false,true
+court_3,Pista 3,true,true
+court_4,Pista 4,true,true

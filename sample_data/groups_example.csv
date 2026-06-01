@@ -1,0 +1,19 @@
+group_id,group_name,level,pair_name,player1_name,player1_email,player1_phone,player2_name,player2_email,player2_phone
+G1,Grupo A,Avanzado,García / Martínez,Carlos García,carlos@email.com,600111222,Pedro Martínez,pedro@email.com,600333444
+G1,Grupo A,Avanzado,López / Sánchez,Juan López,juan@email.com,600555666,Antonio Sánchez,antonio@email.com,600777888
+G1,Grupo A,Avanzado,Ruiz / Fernández,Miguel Ruiz,miguel@email.com,600999000,David Fernández,david@email.com,601111222
+G1,Grupo A,Avanzado,Torres / Jiménez,Pablo Torres,pablo@email.com,601333444,Sergio Jiménez,sergio@email.com,601555666
+G1,Grupo A,Avanzado,Navarro / Moreno,Raúl Navarro,raul@email.com,601777888,Álvaro Moreno,alvaro@email.com,601999000
+G1,Grupo A,Avanzado,Díaz / Romero,Iván Díaz,ivan@email.com,602111222,Jorge Romero,jorge@email.com,602333444
+G2,Grupo B,Intermedio,Alonso / Gutiérrez,Fernando Alonso,fer@email.com,602555666,Roberto Gutiérrez,roberto@email.com,602777888
+G2,Grupo B,Intermedio,Vega / Castillo,Adrián Vega,adrian@email.com,602999000,Marcos Castillo,marcos@email.com,603111222
+G2,Grupo B,Intermedio,Rubio / Ortega,Héctor Rubio,hector@email.com,603333444,Daniel Ortega,daniel@email.com,603555666
+G2,Grupo B,Intermedio,Delgado / Ramírez,Óscar Delgado,oscar@email.com,603777888,Víctor Ramírez,victor@email.com,603999000
+G2,Grupo B,Intermedio,Herrera / Suárez,Javier Herrera,javi@email.com,604111222,Tomás Suárez,tomas@email.com,604333444
+G2,Grupo B,Intermedio,Molina / Vargas,Enrique Molina,enrique@email.com,604555666,Alejandro Vargas,alej@email.com,604777888
+G3,Grupo C,Iniciación,Santos / Peña,Mario Santos,mario@email.com,604999000,Rubén Peña,ruben@email.com,605111222
+G3,Grupo C,Iniciación,Cruz / Ramos,Felipe Cruz,felipe@email.com,605333444,Eduardo Ramos,edu@email.com,605555666
+G3,Grupo C,Iniciación,Reyes / Flores,Gonzalo Reyes,gonzalo@email.com,605777888,Rodrigo Flores,rodrigo@email.com,605999000
+G3,Grupo C,Iniciación,Domínguez / Ibáñez,Nicolás Domínguez,nico@email.com,606111222,Andrés Ibáñez,andres@email.com,606333444
+G3,Grupo C,Iniciación,Gil / Serrano,Cristian Gil,cristian@email.com,606555666,Julián Serrano,julian@email.com,606777888
+G3,Grupo C,Iniciación,Blanco / Cano,Ignacio Blanco,ignacio@email.com,606999000,Sebastián Cano,seba@email.com,607111222

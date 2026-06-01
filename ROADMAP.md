@@ -1,0 +1,206 @@
+# PadelPlus — Roadmap SaaS v1
+
+## Evaluación arquitectural honesta
+
+### Qué hace bien Streamlit (mantener)
+- Panel de administración para superadmin (CRUD clubs, usuarios, fases)
+- Configuración de ranking y torneos (formularios complejos, poca concurrencia)
+- Exportación Excel / mensajes WhatsApp
+- Generación y planificación de calendarios (algoritmo existente)
+
+### Limitaciones BLOQUEANTES para producto vendible
+
+| Limitación | Impacto | Solución |
+|-----------|---------|----------|
+| Sin URL routing real | No se pueden compartir cuadros/rankings por enlace | Añadir capa Next.js pública |
+| Sidebar 306px fija en móvil | App inutilizable en teléfono para jugadores | Next.js mobile-first para vistas de jugador |
+| Sin rate limiting nativo | Brute force en login posible | ✅ Implementado (session-state, 5 intentos / 5 min) |
+| Sin tiempo real | No se pueden ver resultados en vivo | Supabase Realtime en Next.js (futuro) |
+| Max ~12 usuarios concurrentes | No escala para torneos grandes con muchos admins | Aceptable para v1 (1 admin/club) |
+
+### Decisión arquitectural
+```
+Streamlit (admin privado)  ←→  Supabase (DB)  ←→  Next.js (vistas públicas)
+```
+
+---
+
+## Fases del roadmap
+
+---
+
+## FASE P0 — Fundación estable (Semanas 1-2)
+**Objetivo: que lo que existe funcione sin fallos y sea seguro.**
+
+### ✅ Completado en este sprint
+
+| Item | Estado | Evidencia |
+|------|--------|-----------|
+| Rate limiting en login (5 intentos / 5 min lockout) | ✅ | 23 tests passing |
+| Validación de contraseña robusta (8 chars, mayúscula, número) | ✅ | test_auth_security.py |
+| `create_user` valida rol en capa de datos | ✅ | `_VALID_ROLES` en db.py |
+| `upsert_phase` deactiva siblings en UPDATE también | ✅ | test: múltiples fases activas |
+| `set_phase_active` sin race condition | ✅ | Reordenado |
+| Stale schedule_result limpiado al reimportar grupos | ✅ | app.py línea ~1994 |
+| Torneos persistidos a Supabase (t_config + t_schedule) | ✅ | `upsert_tournament` llamado |
+| Time parse crash en editor de partidos | ✅ | try/except IndexError, ValueError |
+| `groups_qualifiers=0` y `bracket n=0` no crashean | ✅ | 19 tests passing |
+| Test suite completo: 79 tests | ✅ | 79/79 PASSED |
+
+### Pendiente de ejecutar manualmente en Supabase
+
+```sql
+-- 1. Añadir columna is_active si no existe
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+
+-- 2. Ejecutar src/db_rls.sql para RLS + tabla audit_log
+-- (copiar y pegar en Supabase SQL Editor)
+```
+
+---
+
+## FASE P1 — Funcionalidad completa de Ranking (Semanas 2-4)
+**Objetivo: que un club pueda gestionar una temporada entera desde la app.**
+
+### Módulo Ranking — gaps actuales
+
+| Feature | Estado actual | Trabajo necesario |
+|---------|--------------|-------------------|
+| Crear temporadas/fases | ✅ Funciona | — |
+| Importar jugadores/parejas CSV | ✅ Funciona | — |
+| Generar calendario | ✅ Funciona | — |
+| **Registrar resultados de partido** | ❌ No existe | Formulario de resultado por partido |
+| **Clasificación automática** | ❌ No existe | Tabla de puntos con victorias/sets/juegos |
+| **Reglas de puntuación configurables** | ❌ No existe | UI para definir pts por victoria/derrota/posición |
+| **Historial y trazabilidad** | ❌ No existe | Usar tabla audit_log |
+| Exportar Excel completo | ✅ Parcial | Añadir hoja de clasificación |
+
+#### Estimación P1-Ranking: 10 días de desarrollo
+
+**Tareas concretas:**
+1. `src/ranking_scorer.py` — módulo de puntuación configurable
+2. Pantalla "Registrar resultado" (`page == "results"`) — formulario por partido
+3. Pantalla "Clasificación" (`page == "standings"`) — tabla rankeable
+4. Añadir `results` y `standings` a `ranking_phases` JSONB o tabla separada
+5. Test de cálculo de clasificación (al menos 10 casos)
+
+---
+
+## FASE P1 — Funcionalidad completa de Torneos (Semanas 2-4)
+
+| Feature | Estado actual | Trabajo necesario |
+|---------|--------------|-------------------|
+| Crear torneo con formato | ✅ Funciona | — |
+| Generar grupos y cuadro | ✅ Funciona | — |
+| Asignar horarios/pistas | ✅ Funciona | — |
+| Exportar Excel | ✅ Funciona | — |
+| **Registrar resultados partido a partido** | ❌ No existe | Formulario por match con score |
+| **Avance automático del cuadro** | ❌ No existe | Lógica: ganador pasa a siguiente ronda |
+| **Vista pública compartible** | ❌ No existe | URL pública (requiere Next.js) |
+| **Filtros y búsqueda en listas** | ❌ No existe | st.multiselect por categoría/estado |
+
+#### Estimación P1-Torneos: 8 días de desarrollo
+
+---
+
+## FASE P2 — Experiencia de producto (Semanas 4-6)
+**Objetivo: UX premium, móvil, funcionalidades de valor diferencial.**
+
+### Next.js layer (vistas públicas y móvil)
+
+```
+/club/[slug]/ranking          → Clasificación pública del ranking
+/club/[slug]/torneo/[id]      → Cuadro/resultados del torneo (shareable)
+/club/[slug]/partido/[id]     → Formulario de resultado para jugadores (móvil)
+```
+
+**Stack:** Next.js 14 (App Router) + Supabase JS client + Tailwind CSS  
+**Hosting:** Vercel free tier  
+**Tiempo estimado:** 2 semanas para las 3 rutas básicas
+
+### Notificaciones (email básico)
+- Resultado registrado → notificar pareja rival
+- Cuadro publicado → notificar participantes
+- **Stack:** Resend (100 emails/día gratis) + Supabase Edge Function
+
+---
+
+## FASE P3 — Go-live y escala (Semanas 6-8)
+
+### Seguridad adicional
+- [ ] Ejecutar `src/db_rls.sql` en Supabase (RLS real)
+- [ ] Supabase Auth para jugadores (login social/magic link)
+- [ ] Cloudflare en frente de Streamlit (rate limit por IP)
+- [ ] Rotate service_role key cada 90 días
+
+### Infraestructura
+- [ ] Streamlit Community Cloud → Streamlit Private (si >10 clubs)
+- [ ] Supabase Pro plan (si >500MB DB o >500k requests/mes)
+- [ ] Backup automático Supabase (incluido en Pro)
+
+### Testing pre-go-live
+- [ ] E2E manual: login → crear club → configurar ranking → registrar resultado → verificar clasificación
+- [ ] E2E manual: crear torneo → generar cuadro → registrar resultados → ver bracket en URL pública
+- [ ] Test de aislamiento: Club A no puede ver datos de Club B (verificar en Supabase logs)
+- [ ] Test de concurrencia: 5 pestañas simultáneas, cada una con distinto club
+- [ ] Load test: 10 usuarios concurrentes durante 5 minutos
+
+---
+
+## Checklist de go-live
+
+### Seguridad mínima ✅/❌
+- [x] Rate limiting login implementado
+- [x] Contraseñas robustas (8 chars, mayúscula, número)
+- [x] Roles validados en capa de datos
+- [ ] RLS activado en Supabase (ejecutar db_rls.sql)
+- [ ] Audit log operativo
+- [ ] Secrets rotados (no usar contraseña de ejemplo)
+
+### Funcionalidad mínima vendible
+- [x] Multitenancy real (club_id en todas las operaciones)
+- [x] Torneos persistidos a DB
+- [x] Fases de ranking persistidas a DB
+- [ ] Registro de resultados de ranking
+- [ ] Clasificación automática
+- [ ] Registro de resultados de torneo + avance de cuadro
+- [ ] URL pública de torneo compartible
+
+### UX mínima
+- [x] Login con mensajes de error claros
+- [x] Onboarding para superadmin sin clubs
+- [ ] Versión móvil para jugadores (Next.js)
+- [ ] Tiempo de aprendizaje < 10 min (video demo)
+
+### Operación
+- [x] 79 tests automatizados
+- [ ] Runbook de operaciones (cómo crear club, resetear contraseña, recuperar datos)
+- [ ] Política de backup verificada
+- [ ] Monitorización básica (Supabase logs activados)
+
+---
+
+## Riesgos abiertos
+
+| Riesgo | Probabilidad | Impacto | Mitigación |
+|--------|-------------|---------|------------|
+| Streamlit Cloud down | Media | Alto | Migrar a servidor propio (Railway/Render) cuando haya 3+ clubs pagando |
+| Supabase free tier límites (500MB, 2GB egress) | Media | Medio | Upgrade a Pro (~$25/mes) cuando se supere 50% del límite |
+| Pérdida de sesión en Streamlit (timeout 30min) | Alta | Medio | Mostrar aviso "sesión expirando" + guardar en DB en cada paso |
+| Contención de Playwright en Streamlit | Alta | Bajo | Mover Syltek connector a worker externo (Railway) en P2 |
+| Escalabilidad con >20 clubs simultáneos | Baja ahora | Alto | Arquitectura Next.js + API FastAPI resuelve este riesgo |
+| Brecha de datos entre clubs | Baja | Crítico | RLS en Supabase + tests de aislamiento regulares |
+
+---
+
+## Estimación total
+
+| Fase | Semanas | Coste estimado (dev solo) |
+|------|---------|--------------------------|
+| P0 (hecho) | 1 | ✅ Completado |
+| P1 Ranking (resultados + clasificación) | 1.5 | 10 días |
+| P1 Torneos (resultados + avance cuadro) | 1.5 | 8 días |
+| P2 Next.js vistas públicas | 2 | 2 semanas |
+| P2 Notificaciones email | 0.5 | 3 días |
+| P3 Go-live + tests + documentación | 1 | 5 días |
+| **TOTAL** | **7.5 semanas** | **~36 días de trabajo** |
