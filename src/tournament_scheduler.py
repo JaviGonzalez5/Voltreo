@@ -227,13 +227,18 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
                     )
                 else:
                     s_start, s_end, court = slot
-                    match.match_date = s_start.date()
+                    # Día de la sesión: si el partido empieza de madrugada
+                    # (antes de la hora de inicio), pertenece a la noche anterior.
+                    _session_day = s_start.date()
+                    if s_start.time() < day_start:
+                        _session_day = s_start.date() - timedelta(days=1)
+                    match.match_date = _session_day
                     match.start_time = s_start.time()
                     match.end_time   = s_end.time()
                     match.court      = court
                     match.status     = TMatchStatus.SCHEDULED
 
-                    court_tls[court.id].mark_occupied(match.match_date, s_end)
+                    court_tls[court.id].mark_occupied(s_start.date(), s_end)
                     player_tl.record(_match_player_keys(match), s_end)
 
                     if rnd_latest_end is None or s_end > rnd_latest_end:
