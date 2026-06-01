@@ -2294,6 +2294,15 @@ init_state()
 _inject_css()
 
 # ---------------------------------------------------------------------------
+# Cookie Manager — debe instanciarse SIEMPRE en la misma posición del árbol,
+# incondicionalmente, ANTES de cualquier comprobación de autenticación.
+# extra_streamlit_components requiere esto para leer las cookies del navegador:
+# el componente necesita estar en el árbol de renderizado en cada ciclo.
+# ---------------------------------------------------------------------------
+from src.auth import _cookie_manager as _init_cookie_mgr
+_init_cookie_mgr()   # registra el CookieManager en session_state de forma estable
+
+# ---------------------------------------------------------------------------
 # Base de datos y autenticación
 # ---------------------------------------------------------------------------
 
@@ -2316,14 +2325,12 @@ if _qp_rid:
 
 if _db_ok:
     if not is_authenticated() and _db is not None:
-        # ── Cookie warmup: extra_streamlit_components necesita ≥1 ciclo para
-        # cargar las cookies del navegador. Hacemos un rerun silencioso la
-        # primera vez para garantizar que el gestor esté listo.
-        if not st.session_state.get("_cookie_warmup_done"):
-            st.session_state["_cookie_warmup_done"] = True
-            from src.auth import _cookie_manager as _cm_init
-            _cm_init()          # instancia el gestor (lo registra en session_state)
-            st.rerun()          # segundo ciclo: ahora las cookies están disponibles
+        # ── 2 ciclos de warmup: el componente de cookies necesita 1 ciclo para
+        # que el JS del navegador devuelva el valor de la cookie al servidor.
+        _warmup = st.session_state.get("_cookie_warmup", 0)
+        if _warmup < 2:
+            st.session_state["_cookie_warmup"] = _warmup + 1
+            st.rerun()
         restore_session_from_cookie(_db)
     if not is_authenticated():
         render_login_screen(_db)   # calls st.stop() internally

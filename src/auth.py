@@ -171,12 +171,24 @@ def _parse_remember_token(token: str) -> Optional[dict[str, Any]]:
 
 
 def _cookie_manager():
-    """Instancia por sesión del gestor de cookies del navegador."""
+    """
+    Instancia del CookieManager (extra_streamlit_components).
+
+    IMPORTANTE: debe llamarse INCONDICIONALMENTE al inicio de cada ciclo de
+    renderizado (antes de cualquier st.stop()) para que el componente mantenga
+    su posición estable en el árbol y pueda leer/escribir cookies del navegador.
+    La clave fija ("_pp_cm") es obligatoria en versiones >= 0.1.60 para evitar
+    colisiones de ID de componente.
+    """
     if stx is None:
         return None
     mgr = st.session_state.get("_cookie_manager")
     if mgr is None:
-        mgr = stx.CookieManager()
+        try:
+            mgr = stx.CookieManager(key="_pp_cm")
+        except TypeError:
+            # Versiones muy antiguas no aceptan key=
+            mgr = stx.CookieManager()
         st.session_state["_cookie_manager"] = mgr
     return mgr
 
@@ -322,8 +334,13 @@ def login(db, username: str, password: str) -> Optional[dict]:
 def logout() -> None:
     """Elimina el usuario de la sesión y recarga la app."""
     clear_remember_cookie()
+    # Preservar el CookieManager y el contador de warmup para que el próximo
+    # intento de login pueda leer la cookie en el primer ciclo.
+    _mgr = st.session_state.get("_cookie_manager")
     for key in list(st.session_state.keys()):
         del st.session_state[key]
+    if _mgr is not None:
+        st.session_state["_cookie_manager"] = _mgr
     st.rerun()
 
 
