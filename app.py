@@ -5208,6 +5208,11 @@ elif page == "t_config":
     with col_t2:
         t_day_start = st.time_input("Hora de inicio del día", value=t.day_start_time if t else _dt_mod.time(9, 0))
         t_day_end   = st.time_input("Hora de fin del día",    value=t.day_end_time   if t else _dt_mod.time(22, 0))
+    if t_day_end <= t_day_start:
+        st.info(
+            "🌙 Sesión nocturna detectada: la hora de fin se interpretará como madrugada del día siguiente "
+            f"({t_day_start.strftime('%H:%M')} → {t_day_end.strftime('%H:%M')})."
+        )
 
     # Valores por defecto (la estructura real se decide en «Generar estructura»)
     t_group_size = t.group_size if t else 4
@@ -5267,7 +5272,17 @@ elif page == "t_config":
                 _prev_draw = _existing_draws_map.get(_dk)
                 _dc = _div_configs.get(_dk, {})
                 _dcat, _dsub = _parse_division_key(_dk)
-                _new_division_draws.append(TournamentDivision(
+                _prev_pairs = []
+                _prev_groups = []
+                _prev_matches = []
+                if _prev_draw is not None:
+                    try:
+                        _prev_pairs = list(getattr(_prev_draw, "pairs", []) or [])
+                        _prev_groups = list(getattr(_prev_draw, "groups", []) or [])
+                        _prev_matches = list(getattr(_prev_draw, "matches", []) or [])
+                    except Exception:
+                        _prev_pairs, _prev_groups, _prev_matches = [], [], []
+                _draw_payload = dict(
                     key=_dk,
                     category=_dcat,
                     subcategory=_dsub,
@@ -5277,10 +5292,16 @@ elif page == "t_config":
                     bracket_size=_dc.get("bracket_size", t_bracket_size),
                     groups_qualifiers=_dc.get("groups_qualifiers", t_qualifiers),
                     third_place_match=t_third_place,
-                    pairs=list(_prev_draw.pairs if _prev_draw else []),
-                    groups=list(_prev_draw.groups if _prev_draw else []),
-                    matches=list(_prev_draw.matches if _prev_draw else []),
-                ))
+                    pairs=_prev_pairs,
+                    groups=_prev_groups,
+                    matches=_prev_matches,
+                )
+                try:
+                    _new_division_draws.append(TournamentDivision(**_draw_payload))
+                except Exception:
+                    _draw_payload["groups"] = []
+                    _draw_payload["matches"] = []
+                    _new_division_draws.append(TournamentDivision(**_draw_payload))
 
             new_t = TournamentConfig(
                 id=t.id if t else str(__import__("uuid").uuid4()),

@@ -73,6 +73,32 @@ class TestMultiDivisionGeneration:
         assert all(n.startswith("M") for n in names)
 
 
+class TestNightTournamentScheduling:
+
+    def test_single_day_session_can_finish_after_midnight(self):
+        cfg = TournamentConfig(
+            name="Nocturno",
+            start_date=date(2026, 6, 12),
+            end_date=date(2026, 6, 12),
+            divisions=["masculino:1a"],
+            format=TournamentFormat.BRACKET,
+            bracket_size=4,
+            courts=[TournamentCourt(id="c1", name="Pista 1")],
+            pairs=[_pair(f"M{i}", "masculino:1a") for i in range(4)],
+            match_duration_minutes=125,
+            rest_between_matches_min=0,
+            day_start_time=time(19, 0),
+            day_end_time=time(1, 15),
+        )
+
+        cfg = generate_tournament_structure(cfg)
+        cfg = schedule_tournament(cfg)
+
+        assert all(m.status == TMatchStatus.SCHEDULED for m in cfg.matches)
+        assert min(m.start_time for m in cfg.matches) >= time(19, 0)
+        assert any(m.end_time <= time(1, 15) for m in cfg.matches)
+
+
 class TestMultiDivisionAdvancement:
 
     def test_winner_advances_within_own_division(self):

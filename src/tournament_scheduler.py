@@ -348,8 +348,21 @@ def tournament_schedule_summary(config: TournamentConfig) -> dict:
         }
 
     from datetime import datetime as _dtt
-    first = min(scheduled, key=lambda m: _dtt.combine(m.match_date, m.start_time))
-    last  = max(scheduled, key=lambda m: _dtt.combine(m.match_date, m.end_time))
+
+    def _real_start(m):
+        dt = _dtt.combine(m.match_date, m.start_time)
+        if m.start_time < config.day_start_time:
+            dt += timedelta(days=1)
+        return dt
+
+    def _real_end(m):
+        dt = _dtt.combine(m.match_date, m.end_time)
+        if m.end_time <= m.start_time or m.end_time < config.day_start_time:
+            dt += timedelta(days=1)
+        return dt
+
+    first = min(scheduled, key=_real_start)
+    last  = max(scheduled, key=_real_end)
 
     return {
         "scheduled":   len(scheduled),
