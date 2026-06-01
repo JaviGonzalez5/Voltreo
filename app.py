@@ -1564,11 +1564,12 @@ def _build_calendar_html(matches: list, week_start: "date") -> str:
     for i, d in enumerate(week_dates):
         cnt = sum(len(cell[(d, t)]) for t in times)
         extra = ' class="today-hdr"' if d == today else ""
+        _cnt_html = f"<br><small style='opacity:.7'>({cnt})</small>" if cnt else ""
         rows.append(
             f'<th{extra}>'
             f'<div class="day-name">{day_names_es[i]}</div>'
             f'<div class="day-date">{d.strftime("%d/%m")}</div>'
-            f'{"<br><small style=\'opacity:.7\'>(" + str(cnt) + ")</small>" if cnt else ""}'
+            f'{_cnt_html}'
             f'</th>'
         )
     rows.append("</tr></thead><tbody>")
