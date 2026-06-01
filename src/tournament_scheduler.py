@@ -296,8 +296,9 @@ def _interleave_matches_by_division(
     by_division: dict[str | None, list[TournamentMatch]] = defaultdict(list)
     for match in matches:
         by_division[match.division].append(match)
-    for division, div_matches in list(by_division.items()):
-        by_division[division] = _interleave_matches_by_group(div_matches)
+    for idx, division in enumerate(divisions):
+        if division in by_division:
+            by_division[division] = _interleave_matches_by_group(by_division[division], offset=idx)
 
     ordered: list[TournamentMatch] = []
     while any(by_division.values()):
@@ -307,7 +308,7 @@ def _interleave_matches_by_division(
     return ordered
 
 
-def _interleave_matches_by_group(matches: list[TournamentMatch]) -> list[TournamentMatch]:
+def _interleave_matches_by_group(matches: list[TournamentMatch], offset: int = 0) -> list[TournamentMatch]:
     """Rota grupos dentro de una categoria para evitar bloques A, luego B, luego C."""
     group_ids = [m.group_id for m in matches if m.group_id]
     if len(set(group_ids)) <= 1:
@@ -325,6 +326,9 @@ def _interleave_matches_by_group(matches: list[TournamentMatch]) -> list[Tournam
             fallback_order.append(key)
 
     ordered: list[TournamentMatch] = []
+    if group_order:
+        shift = offset % len(group_order)
+        group_order = group_order[shift:] + group_order[:shift]
     rotation = group_order + fallback_order
     while any(by_group.values()):
         for group_id in rotation:

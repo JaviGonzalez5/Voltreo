@@ -340,6 +340,43 @@ class TestMultiDivisionScheduling:
 
         assert first_slot_groups == {"Grupo A", "Grupo B", "Grupo C"}
 
+    def test_group_rotation_is_staggered_across_divisions(self):
+        divs = ["masculino:1a", "masculino:2a", "femenino:1a", "femenino:2a"]
+        cfg = TournamentConfig(
+            name="Stagger groups",
+            start_date=date(2026, 6, 1),
+            end_date=date(2026, 6, 1),
+            divisions=divs,
+            division_waves={d: 1 for d in divs},
+            format=TournamentFormat.GROUPS_BRACKET,
+            courts=[
+                TournamentCourt(id="c1", name="Pista 1"),
+                TournamentCourt(id="c2", name="Pista 2"),
+                TournamentCourt(id="c3", name="Pista 3"),
+                TournamentCourt(id="c4", name="Pista 4"),
+            ],
+            pairs=[_pair(f"{idx}-{i}", div) for idx, div in enumerate(divs) for i in range(9)],
+            match_duration_minutes=15,
+            rest_between_matches_min=0,
+            day_start_time=time(19, 0),
+            day_end_time=time(23, 0),
+            division_draws=[
+                TournamentDivision(key=div, format=TournamentFormat.GROUPS_BRACKET, num_groups=3, bracket_size=4)
+                for div in divs
+            ],
+        )
+
+        cfg = schedule_tournament(generate_tournament_structure(cfg))
+        group_names = {g.id: g.name for g in cfg.groups}
+        first_slot_groups = [
+            group_names[m.group_id]
+            for m in cfg.matches
+            if m.round == MatchRound.GROUP and m.start_time == time(19, 0)
+        ]
+
+        assert first_slot_groups.count("Grupo A") < len(first_slot_groups)
+        assert set(first_slot_groups) == {"Grupo A", "Grupo B", "Grupo C"}
+
 
 class TestBackwardCompatibility:
 
