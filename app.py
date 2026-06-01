@@ -5129,6 +5129,22 @@ elif page == "t_pairs":
     def _div_label(_k):
         return _div_labels_all.get(_k, _k)
 
+    def _autosave_tournament(_tobj):
+        """Guarda el torneo en Supabase silenciosamente (autosave)."""
+        if _db_ok and _db is not None:
+            _cid = current_club_id()
+            if _cid:
+                try:
+                    _p = tournament_to_db(_tobj, _cid, st.session_state.get("db_tournament_id"))
+                    _sv = _db.upsert_tournament(
+                        club_id=_cid, name=_p["name"],
+                        start_date=_p["start_date"], end_date=_p["end_date"],
+                        tournament_data=_p["tournament_data"], tournament_id=_p["tournament_id"],
+                    )
+                    st.session_state["db_tournament_id"] = _sv["id"]
+                except Exception:
+                    pass  # autosave silencioso; el usuario tiene el botón manual + CSV
+
     if _t_multi:
         st.info(f"💡 Torneo: **{t.name}** · {len(t.pairs)} parejas · "
                 f"**{len(_t_div_keys)} categorías** · asigna cada pareja a su categoría")
@@ -5168,6 +5184,7 @@ elif page == "t_pairs":
                 )
                 t.pairs.append(new_pair)
                 t.groups = []; t.matches = []; t.division_draws = []
+                _autosave_tournament(t)  # guardar en la nube para no perder nada
                 st.success(f"✅ '{new_pair.display_name}' añadida{(' a ' + _div_label(_sel_div)) if _sel_div else ''}.")
                 st.rerun()
             else:
@@ -5220,6 +5237,7 @@ elif page == "t_pairs":
                     if st.button(f"✅ Importar {len(new_pairs_csv)} parejas", type="primary"):
                         t.pairs.extend(new_pairs_csv)
                         t.groups = []; t.matches = []; t.division_draws = []
+                        _autosave_tournament(t)
                         st.success(f"✅ {len(new_pairs_csv)} parejas importadas."); st.rerun()
             except Exception as _csv_err:
                 st.error(f"Error: {_csv_err}")
@@ -5245,8 +5263,51 @@ elif page == "t_pairs":
             from collections import Counter as _Counter
             _cnt = _Counter(_div_label(p.division) if p.division else "⚠️ sin asignar" for p in t.pairs)
             _stat_chips(*[(f"{v} · {k}", "green" if "sin asignar" not in k else "red", "🎾") for k, v in _cnt.items()])
-        if st.button("🗑️ Vaciar lista de parejas", type="secondary"):
-            t.pairs = []; t.groups = []; t.matches = []; t.division_draws = []; st.rerun()
+        # ── Guardar / Exportar (para no perder el trabajo) ──────────────────
+        _exp_c1, _exp_c2, _exp_c3 = st.columns([2, 2, 1])
+        with _exp_c1:
+            # Exportar parejas a CSV (copia de seguridad descargable)
+            _csv_rows = []
+            for _p in t.pairs:
+                _csv_rows.append({
+                    "pair_name": _p.display_name,
+                    "player1_name": _p.player_1.full_name,
+                    "player1_phone": _p.player_1.phone or "",
+                    "player2_name": _p.player_2.full_name,
+                    "player2_phone": _p.player_2.phone or "",
+                    "seed": _p.seed or "",
+                    "division": _p.division or "",
+                })
+            _csv_bytes = pd.DataFrame(_csv_rows).to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "⬇️ Exportar parejas (CSV)", data=_csv_bytes,
+                file_name=f"parejas_{t.name.replace(' ', '_')}.csv",
+                mime="text/csv", use_container_width=True,
+            )
+        with _exp_c2:
+            if st.button("💾 Guardar en la nube", type="primary", use_container_width=True):
+                if _db_ok and _db is not None:
+                    _cid_sv = current_club_id()
+                    if _cid_sv:
+                        try:
+                            _p_sv = tournament_to_db(t, _cid_sv, st.session_state.get("db_tournament_id"))
+                            _s_sv = _db.upsert_tournament(
+                                club_id=_cid_sv, name=_p_sv["name"],
+                                start_date=_p_sv["start_date"], end_date=_p_sv["end_date"],
+                                tournament_data=_p_sv["tournament_data"],
+                                tournament_id=_p_sv["tournament_id"],
+                            )
+                            st.session_state["db_tournament_id"] = _s_sv["id"]
+                            st.success("✅ Guardado en la nube. No perderás las parejas aunque refresques.")
+                        except Exception as _e_sv:
+                            st.error(f"No se pudo guardar: {_e_sv}")
+                    else:
+                        st.warning("No hay club activo.")
+                else:
+                    st.warning("Base de datos no conectada — usa el CSV como copia de seguridad.")
+        with _exp_c3:
+            if st.button("🗑️ Vaciar", type="secondary", use_container_width=True):
+                t.pairs = []; t.groups = []; t.matches = []; t.division_draws = []; st.rerun()
     else:
         _empty_state("👥", "Sin parejas", "Añade las parejas del torneo manualmente o importa un CSV.")
 
