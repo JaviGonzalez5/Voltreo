@@ -4747,6 +4747,53 @@ elif page == "t_config":
             t_third_place = False
             t_qualifiers = 2
 
+    # ── Configuración por categoría (solo visible en multi-categoría + grupos) ──
+    _div_configs: dict[str, dict] = {}
+    if t_divisions and len(t_divisions) > 1 and t_format in (TournamentFormat.GROUPS, TournamentFormat.GROUPS_BRACKET):
+        st.divider()
+        _section_start("⚙️", "Configuración por categoría")
+        st.caption(
+            "Cada categoría puede tener su propio tamaño de grupo y fase final. "
+            "Si no la configuras, usará los valores globales de arriba."
+        )
+        _existing_div_draws = {d.key: d for d in (getattr(t, "division_draws", []) or [])}
+        for _dk in t_divisions:
+            _dlabel = _div_labels.get(_dk, _dk)
+            _prev = _existing_div_draws.get(_dk)
+            with st.expander(f"**{_dlabel}**", expanded=False):
+                _dc1, _dc2, _dc3 = st.columns(3)
+                with _dc1:
+                    _dg_size = st.number_input(
+                        "Parejas por grupo", min_value=3, max_value=8,
+                        value=int(_prev.group_size) if _prev else int(t_group_size),
+                        key=f"div_gsize_{_dk}",
+                    )
+                with _dc2:
+                    _dfp_opts = {2: "Solo final (2 mejores)", 4: "Semis + final (4 mejores)", 8: "Cuartos + semis + final (8 mejores)"}
+                    _dfp_keys = list(_dfp_opts.keys())
+                    _dfp_default = int(_prev.bracket_size) if _prev else int(t_bracket_size if t_format == TournamentFormat.GROUPS_BRACKET else 4)
+                    if _dfp_default not in _dfp_keys:
+                        _dfp_default = 4
+                    _dformat_sel = st.selectbox(
+                        "Fase final",
+                        options=_dfp_keys,
+                        index=_dfp_keys.index(_dfp_default),
+                        format_func=lambda b: _dfp_opts[b],
+                        key=f"div_bracket_{_dk}",
+                    )
+                with _dc3:
+                    _dqualif = st.number_input(
+                        "Clasificados por grupo",
+                        min_value=1, max_value=4,
+                        value=int(_prev.groups_qualifiers) if _prev else int(t_qualifiers if t_format == TournamentFormat.GROUPS_BRACKET else 1),
+                        key=f"div_qualif_{_dk}",
+                    )
+                _div_configs[_dk] = {
+                    "group_size": int(_dg_size),
+                    "bracket_size": int(_dformat_sel),
+                    "groups_qualifiers": int(_dqualif),
+                }
+
     st.divider()
     if st.button("💾 Guardar y continuar →", type="primary", use_container_width=True):
         _t_name_clean = str(t_name).strip()
@@ -4777,6 +4824,28 @@ elif page == "t_config":
             _primary_cat, _primary_sub = (None, None)
             if t_divisions:
                 _primary_cat, _primary_sub = _parse_division_key(t_divisions[0])
+            # Construir division_draws con configuración por categoría
+            from src.tournament_models import TournamentDivision as _TDiv
+            _existing_draws_map = {d.key: d for d in (getattr(t, "division_draws", []) or [])}
+            _new_division_draws = []
+            for _dk in (t_divisions or []):
+                _prev_draw = _existing_draws_map.get(_dk)
+                _dc = _div_configs.get(_dk, {})
+                _dcat, _dsub = _parse_division_key(_dk)
+                _new_division_draws.append(TournamentDivision(
+                    key=_dk,
+                    category=_dcat,
+                    subcategory=_dsub,
+                    format=t_format,
+                    group_size=_dc.get("group_size", t_group_size),
+                    bracket_size=_dc.get("bracket_size", t_bracket_size),
+                    groups_qualifiers=_dc.get("groups_qualifiers", t_qualifiers),
+                    third_place_match=t_third_place,
+                    pairs=list(_prev_draw.pairs if _prev_draw else []),
+                    groups=list(_prev_draw.groups if _prev_draw else []),
+                    matches=list(_prev_draw.matches if _prev_draw else []),
+                ))
+
             new_t = TournamentConfig(
                 id=t.id if t else str(__import__("uuid").uuid4()),
                 name=_t_name_clean,
@@ -4790,6 +4859,7 @@ elif page == "t_config":
                 group_size=t_group_size, bracket_size=t_bracket_size,
                 third_place_match=t_third_place, groups_qualifiers=t_qualifiers,
                 groups=[], matches=[],
+                division_draws=_new_division_draws,
             )
             st.session_state["tournament"] = new_t
             # Persistir en Supabase

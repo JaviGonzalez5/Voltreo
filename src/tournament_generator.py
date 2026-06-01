@@ -421,15 +421,25 @@ def generate_multi_division(config: TournamentConfig) -> TournamentConfig:
     union_groups: list[TournamentGroup] = []
     union_matches: list[TournamentMatch] = []
 
+    # Mapa de configuraciones por división (guardadas desde la UI)
+    _div_cfg_map = {d.key: d for d in (config.division_draws or [])}
+
     for key in div_keys:
         cat_val, _, sub_val = key.partition(":")
         cat = next((c for c in TournamentCategory if c.value == cat_val), None)
         sub = next((s for s in TournamentSubcategory if s.value == sub_val), None)
         d_pairs = pairs_by_div.get(key, [])
 
+        # Usar config por división si existe, si no la global
+        _dcfg = _div_cfg_map.get(key)
+        _d_group_size       = _dcfg.group_size        if _dcfg else config.group_size
+        _d_groups_qualifiers = _dcfg.groups_qualifiers if _dcfg else config.groups_qualifiers
+        _d_bracket_size     = _dcfg.bracket_size      if _dcfg else config.bracket_size
+        _d_format           = _dcfg.format             if _dcfg else config.format
+
         groups, matches, eff_bracket = _generate_one_division(
-            d_pairs, config.format, config.group_size,
-            config.groups_qualifiers, config.bracket_size, config.third_place_match,
+            d_pairs, _d_format, _d_group_size,
+            _d_groups_qualifiers, _d_bracket_size, config.third_place_match,
         )
         # Etiquetar todo con la división
         for g in groups:
@@ -440,8 +450,8 @@ def generate_multi_division(config: TournamentConfig) -> TournamentConfig:
 
         draws.append(TournamentDivision(
             key=key, category=cat, subcategory=sub,
-            format=config.format, group_size=config.group_size,
-            groups_qualifiers=config.groups_qualifiers, bracket_size=eff_bracket,
+            format=_d_format, group_size=_d_group_size,
+            groups_qualifiers=_d_groups_qualifiers, bracket_size=eff_bracket,
             third_place_match=config.third_place_match,
             pairs=d_pairs, groups=groups, matches=matches,
         ))
