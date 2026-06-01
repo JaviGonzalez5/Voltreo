@@ -199,74 +199,145 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
             for division in wave_divisions
         }
 
-        prev_round_end_by_division: dict[str | None, datetime] = {}
+        # ── Planificación VORAZ dentro de la ola ──────────────────────────
+        # En lugar de procesar etapas globales (todos los grupos → todas las semis),
+        # en cada paso se elige el partido "listo" que puede empezar ANTES.
+        # "Listo" = todos los partidos de la ronda anterior de SU categoría
+        # ya están programados. Así, si los grupos de Masculino terminan antes
+        # que los de Femenino, las semis de Masculino se pueden asignar
+        # INMEDIATAMENTE a las pistas libres, sin esperar a los grupos de Femenino.
+        # Las olas siguen siendo secuenciales (Tanda 2 espera a Tanda 1).
+
+        _rest_td = timedelta(minutes=config.rest_between_matches_min)
+
+        # Estado de rondas por división: cuántos partidos quedan por completar
+        completed_rounds: dict[tuple, int] = defaultdict(int)   # completados
+        total_rounds:     dict[tuple, int] = defaultdict(int)    # total
+        for m in wave_matches:
+            total_rounds[(m.division, m.round)] += 1
+
+        div_rounds_list = {
+            div: sorted(rounds_by_division.get(div, []), key=lambda r: r.order)
+            for div in wave_divisions
+        }
+
+        def _prev_round_of(div, rnd):
+            seq = div_rounds_list.get(div, [])
+            idx = seq.index(rnd) if rnd in seq else -1
+            return seq[idx - 1] if idx > 0 else None
+
+        def _is_ready_wave(m) -> bool:
+            """El partido está listo si su ronda anterior en su categoría está 100% completada."""
+            pr = _prev_round_of(m.division, m.round)
+            if pr is None:
+                return True
+            _key = (m.division, pr)
+            return completed_rounds[_key] == total_rounds[_key]
+
+        div_round_latest: dict[tuple, datetime] = {}  # fin más tardío de cada (div, rnd)
+
+        def _earliest_for(m) -> Optional[datetime]:
+            pr = _prev_round_of(m.division, m.round)
+            base = wave_prev_end
+            if pr is not None:
+                pe = div_round_latest.get((m.division, pr))
+                if pe is not None:
+                    after_pr = pe + _rest_td
+                    base = max(base, after_pr) if base else after_pr
+            return base
+
+        unscheduled_wave = list(wave_matches)
         wave_latest_end: Optional[datetime] = None
+        _safety = len(unscheduled_wave) * len(active_courts) + 5
+        # Contador de partidos ya colocados por división y última división usada:
+        # garantizan alternancia entre categorías (nadie monopoliza las pistas).
+        placed_per_div:        dict[object, int] = defaultdict(int)
+        placed_per_group_name: dict[str, int]   = defaultdict(int)  # nombre del grupo ("Grupo A"…)
+        last_placed_div:       object            = None
+        _gid_to_name = {g.id: g.name for g in config.groups}
 
-        for stage_idx in range(max((len(r) for r in rounds_by_division.values()), default=0)):
-            stage_matches: list[TournamentMatch] = []
-            for division in wave_divisions:
-                div_rounds = rounds_by_division.get(division, [])
-                if stage_idx < len(div_rounds):
-                    stage_matches.extend(matches_by_round[(division, div_rounds[stage_idx])])
-            matches = _interleave_matches_by_division(stage_matches, wave_divisions)
+        while unscheduled_wave and _safety > 0:
+            _safety -= 1
+            ready = [m for m in unscheduled_wave if _is_ready_wave(m)]
+            if not ready:
+                break
 
-            stage_latest_end_by_division: dict[str | None, datetime] = {}
-
-            for match in matches:
-                # Suelo temporal por categoria: las semis/final de una categoria
-                # no tienen que esperar a que acaben los grupos de las demas.
-                rnd_earliest: Optional[datetime] = wave_prev_end
-                prev_division_end = prev_round_end_by_division.get(match.division)
-                if stage_idx > 0 and prev_division_end is not None:
-                    _after_previous_round = prev_division_end + timedelta(minutes=config.rest_between_matches_min)
-                    rnd_earliest = max(rnd_earliest, _after_previous_round) if rnd_earliest else _after_previous_round
-
-                duration = _duration_for_match(config, match)
+            # Calcular el hueco más temprano posible para cada partido listo
+            candidates: list[tuple] = []   # (s_start, s_end, court, match)
+            for m in ready:
+                rnd_earliest = _earliest_for(m)
+                duration = _duration_for_match(config, match=m)
                 slot = _find_best_slot(
-                    match        = match,
-                    active_courts= active_courts,
-                    court_tls    = court_tls,
-                    player_tl    = player_tl,
-                    duration     = duration,
-                    all_days     = all_days,
-                    day_start    = day_start,
-                    day_end      = day_end,
-                    rnd_earliest = rnd_earliest,
+                    match=m, active_courts=active_courts, court_tls=court_tls,
+                    player_tl=player_tl, duration=duration, all_days=all_days,
+                    day_start=day_start, day_end=day_end, rnd_earliest=rnd_earliest,
                 )
-                if slot is None:
-                    match.status = TMatchStatus.CONFLICT
-                    match.conflict_reason = (
+                if slot is not None:
+                    s_start, s_end, court = slot
+                    candidates.append((s_start, s_end, court, m))
+
+            if not candidates:
+                for m in ready:
+                    m.status = TMatchStatus.CONFLICT
+                    m.conflict_reason = (
                         "Sin hueco disponible. Amplía el rango de fechas, "
                         "añade más pistas o reduce la duración de los partidos."
                     )
-                else:
-                    s_start, s_end, court = slot
-                    # Día de la sesión: si el partido empieza de madrugada
-                    # (antes de la hora de inicio), pertenece a la noche anterior.
-                    _session_day = s_start.date()
-                    if s_start.time() < day_start:
-                        _session_day = s_start.date() - timedelta(days=1)
-                    match.match_date = _session_day
-                    match.start_time = s_start.time()
-                    match.end_time   = s_end.time()
-                    match.court      = court
-                    match.status     = TMatchStatus.SCHEDULED
+                    unscheduled_wave.remove(m)
+                continue
 
-                    court_tls[court.id].mark_occupied(s_end)
-                    player_tl.record(_match_player_keys(match), s_end)
+            # Ordenar por inicio más temprano; desempate por:
+            # 1. División con menos partidos colocados (equidad entre categorías)
+            # 2. Evitar repetir la misma división (alternancia)
+            # 3. Grupo con menos partidos colocados DENTRO de la división (rotación de grupos)
+            # 4. Número de partido y UUID (determinismo)
+            # NOTA: round.order no se usa aquí porque _is_ready_wave ya garantiza que
+            # no se programa un partido de cuadro antes de que sus grupos terminen.
+            candidates.sort(key=lambda c: (
+                c[0],                                                                  # inicio más temprano
+                placed_per_div[c[3].division],                                        # división menos favorecida
+                c[3].division == last_placed_div,                                     # alternar divisiones
+                placed_per_group_name[_gid_to_name.get(c[3].group_id, "")],          # rotar nombres de grupo (A, B, C…)
+                c[3].match_number,
+                c[3].id,
+            ))
+            s_start, s_end, court, best_match = candidates[0]
 
-                    _div_latest = stage_latest_end_by_division.get(match.division)
-                    if _div_latest is None or s_end > _div_latest:
-                        stage_latest_end_by_division[match.division] = s_end
-                    if wave_latest_end is None or s_end > wave_latest_end:
-                        wave_latest_end = s_end
+            _session_day = s_start.date()
+            if s_start.time() < day_start:
+                _session_day = s_start.date() - timedelta(days=1)
+            best_match.match_date = _session_day
+            best_match.start_time = s_start.time()
+            best_match.end_time   = s_end.time()
+            best_match.court      = court
+            best_match.status     = TMatchStatus.SCHEDULED
 
-            for division, latest_end in stage_latest_end_by_division.items():
-                prev_round_end_by_division[division] = latest_end
+            court_tls[court.id].mark_occupied(s_end)
+            player_tl.record(_match_player_keys(best_match), s_end)
+
+            _dk = (best_match.division, best_match.round)
+            completed_rounds[_dk] += 1
+            placed_per_div[best_match.division] += 1
+            placed_per_group_name[_gid_to_name.get(best_match.group_id, "")] += 1
+            last_placed_div = best_match.division
+            if _dk not in div_round_latest or s_end > div_round_latest[_dk]:
+                div_round_latest[_dk] = s_end
+            if wave_latest_end is None or s_end > wave_latest_end:
+                wave_latest_end = s_end
+
+            unscheduled_wave.remove(best_match)
+
+        # Conflictos residuales
+        for m in unscheduled_wave:
+            m.status = TMatchStatus.CONFLICT
+            m.conflict_reason = (
+                "Sin hueco disponible. Amplía el rango de fechas, "
+                "añade más pistas o reduce la duración de los partidos."
+            )
 
         # La próxima tanda no empieza antes de que acabe esta
         if wave_latest_end is not None:
-            _next = wave_latest_end + timedelta(minutes=config.rest_between_matches_min)
+            _next = wave_latest_end + _rest_td
             wave_prev_end = max(wave_prev_end, _next) if wave_prev_end else _next
 
     return config
