@@ -312,6 +312,8 @@ class TournamentConfig(BaseModel):
 
     # Parámetros de tiempo
     match_duration_minutes:    int  = 60
+    semifinal_duration_minutes: int = 0    # 0 = usar duración general
+    final_duration_minutes:     int = 0    # 0 = usar duración general
     rest_between_matches_min:  int  = 15   # Descanso mínimo para el mismo equipo
     day_start_time:            time = time(9, 0)
     day_end_time:              time = time(22, 0)

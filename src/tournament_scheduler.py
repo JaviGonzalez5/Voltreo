@@ -161,7 +161,6 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
     if not config.matches or not config.courts:
         return config
 
-    duration     = timedelta(minutes=config.match_duration_minutes)
     active_courts = [c for c in config.courts if c.active]
     if not active_courts:
         return config
@@ -212,6 +211,7 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
             rnd_latest_end: Optional[datetime] = None
 
             for match in matches:
+                duration = _duration_for_match(config, match)
                 slot = _find_best_slot(
                     match        = match,
                     active_courts= active_courts,
@@ -260,6 +260,16 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
             wave_prev_end = max(wave_prev_end, _next) if wave_prev_end else _next
 
     return config
+
+
+def _duration_for_match(config: TournamentConfig, match: TournamentMatch) -> timedelta:
+    """Duración real del partido según ronda."""
+    minutes = config.match_duration_minutes
+    if match.round == MatchRound.SEMIFINAL and getattr(config, "semifinal_duration_minutes", 0):
+        minutes = config.semifinal_duration_minutes
+    elif match.round in (MatchRound.FINAL, MatchRound.THIRD_PLACE) and getattr(config, "final_duration_minutes", 0):
+        minutes = config.final_duration_minutes
+    return timedelta(minutes=minutes)
 
 
 # ---------------------------------------------------------------------------

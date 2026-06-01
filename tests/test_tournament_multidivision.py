@@ -104,6 +104,33 @@ class TestNightTournamentScheduling:
         ))
         assert ordered[-1].end_time <= time(1, 15)
 
+    def test_semifinals_and_final_can_use_longer_duration(self):
+        cfg = TournamentConfig(
+            name="Finales largas",
+            start_date=date(2026, 6, 12),
+            end_date=date(2026, 6, 12),
+            divisions=["mixto:pb_3"],
+            format=TournamentFormat.GROUPS_BRACKET,
+            group_size=4,
+            bracket_size=4,
+            courts=[TournamentCourt(id="c1", name="Pista 1"), TournamentCourt(id="c2", name="Pista 2")],
+            pairs=[_pair(f"X{i}", "mixto:pb_3") for i in range(8)],
+            match_duration_minutes=15,
+            semifinal_duration_minutes=35,
+            final_duration_minutes=45,
+            rest_between_matches_min=0,
+            day_start_time=time(19, 0),
+            day_end_time=time(1, 15),
+        )
+
+        cfg = generate_tournament_structure(cfg)
+        cfg = schedule_tournament(cfg)
+        semi = next(m for m in cfg.matches if m.round == MatchRound.SEMIFINAL)
+        final = next(m for m in cfg.matches if m.round == MatchRound.FINAL)
+
+        assert (semi.end_time.hour * 60 + semi.end_time.minute - (semi.start_time.hour * 60 + semi.start_time.minute)) % (24 * 60) == 35
+        assert (final.end_time.hour * 60 + final.end_time.minute - (final.start_time.hour * 60 + final.start_time.minute)) % (24 * 60) == 45
+
 
 class TestMultiDivisionAdvancement:
 

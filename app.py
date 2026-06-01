@@ -5319,7 +5319,10 @@ elif page == "t_config":
                 division_waves=_division_waves,
                 is_top=t_is_top, prize=t_prize, location=t_location,
                 start_date=t_start, end_date=t_end, courts=_courts_obj, pairs=_pairs_keep,
-                format=t_format, match_duration_minutes=t_match_dur, rest_between_matches_min=t_rest,
+                format=t_format, match_duration_minutes=t_match_dur,
+                semifinal_duration_minutes=t_semifinal_dur,
+                final_duration_minutes=t_final_dur,
+                rest_between_matches_min=t_rest,
                 day_start_time=t_day_start, day_end_time=t_day_end,
                 group_size=t_group_size, bracket_size=t_bracket_size,
                 third_place_match=t_third_place, groups_qualifiers=t_qualifiers,
@@ -5814,6 +5817,13 @@ elif page == "t_schedule":
             _sm3.metric("🏟️ Pistas usadas", len(_ss2["courts_used"]))
             if _ss2["first_match"]: st.caption(f"🕘 Inicio: **{_ss2['first_match']}**")
             if _ss2["last_match"]:  st.caption(f"🏁 Fin: **{_ss2['last_match']}**")
+            if getattr(t, "semifinal_duration_minutes", 0) or getattr(t, "final_duration_minutes", 0):
+                _semi_txt = getattr(t, "semifinal_duration_minutes", 0) or t.match_duration_minutes
+                _final_txt = getattr(t, "final_duration_minutes", 0) or t.match_duration_minutes
+                st.info(
+                    f"Estimaci?n ajustada: grupos {t.match_duration_minutes} min, "
+                    f"semifinales {_semi_txt} min y finales {_final_txt} min."
+                )
 
     if any(m.status == TMatchStatus.SCHEDULED for m in t.matches):
         st.divider()
