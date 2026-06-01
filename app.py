@@ -2137,6 +2137,7 @@ _T_STEPS = [
 _IS_TOURNAMENT = page in {k for k, *_ in _T_STEPS}
 
 st.sidebar.markdown('<div class="pp-nav-section"><span>Flujos guiados</span><span class="pp-nav-badge">2</span></div>', unsafe_allow_html=True)
+_sidebar_button("🏆  Mis Torneos",             "tournaments", page, "nav_tournaments")
 _sidebar_workflow("◫  Ranking",  _R_STEPS, page, "nav_r", expanded=_IS_RANKING)
 _sidebar_workflow("◈  Torneos",  _T_STEPS, page, "nav_t", expanded=_IS_TOURNAMENT)
 
@@ -2193,6 +2194,203 @@ def _t_nav_buttons(current_step: int) -> None:
         if current_step < len(_keys):
             if st.button("Siguiente →", type="primary", use_container_width=True, key=f"t_next_{current_step}"):
                 st.session_state["_nav_page"] = _keys[current_step]; st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# PÁGINA: Mis Torneos
+# ---------------------------------------------------------------------------
+
+if page == "tournaments":
+    _page_header("🏆", "Mis Torneos", "Todos los torneos del club — crea, edita y sigue el progreso")
+
+    _tr_cid = current_club_id() if _db_ok else None
+
+    if not _db_ok or not _tr_cid or _db is None:
+        _empty_state("🔌", "Base de datos no conectada",
+                     "Configura Supabase para guardar y listar torneos.")
+        st.stop()
+
+    try:
+        _all_t_rows = _db.list_tournaments(_tr_cid)
+    except Exception as _e_list:
+        st.error(f"Error al cargar torneos: {_e_list}")
+        _all_t_rows = []
+
+    # ── Botón nuevo torneo ───────────────────────────────────────────────────
+    _col_hdr1, _col_hdr2 = st.columns([3, 1])
+    with _col_hdr2:
+        if st.button("➕ Nuevo torneo", type="primary", use_container_width=True):
+            # Resetear estado del torneo y navegar a configuración
+            st.session_state["tournament"] = None
+            st.session_state["db_tournament_id"] = None
+            st.session_state["_db_tournament_loaded"] = True
+            st.session_state.pop("t_courts_list", None)
+            st.session_state.pop("t_config_divisions", None)
+            st.session_state["_t_config_divisions_source_id"] = None
+            _nav_to("t_config")
+
+    if not _all_t_rows:
+        _empty_state("🏆", "Aún no hay torneos",
+                     "Crea tu primer torneo con el botón de arriba.")
+        st.stop()
+
+    # ── Cargar detalles para clasificar cada torneo ──────────────────────────
+    _today = date.today()
+
+    def _t_status(row: dict) -> tuple[str, str]:
+        """Devuelve (etiqueta, color) del estado del torneo."""
+        try:
+            td = row.get("tournament_data") or {}
+            matches = td.get("matches", [])
+            end_str = row.get("end_date", "")
+            end_d = date.fromisoformat(str(end_str)) if end_str else None
+            start_str = row.get("start_date", "")
+            start_d = date.fromisoformat(str(start_str)) if start_str else None
+
+            played = sum(1 for m in matches if m.get("winner_id"))
+            total  = len(matches)
+            has_champion = bool(td.get("champion") or any(
+                m.get("winner_id") and m.get("round") in ("final", "FINAL", "Final")
+                for m in matches
+            ))
+
+            if has_champion or (end_d and end_d < _today and played == total and total > 0):
+                return "Terminado", "green"
+            if played > 0:
+                return "En juego", "orange"
+            if total > 0:
+                return "Estructura lista", "blue"
+            if start_d and start_d > _today:
+                return "Próximo", "gray"
+            return "Configurado", "gray"
+        except Exception:
+            return "Configurado", "gray"
+
+    _current_tid = _s.get("db_tournament_id")
+
+    # Agrupar por estado
+    _groups_t = {"En juego": [], "Próximo": [], "Estructura lista": [], "Configurado": [], "Terminado": []}
+    for _row in _all_t_rows:
+        _st_lbl, _ = _t_status(_row)
+        _groups_t.setdefault(_st_lbl, []).append(_row)
+
+    _state_order  = ["En juego", "Próximo", "Estructura lista", "Configurado", "Terminado"]
+    _state_colors = {
+        "En juego":         ("#ff8c00", "#2a1800"),
+        "Próximo":          ("#7fffc0", "#0a2018"),
+        "Estructura lista": ("#4fc3f7", "#0a1828"),
+        "Configurado":      ("#9e9e9e", "#1a1a1a"),
+        "Terminado":        ("#ffd700", "#1a1400"),
+    }
+    _state_icons = {
+        "En juego": "🎾", "Próximo": "📅",
+        "Estructura lista": "📋", "Configurado": "⚙️", "Terminado": "🏆",
+    }
+
+    for _st_lbl in _state_order:
+        _rows_in_group = _groups_t.get(_st_lbl, [])
+        if not _rows_in_group:
+            continue
+
+        _sc, _sb = _state_colors[_st_lbl]
+        _si = _state_icons[_st_lbl]
+        st.markdown(
+            f'<div style="margin:1.4rem 0 .5rem;padding:.45rem .9rem;border-radius:10px;'
+            f'background:{_sb};color:{_sc};font-size:.72rem;font-weight:800;letter-spacing:.12em;'
+            f'text-transform:uppercase">{_si} {_st_lbl} — {len(_rows_in_group)}</div>',
+            unsafe_allow_html=True,
+        )
+
+        for _row in _rows_in_group:
+            _tid        = _row.get("id", "")
+            _tname      = _row.get("name", "Sin nombre")
+            _tstart     = _row.get("start_date", "")
+            _tend       = _row.get("end_date", "")
+            _dates_str  = f"{_tstart} → {_tend}" if _tend and _tend != _tstart else str(_tstart)
+            _is_active  = (_tid == _current_tid)
+            _st_lbl2, _ = _t_status(_row)
+
+            # Extraer categorías del tournament_data
+            _td2   = _row.get("tournament_data") or {}
+            _divs  = _td2.get("divisions", [])
+            _n_pairs = len(_td2.get("pairs", []))
+            _n_matches = len(_td2.get("matches", []))
+            _played_n = sum(1 for m in _td2.get("matches", []) if m.get("winner_id"))
+
+            _border_style = "border:1.5px solid #7fffc0;" if _is_active else "border:1px solid rgba(255,255,255,.08);"
+            st.markdown(
+                f'<div style="background:rgba(255,255,255,.04);{_border_style}'
+                f'border-radius:14px;padding:1rem 1.2rem;margin-bottom:.6rem">'
+                f'<div style="display:flex;align-items:center;justify-content:space-between;gap:1rem">'
+                f'<div>'
+                f'<div style="color:#eaf6ff;font-size:1rem;font-weight:800">'
+                f'{"✅ " if _is_active else ""}{escape(_tname)}</div>'
+                f'<div style="color:#5a82a4;font-size:.78rem;margin-top:.2rem">📅 {_dates_str}'
+                f'{"  ·  🎾 " + str(_n_pairs) + " parejas" if _n_pairs else ""}'
+                f'{"  ·  📊 " + str(_played_n) + "/" + str(_n_matches) + " partidos jugados" if _n_matches else ""}'
+                f'</div>'
+                f'</div></div></div>',
+                unsafe_allow_html=True,
+            )
+
+            _btn_col1, _btn_col2, _btn_col3 = st.columns([2, 2, 1])
+            with _btn_col1:
+                _btn_label = "✅ Torneo activo" if _is_active else "📂 Cargar torneo"
+                _btn_type  = "secondary" if _is_active else "primary"
+                if st.button(_btn_label, key=f"load_t_{_tid}", type=_btn_type, use_container_width=True, disabled=_is_active):
+                    try:
+                        from src.db_converters import tournament_from_db as _tfdb2
+                        _full_row = _db.get_tournament(_tid, _tr_cid)
+                        if _full_row:
+                            _loaded_t = _tfdb2(_full_row)
+                            st.session_state["tournament"] = _loaded_t
+                            st.session_state["db_tournament_id"] = _tid
+                            st.session_state.pop("t_courts_list", None)
+                            st.session_state.pop("t_config_divisions", None)
+                            st.session_state["_t_config_divisions_source_id"] = None
+                            st.success(f"✅ '{_tname}' cargado.")
+                            st.rerun()
+                    except Exception as _e_load:
+                        st.error(f"Error al cargar: {_e_load}")
+            with _btn_col2:
+                if st.button("🎯 Ir a resultados", key=f"goto_results_{_tid}", use_container_width=True):
+                    if not _is_active:
+                        try:
+                            from src.db_converters import tournament_from_db as _tfdb3
+                            _full_row2 = _db.get_tournament(_tid, _tr_cid)
+                            if _full_row2:
+                                st.session_state["tournament"] = _tfdb3(_full_row2)
+                                st.session_state["db_tournament_id"] = _tid
+                        except Exception:
+                            pass
+                    _nav_to("t_results")
+            with _btn_col3:
+                if st.button("🗑️", key=f"del_t_{_tid}", help="Eliminar torneo", use_container_width=True):
+                    st.session_state[f"_confirm_del_t_{_tid}"] = True
+                    st.rerun()
+
+            if st.session_state.get(f"_confirm_del_t_{_tid}"):
+                st.warning(f"⚠️ ¿Seguro que quieres eliminar **{_tname}**? Esta acción no se puede deshacer.")
+                _dc1, _dc2 = st.columns(2)
+                with _dc1:
+                    if st.button("Sí, eliminar", key=f"confirm_yes_t_{_tid}", type="primary"):
+                        try:
+                            _db.delete_tournament(_tid, _tr_cid)
+                            st.session_state.pop(f"_confirm_del_t_{_tid}", None)
+                            if _tid == _current_tid:
+                                st.session_state["tournament"] = None
+                                st.session_state["db_tournament_id"] = None
+                            st.success(f"✅ Torneo '{_tname}' eliminado.")
+                            st.rerun()
+                        except Exception as _e_del:
+                            st.error(f"Error al eliminar: {_e_del}")
+                with _dc2:
+                    if st.button("Cancelar", key=f"confirm_no_t_{_tid}"):
+                        st.session_state.pop(f"_confirm_del_t_{_tid}", None)
+                        st.rerun()
+
+    st.divider()
+    st.caption(f"Total: {len(_all_t_rows)} torneo(s) guardado(s) en este club.")
 
 
 # ---------------------------------------------------------------------------
