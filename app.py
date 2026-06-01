@@ -1928,17 +1928,29 @@ def _safe_excel_sheet_name(name: str, used: set[str]) -> str:
 
 def _tournament_match_sort_key(t_obj, match) -> tuple:
     """Orden cronológico real para sesiones que cruzan medianoche."""
-    match_date = getattr(match, "match_date", None) or date.max
-    start_time = getattr(match, "start_time", None) or time(0, 0)
+    match_date = getattr(match, "match_date", None)
+    start_time = getattr(match, "start_time", None)
+    court_name = getattr(getattr(match, "court", None), "name", "")
+    round_order = getattr(getattr(match, "round", None), "order", 99)
+    match_number = getattr(match, "match_number", 0)
+
+    if match_date is None or start_time is None:
+        return (
+            1,
+            round_order,
+            match_number,
+            court_name,
+        )
     day_start = getattr(t_obj, "day_start_time", time(0, 0)) or time(0, 0)
     real_start = datetime.combine(match_date, start_time)
     if start_time < day_start:
         real_start += timedelta(days=1)
     return (
+        0,
         real_start,
-        getattr(getattr(match, "court", None), "name", ""),
-        getattr(getattr(match, "round", None), "order", 99),
-        getattr(match, "match_number", 0),
+        court_name,
+        round_order,
+        match_number,
     )
 
 
