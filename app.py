@@ -2235,10 +2235,27 @@ if page == "tournaments":
 
     _tr_cid = current_club_id() if _db_ok else None
 
-    if not _db_ok or not _tr_cid or _db is None:
+    if not _db_ok or _db is None:
         _empty_state("🔌", "Base de datos no conectada",
                      "Configura Supabase para guardar y listar torneos.")
         st.stop()
+
+    # El superadmin debe tener un club seleccionado para operar en él
+    if not _tr_cid:
+        _empty_state("🏢", "Selecciona un club",
+                     "Elige un club activo en el menú lateral para ver y crear sus torneos.")
+        st.stop()
+
+    # Banner del club activo (para que el superadmin sepa dónde está creando)
+    _tr_club_name = current_club_name()
+    st.markdown(
+        f'<div style="display:inline-flex;align-items:center;gap:.5rem;'
+        f'background:rgba(0,200,83,.10);border:1px solid rgba(0,200,83,.3);'
+        f'border-radius:20px;padding:.3rem .9rem;margin-bottom:1rem;'
+        f'color:#00843d;font-weight:700;font-size:.85rem">'
+        f'🏢 Club activo: {escape(_tr_club_name or "—")}</div>',
+        unsafe_allow_html=True,
+    )
 
     try:
         _all_t_rows = _db.list_tournaments(_tr_cid)
