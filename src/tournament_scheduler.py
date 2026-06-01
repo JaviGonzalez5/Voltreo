@@ -291,7 +291,7 @@ def _interleave_matches_by_division(
 ) -> list[TournamentMatch]:
     """Intercala categorias de la misma tanda para que avancen en paralelo."""
     if len(divisions) <= 1:
-        return matches
+        return _interleave_matches_by_group(matches)
 
     by_division: dict[str | None, list[TournamentMatch]] = defaultdict(list)
     for match in matches:

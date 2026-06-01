@@ -307,8 +307,8 @@ class TestMultiDivisionScheduling:
 
         assert masc_first_semi < fem_last_group
 
-    def test_group_stage_rotates_groups_within_division(self):
-        div = "mixto:pb_3"
+    def test_group_stage_rotates_groups_within_any_single_division(self):
+        div = "masculino:1a"
         cfg = TournamentConfig(
             name="Rotate groups",
             start_date=date(2026, 6, 1),
@@ -320,7 +320,7 @@ class TestMultiDivisionScheduling:
                 TournamentCourt(id="c2", name="Pista 2"),
                 TournamentCourt(id="c3", name="Pista 3"),
             ],
-            pairs=[_pair(f"X{i}", div) for i in range(9)],
+            pairs=[_pair(f"M{i}", div) for i in range(9)],
             match_duration_minutes=15,
             rest_between_matches_min=0,
             day_start_time=time(19, 0),
