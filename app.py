@@ -2060,6 +2060,151 @@ def _tournament_matches_excel_bytes(t_obj) -> bytes:
     return buf.getvalue()
 
 
+def _tournament_schedule_excel_bytes(t_obj) -> bytes:
+    """Excel visual para imprimir/compartir horarios del torneo."""
+    import openpyxl
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+
+    navy = "0B1F33"
+    green = "0F9B57"
+    light_green = "E8F7EF"
+    light_blue = "EEF5FF"
+    white = "FFFFFF"
+    grid_fill = PatternFill("solid", fgColor=white)
+    header_fill = PatternFill("solid", fgColor=navy)
+    time_fill = PatternFill("solid", fgColor=light_blue)
+    match_fill = PatternFill("solid", fgColor=light_green)
+    thin = Side(style="thin", color="D9E2EC")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    scheduled = [
+        m for m in (getattr(t_obj, "matches", []) or [])
+        if getattr(m, "match_date", None) and getattr(m, "start_time", None) and getattr(m, "court", None)
+    ]
+    scheduled = sorted(scheduled, key=lambda m: _tournament_match_sort_key(t_obj, m))
+    courts = [c for c in getattr(t_obj, "courts", []) or [] if getattr(c, "active", True)]
+    if not courts:
+        courts = sorted({m.court for m in scheduled if m.court}, key=lambda c: c.name)
+
+    def _title(ws, title: str, subtitle: str = "") -> None:
+        end_col = max(2, len(courts) + 1)
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=end_col)
+        c = ws.cell(1, 1, title)
+        c.font = Font(bold=True, size=18, color="FFFFFF")
+        c.fill = header_fill
+        c.alignment = Alignment(horizontal="left", vertical="center")
+        ws.row_dimensions[1].height = 30
+        if subtitle:
+            ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=end_col)
+            sc = ws.cell(2, 1, subtitle)
+            sc.font = Font(size=10, color="0B1F33")
+            sc.fill = PatternFill("solid", fgColor=light_green)
+            sc.alignment = Alignment(horizontal="left", vertical="center")
+
+    # Portada / resumen
+    ws_summary = wb.create_sheet("Resumen")
+    _title(ws_summary, f"{BRAND_NAME} - Horarios", getattr(t_obj, "name", "Torneo"))
+    summary_rows = [
+        ("Torneo", getattr(t_obj, "name", "")),
+        ("Fecha", f"{t_obj.start_date.strftime('%d/%m/%Y')}"),
+        ("Franja", f"{t_obj.day_start_time.strftime('%H:%M')} - {t_obj.day_end_time.strftime('%H:%M')}"),
+        ("Partidos programados", len(scheduled)),
+        ("Pistas", ", ".join(c.name for c in courts)),
+        ("Duración grupos", f"{t_obj.match_duration_minutes} min"),
+        ("Duración semifinales", f"{getattr(t_obj, 'semifinal_duration_minutes', 0) or t_obj.match_duration_minutes} min"),
+        ("Duración finales", f"{getattr(t_obj, 'final_duration_minutes', 0) or t_obj.match_duration_minutes} min"),
+    ]
+    for r, (k, v) in enumerate(summary_rows, 4):
+        ws_summary.cell(r, 1, k).font = Font(bold=True, color="0B1F33")
+        ws_summary.cell(r, 2, v)
+        for c in range(1, 3):
+            ws_summary.cell(r, c).border = border
+            ws_summary.cell(r, c).alignment = Alignment(vertical="center")
+    ws_summary.column_dimensions["A"].width = 24
+    ws_summary.column_dimensions["B"].width = 44
+
+    # Cuadrícula por día: filas hora, columnas pistas.
+    used_names: set[str] = {"Resumen"}
+    days = sorted({m.match_date for m in scheduled})
+    for d in days:
+        day_matches = [m for m in scheduled if m.match_date == d]
+        ws = wb.create_sheet(_safe_excel_sheet_name(d.strftime("%d-%m-%Y"), used_names))
+        _title(ws, d.strftime("%A %d/%m/%Y").capitalize(), "Calendario por hora y pista")
+
+        slots = sorted({m.start_time for m in day_matches}, key=lambda t: datetime.combine(d, t) + (timedelta(days=1) if t < t_obj.day_start_time else timedelta()))
+        headers = ["Hora"] + [c.name for c in courts]
+        for ci, h in enumerate(headers, 1):
+            cell = ws.cell(4, ci, h)
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = header_fill
+            cell.border = border
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        by_slot_court = {(m.start_time, m.court.id): m for m in day_matches if m.court}
+        for ri, slot in enumerate(slots, 5):
+            tc = ws.cell(ri, 1, slot.strftime("%H:%M"))
+            tc.font = Font(bold=True, color="0B1F33")
+            tc.fill = time_fill
+            tc.border = border
+            tc.alignment = Alignment(horizontal="center", vertical="center")
+            for ci, court in enumerate(courts, 2):
+                m = by_slot_court.get((slot, court.id))
+                cell = ws.cell(ri, ci)
+                cell.border = border
+                cell.fill = match_fill if m else grid_fill
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+                if m:
+                    cell.value = (
+                        f"{m.round_display}"
+                        f"{' - ' + next((g.name for g in t_obj.groups if g.id == m.group_id), '') if m.group_id else ''}\n"
+                        f"{m.p1_display}\nvs\n{m.p2_display}\n"
+                        f"{m.start_time.strftime('%H:%M')} - {m.end_time.strftime('%H:%M') if m.end_time else ''}"
+                    )
+        ws.freeze_panes = "B5"
+        ws.column_dimensions["A"].width = 10
+        for ci in range(2, len(courts) + 2):
+            ws.column_dimensions[get_column_letter(ci)].width = 34
+        for ri in range(5, 5 + len(slots)):
+            ws.row_dimensions[ri].height = 78
+
+    # Listado ordenado
+    ws_list = wb.create_sheet("Listado")
+    list_headers = ["Fecha", "Hora", "Fin", "Pista", "Ronda", "Grupo", "Pareja 1", "Pareja 2"]
+    for ci, h in enumerate(list_headers, 1):
+        cell = ws_list.cell(1, ci, h)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = header_fill
+        cell.border = border
+        cell.alignment = Alignment(horizontal="center")
+    for ri, m in enumerate(scheduled, 2):
+        vals = [
+            m.match_date.strftime("%d/%m/%Y"),
+            m.start_time.strftime("%H:%M"),
+            m.end_time.strftime("%H:%M") if m.end_time else "",
+            m.court.name if m.court else "",
+            m.round_display,
+            next((g.name for g in t_obj.groups if g.id == m.group_id), "") if m.group_id else "",
+            m.p1_display,
+            m.p2_display,
+        ]
+        for ci, v in enumerate(vals, 1):
+            cell = ws_list.cell(ri, ci, v)
+            cell.border = border
+            cell.alignment = Alignment(wrap_text=True, vertical="center")
+    ws_list.freeze_panes = "A2"
+    ws_list.auto_filter.ref = ws_list.dimensions
+    for ci in range(1, len(list_headers) + 1):
+        ws_list.column_dimensions[get_column_letter(ci)].width = [12, 10, 10, 14, 18, 14, 28, 28][ci - 1]
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 # ---------------------------------------------------------------------------
 # Configuración de página
 # ---------------------------------------------------------------------------
@@ -5845,6 +5990,15 @@ elif page == "t_schedule":
     if any(m.status == TMatchStatus.SCHEDULED for m in t.matches):
         st.divider()
         _section_start("📅", "Calendario del torneo")
+        _schedule_slug = re.sub(r"[^A-Za-z0-9_-]+", "_", t.name.strip()).strip("_") or "torneo"
+        st.download_button(
+            "⬇️ Descargar horarios en Excel",
+            data=_tournament_schedule_excel_bytes(t),
+            file_name=f"horarios_{_schedule_slug}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="dl_t_schedule_pretty_excel",
+            use_container_width=True,
+        )
         _days_in_t = sorted({m.match_date for m in t.matches if m.match_date})
         for _d in _days_in_t:
             _day_matches = sorted([m for m in t.matches if m.match_date == _d],
