@@ -100,17 +100,22 @@ def _days_between(start: date, end: date) -> list[date]:
 # ---------------------------------------------------------------------------
 
 class _CourtTimeline:
-    """Registra cuándo está libre una pista en un día concreto."""
+    """Registra el instante en que una pista queda libre (monotónico).
+
+    Un único datetime por pista funciona para sesiones consecutivas, sesiones
+    que pasan de medianoche y torneos de varios días, porque siempre se acota
+    al inicio de la jornada correspondiente al planificar.
+    """
 
     def __init__(self):
-        self._free: dict[date, datetime] = {}   # {date: earliest_free}
+        self._free: Optional[datetime] = None
 
-    def free_at(self, d: date, day_start: time) -> datetime:
-        return self._free.get(d, _dt(d, day_start))
+    def free_from(self) -> Optional[datetime]:
+        return self._free
 
-    def mark_occupied(self, d: date, end: datetime) -> None:
-        if d not in self._free or end > self._free[d]:
-            self._free[d] = end
+    def mark_occupied(self, end: datetime) -> None:
+        if self._free is None or end > self._free:
+            self._free = end
 
 
 class _PlayerTimeline:
@@ -238,7 +243,7 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
                     match.court      = court
                     match.status     = TMatchStatus.SCHEDULED
 
-                    court_tls[court.id].mark_occupied(s_start.date(), s_end)
+                    court_tls[court.id].mark_occupied(s_end)
                     player_tl.record(_match_player_keys(match), s_end)
 
                     if rnd_latest_end is None or s_end > rnd_latest_end:
@@ -296,32 +301,21 @@ def _find_best_slot(
 
         for court in active_courts:
             ct       = court_tls[court.id]
-            ct_free  = ct.free_at(d, day_start)
+            ct_free  = ct.free_from()
 
-            # La pista podría estar libre desde un día anterior (no importa,
-            # lo que cuenta es cuándo está libre HOY).
-            if ct_free.date() > d:
-                continue   # pista ocupada hasta mañana o después
-
-            # Hora mínima de inicio teniendo en cuenta todas las restricciones
-            earliest_start = ct_free if ct_free.date() == d else day_start_dt
+            # Inicio más temprano en ESTA jornada (acotado al inicio del día)
+            earliest_start = day_start_dt if ct_free is None else max(ct_free, day_start_dt)
 
             if rnd_earliest is not None:
-                if rnd_earliest.date() > d:
-                    continue  # Esta ronda no puede empezar hoy
                 earliest_start = max(earliest_start, rnd_earliest)
-
             if players_avail is not None:
-                if players_avail.date() > d:
-                    continue  # Algún jugador aún no ha terminado/descansado para hoy
                 earliest_start = max(earliest_start, players_avail)
 
-            # Asegurar que no cae antes del inicio del día
-            slot_start = max(earliest_start, day_start_dt)
+            slot_start = earliest_start
             slot_end   = slot_start + duration
 
             if slot_end > day_end_dt:
-                continue   # No cabe antes del fin del día
+                continue   # No cabe en la franja de esta jornada (incl. madrugada)
 
             # ¿Es este el slot más temprano encontrado hasta ahora?
             if best_start is None or slot_start < best_start:
