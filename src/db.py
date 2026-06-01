@@ -284,14 +284,20 @@ class SupabaseDB:
     # ================================================================
 
     def list_tournaments(self, club_id: str) -> list[dict]:
+        # select * para no fallar si la tabla no tiene created_at/updated_at,
+        # e incluir tournament_data (lo usa la vista «Mis Torneos» para estado).
         resp = (
             self._c.table("tournaments")
-            .select("id, name, start_date, end_date, created_at, updated_at")
+            .select("*")
             .eq("club_id", club_id)
-            .order("created_at", desc=True)
             .execute()
         )
-        return resp.data or []
+        rows = resp.data or []
+        rows.sort(
+            key=lambda r: r.get("updated_at") or r.get("created_at") or "",
+            reverse=True,
+        )
+        return rows
 
     def get_tournament(self, tournament_id: str, club_id: str) -> Optional[dict]:
         resp = (
@@ -336,16 +342,8 @@ class SupabaseDB:
         Carga el último torneo del club (por updated_at / created_at).
         Útil para restaurar contexto al entrar o cambiar de club.
         """
-        resp = (
-            self._c.table("tournaments")
-            .select("*")
-            .eq("club_id", club_id)
-            .order("updated_at", desc=True)
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-        return resp.data[0] if resp.data else None
+        rows = self.list_tournaments(club_id)
+        return rows[0] if rows else None
 
     def upsert_tournament(
         self,
