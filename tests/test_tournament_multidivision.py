@@ -11,7 +11,7 @@ from datetime import date, time
 
 from src.tournament_models import (
     TournamentConfig, TournamentFormat, TournamentPair, TournamentPlayer,
-    TournamentCourt, MatchRound, TMatchStatus,
+    TournamentCourt, TournamentDivision, MatchRound, TMatchStatus,
 )
 from src.tournament_generator import generate_tournament_structure
 from src.tournament_results import (
@@ -267,6 +267,45 @@ class TestMultiDivisionScheduling:
         assert [m for m in cfg.matches if m.status == TMatchStatus.CONFLICT] == []
         assert {m.division for m in first_slot} == {masc, fem}
         assert len(first_slot) == 4
+
+    def test_division_semifinals_do_not_wait_for_other_division_groups(self):
+        masc = "masculino:1a"
+        fem = "femenino:1a"
+        cfg = TournamentConfig(
+            name="Independent category phases",
+            start_date=date(2026, 6, 1),
+            end_date=date(2026, 6, 1),
+            divisions=[masc, fem],
+            division_waves={masc: 1, fem: 1},
+            format=TournamentFormat.GROUPS_BRACKET,
+            courts=[
+                TournamentCourt(id="c1", name="Pista 1"),
+                TournamentCourt(id="c2", name="Pista 2"),
+                TournamentCourt(id="c3", name="Pista 3"),
+                TournamentCourt(id="c4", name="Pista 4"),
+            ],
+            pairs=[_pair(f"M{i}", masc) for i in range(6)] + [_pair(f"F{i}", fem) for i in range(9)],
+            match_duration_minutes=15,
+            rest_between_matches_min=0,
+            day_start_time=time(19, 0),
+            day_end_time=time(23, 0),
+            division_draws=[
+                TournamentDivision(key=masc, format=TournamentFormat.GROUPS_BRACKET, num_groups=2, bracket_size=4),
+                TournamentDivision(key=fem, format=TournamentFormat.GROUPS_BRACKET, num_groups=3, bracket_size=4),
+            ],
+        )
+
+        cfg = schedule_tournament(generate_tournament_structure(cfg))
+        fem_last_group = max(
+            m.end_time for m in cfg.matches
+            if m.division == fem and m.round == MatchRound.GROUP and m.end_time
+        )
+        masc_first_semi = min(
+            m.start_time for m in cfg.matches
+            if m.division == masc and m.round == MatchRound.SEMIFINAL and m.start_time
+        )
+
+        assert masc_first_semi < fem_last_group
 
 
 class TestBackwardCompatibility:

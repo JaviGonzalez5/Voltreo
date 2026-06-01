@@ -199,7 +199,7 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
             for division in wave_divisions
         }
 
-        prev_round_end: Optional[datetime] = None
+        prev_round_end_by_division: dict[str | None, datetime] = {}
         wave_latest_end: Optional[datetime] = None
 
         for stage_idx in range(max((len(r) for r in rounds_by_division.values()), default=0)):
@@ -210,15 +210,17 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
                     stage_matches.extend(matches_by_round[(division, div_rounds[stage_idx])])
             matches = _interleave_matches_by_division(stage_matches, wave_divisions)
 
-            # Suelo temporal: el cuadro tras los grupos, y la tanda tras la anterior
-            rnd_earliest: Optional[datetime] = wave_prev_end
-            if stage_idx > 0 and prev_round_end is not None:
-                _after_groups = prev_round_end + timedelta(minutes=config.rest_between_matches_min)
-                rnd_earliest = max(rnd_earliest, _after_groups) if rnd_earliest else _after_groups
-
-            rnd_latest_end: Optional[datetime] = None
+            stage_latest_end_by_division: dict[str | None, datetime] = {}
 
             for match in matches:
+                # Suelo temporal por categoria: las semis/final de una categoria
+                # no tienen que esperar a que acaben los grupos de las demas.
+                rnd_earliest: Optional[datetime] = wave_prev_end
+                prev_division_end = prev_round_end_by_division.get(match.division)
+                if stage_idx > 0 and prev_division_end is not None:
+                    _after_previous_round = prev_division_end + timedelta(minutes=config.rest_between_matches_min)
+                    rnd_earliest = max(rnd_earliest, _after_previous_round) if rnd_earliest else _after_previous_round
+
                 duration = _duration_for_match(config, match)
                 slot = _find_best_slot(
                     match        = match,
@@ -253,13 +255,14 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
                     court_tls[court.id].mark_occupied(s_end)
                     player_tl.record(_match_player_keys(match), s_end)
 
-                    if rnd_latest_end is None or s_end > rnd_latest_end:
-                        rnd_latest_end = s_end
+                    _div_latest = stage_latest_end_by_division.get(match.division)
+                    if _div_latest is None or s_end > _div_latest:
+                        stage_latest_end_by_division[match.division] = s_end
                     if wave_latest_end is None or s_end > wave_latest_end:
                         wave_latest_end = s_end
 
-            if rnd_latest_end is not None:
-                prev_round_end = rnd_latest_end
+            for division, latest_end in stage_latest_end_by_division.items():
+                prev_round_end_by_division[division] = latest_end
 
         # La próxima tanda no empieza antes de que acabe esta
         if wave_latest_end is not None:
