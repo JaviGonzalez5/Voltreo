@@ -1,0 +1,49 @@
+# Credenciales — nunca al repo
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Exports y debug (opcionales: comenta si quieres versionar exports)
+exports/*
+!exports/.gitkeep
+
+# Archivos Excel generados (output)
+output/*.xlsx
+output/*.xls
+test_template.xlsx
+debug/screenshots/*
+!debug/screenshots/.gitkeep
+debug/html/*
+!debug/html/.gitkeep
+
+# SQLite
+*.db
+*.sqlite3
+
+# OS
+.DS_Store
+Thumbs.db
