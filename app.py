@@ -1912,6 +1912,139 @@ def _division_badges_html(t_obj) -> str:
     return "".join(_html_parts)
 
 
+def _safe_excel_sheet_name(name: str, used: set[str]) -> str:
+    """Devuelve un nombre de hoja compatible con Excel y sin duplicados."""
+    cleaned = re.sub(r"[\[\]\*:/\\?]", " ", str(name or "Hoja")).strip() or "Hoja"
+    cleaned = re.sub(r"\s+", " ", cleaned)[:31]
+    base = cleaned
+    i = 2
+    while cleaned in used:
+        suffix = f" {i}"
+        cleaned = f"{base[:31 - len(suffix)]}{suffix}"
+        i += 1
+    used.add(cleaned)
+    return cleaned
+
+
+def _tournament_matches_excel_bytes(t_obj) -> bytes:
+    """Genera un Excel moderno con la estructura de partidos del torneo."""
+    import openpyxl
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+
+    navy = "0B1F33"
+    header_fill = PatternFill("solid", fgColor=navy)
+    subheader_fill = PatternFill("solid", fgColor="E8F7EF")
+    odd_fill = PatternFill("solid", fgColor="F8FAFC")
+    even_fill = PatternFill("solid", fgColor="FFFFFF")
+    thin = Side(style="thin", color="D9E2EC")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    used_sheets: set[str] = set()
+    group_map = {g.id: g.name for g in getattr(t_obj, "groups", []) or []}
+
+    def _division_label(key: str | None) -> str:
+        if not key:
+            return ""
+        cat, sub = _parse_division_key(key)
+        if cat and sub:
+            return f"{cat.label} {sub.label}"
+        return key
+
+    def _style_title(ws, title: str, subtitle: str = "") -> None:
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=8)
+        c = ws.cell(1, 1, title)
+        c.font = Font(bold=True, size=18, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor=navy)
+        c.alignment = Alignment(horizontal="left", vertical="center")
+        ws.row_dimensions[1].height = 30
+        if subtitle:
+            ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=8)
+            sc = ws.cell(2, 1, subtitle)
+            sc.font = Font(size=10, color="46627A")
+            sc.fill = subheader_fill
+            sc.alignment = Alignment(horizontal="left", vertical="center")
+            ws.row_dimensions[2].height = 22
+
+    def _write_table(ws, start_row: int, headers: list[str], rows: list[list[object]]) -> None:
+        for ci, h in enumerate(headers, 1):
+            cell = ws.cell(start_row, ci, h)
+            cell.font = Font(bold=True, color="FFFFFF", size=10)
+            cell.fill = header_fill
+            cell.border = border
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+        for ri, row in enumerate(rows, start_row + 1):
+            fill = odd_fill if (ri - start_row) % 2 else even_fill
+            for ci, value in enumerate(row, 1):
+                cell = ws.cell(ri, ci, value)
+                cell.fill = fill
+                cell.border = border
+                cell.font = Font(size=10, color="102A43")
+                cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+        end_row = max(start_row + len(rows), start_row)
+        end_col = len(headers)
+        ws.auto_filter.ref = f"A{start_row}:{get_column_letter(end_col)}{end_row}"
+        ws.freeze_panes = f"A{start_row + 1}"
+        for ci in range(1, end_col + 1):
+            values = [headers[ci - 1]] + [str(r[ci - 1] or "") for r in rows]
+            width = min(max(len(v) for v in values) + 3, 42)
+            ws.column_dimensions[get_column_letter(ci)].width = max(width, 12)
+
+    def _match_row(m) -> list[object]:
+        return [
+            m.round.display,
+            m.match_number,
+            _division_label(getattr(m, "division", None)),
+            group_map.get(getattr(m, "group_id", None), ""),
+            m.p1_display,
+            m.p2_display,
+            m.match_date.strftime("%d/%m/%Y") if getattr(m, "match_date", None) else "",
+            m.start_time.strftime("%H:%M") if getattr(m, "start_time", None) else "",
+            m.court.name if getattr(m, "court", None) else "",
+            getattr(getattr(m, "status", None), "value", ""),
+            getattr(m, "score", ""),
+        ]
+
+    matches = sorted(
+        list(getattr(t_obj, "matches", []) or []),
+        key=lambda m: (
+            m.round.order,
+            _division_label(getattr(m, "division", None)),
+            group_map.get(getattr(m, "group_id", None), ""),
+            m.match_number,
+        ),
+    )
+
+    ws = wb.create_sheet(_safe_excel_sheet_name("Resumen", used_sheets))
+    _style_title(ws, f"{BRAND_NAME} - {getattr(t_obj, 'name', 'Torneo')}", "Resumen de estructura generada")
+    summary_rows = [
+        ["Torneo", getattr(t_obj, "name", "")],
+        ["Fechas", f"{t_obj.start_date.strftime('%d/%m/%Y')} - {t_obj.end_date.strftime('%d/%m/%Y')}"],
+        ["Parejas", len(getattr(t_obj, "pairs", []) or [])],
+        ["Grupos", len(getattr(t_obj, "groups", []) or [])],
+        ["Partidos", len(matches)],
+        ["Rondas", ", ".join(r.display for r in sorted({m.round for m in matches}, key=lambda r: r.order))],
+    ]
+    _write_table(ws, 4, ["Dato", "Valor"], summary_rows)
+
+    headers = ["Ronda", "Partido", "Division", "Grupo", "Pareja 1", "Pareja 2", "Fecha", "Hora", "Pista", "Estado", "Resultado"]
+    ws_all = wb.create_sheet(_safe_excel_sheet_name("Todos los partidos", used_sheets))
+    _style_title(ws_all, "Todos los partidos", "Listado completo preparado para revisar, imprimir o compartir")
+    _write_table(ws_all, 4, headers, [_match_row(m) for m in matches])
+
+    for rnd in sorted({m.round for m in matches}, key=lambda r: r.order):
+        rnd_matches = [m for m in matches if m.round == rnd]
+        ws_r = wb.create_sheet(_safe_excel_sheet_name(rnd.display, used_sheets))
+        _style_title(ws_r, rnd.display, f"{len(rnd_matches)} partidos")
+        _write_table(ws_r, 4, headers, [_match_row(m) for m in rnd_matches])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 # ---------------------------------------------------------------------------
 # Configuración de página
 # ---------------------------------------------------------------------------
@@ -5581,6 +5714,15 @@ elif page == "t_generate":
     if t.matches:
         st.divider()
         _section_start("📊", "Partidos generados")
+        _excel_slug = re.sub(r"[^A-Za-z0-9_-]+", "_", t.name.strip()).strip("_") or "torneo"
+        st.download_button(
+            "⬇️ Exportar partidos a Excel",
+            data=_tournament_matches_excel_bytes(t),
+            file_name=f"partidos_{_excel_slug}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="dl_t_generated_matches_excel",
+            use_container_width=True,
+        )
         for _rnd in sorted(set(m.round for m in t.matches), key=lambda r: r.order):
             _rnd_matches = [m for m in t.matches if m.round == _rnd]
             with st.expander(f"**{_rnd.display}** — {len(_rnd_matches)} partidos", expanded=True):
