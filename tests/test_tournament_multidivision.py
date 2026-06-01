@@ -196,7 +196,7 @@ class TestMultiDivisionScheduling:
         assert len(masc) > 0
         assert len(fem) > 0
 
-    def test_same_wave_divisions_split_courts(self):
+    def test_same_wave_divisions_start_in_parallel(self):
         masc = "masculino:1a"
         fem = "femenino:1a"
         cfg = TournamentConfig(
@@ -230,10 +230,11 @@ class TestMultiDivisionScheduling:
             if m.division == fem and m.round == MatchRound.SEMIFINAL and m.start_time == time(9, 0)
         ]
 
-        assert {m.court.id for m in masc_first} == {"c1", "c2"}
-        assert {m.court.id for m in fem_first} == {"c3", "c4"}
+        assert len(masc_first) == 2
+        assert len(fem_first) == 2
+        assert len({m.court.id for m in masc_first + fem_first}) == 4
 
-    def test_same_wave_split_falls_back_to_free_courts(self):
+    def test_same_wave_uses_all_courts_without_fixed_division_assignment(self):
         masc = "masculino:1a"
         fem = "femenino:1a"
         cfg = TournamentConfig(
@@ -258,13 +259,14 @@ class TestMultiDivisionScheduling:
         )
 
         cfg = schedule_tournament(generate_tournament_structure(cfg))
-        masc_quarters = [
+        first_slot = [
             m for m in cfg.matches
-            if m.division == masc and m.round == MatchRound.QUARTERFINAL
+            if m.start_time == time(9, 0)
         ]
 
         assert [m for m in cfg.matches if m.status == TMatchStatus.CONFLICT] == []
-        assert {"c3", "c4"} & {m.court.id for m in masc_quarters}
+        assert {m.division for m in first_slot} == {masc, fem}
+        assert len(first_slot) == 4
 
 
 class TestBackwardCompatibility:

@@ -187,26 +187,32 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
     for _wave in _wave_numbers:
         wave_matches = [m for m in config.matches if _wave_of(m) == _wave]
         wave_divisions = _ordered_wave_divisions(config, wave_matches)
-        courts_by_division = _courts_by_division(active_courts, wave_divisions)
 
-        # ── Agrupar por ronda y ordenar (dentro de la tanda)
-        rounds_ordered: list[MatchRound] = sorted(
-            set(m.round for m in wave_matches),
-            key=lambda r: r.order,
-        )
-        matches_by_round: dict[MatchRound, list[TournamentMatch]] = defaultdict(list)
+        matches_by_round: dict[tuple[str | None, MatchRound], list[TournamentMatch]] = defaultdict(list)
         for m in wave_matches:
-            matches_by_round[m.round].append(m)
+            matches_by_round[(m.division, m.round)].append(m)
+        rounds_by_division: dict[str | None, list[MatchRound]] = {
+            division: sorted(
+                {m.round for m in wave_matches if m.division == division},
+                key=lambda r: r.order,
+            )
+            for division in wave_divisions
+        }
 
         prev_round_end: Optional[datetime] = None
         wave_latest_end: Optional[datetime] = None
 
-        for rnd in rounds_ordered:
-            matches = matches_by_round[rnd]
+        for stage_idx in range(max((len(r) for r in rounds_by_division.values()), default=0)):
+            stage_matches: list[TournamentMatch] = []
+            for division in wave_divisions:
+                div_rounds = rounds_by_division.get(division, [])
+                if stage_idx < len(div_rounds):
+                    stage_matches.extend(matches_by_round[(division, div_rounds[stage_idx])])
+            matches = _interleave_matches_by_division(stage_matches, wave_divisions)
 
             # Suelo temporal: el cuadro tras los grupos, y la tanda tras la anterior
             rnd_earliest: Optional[datetime] = wave_prev_end
-            if rnd != MatchRound.GROUP and prev_round_end is not None:
+            if stage_idx > 0 and prev_round_end is not None:
                 _after_groups = prev_round_end + timedelta(minutes=config.rest_between_matches_min)
                 rnd_earliest = max(rnd_earliest, _after_groups) if rnd_earliest else _after_groups
 
@@ -214,10 +220,9 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
 
             for match in matches:
                 duration = _duration_for_match(config, match)
-                match_courts = courts_by_division.get(match.division) or active_courts
                 slot = _find_best_slot(
                     match        = match,
-                    active_courts= match_courts,
+                    active_courts= active_courts,
                     court_tls    = court_tls,
                     player_tl    = player_tl,
                     duration     = duration,
@@ -226,23 +231,6 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
                     day_end      = day_end,
                     rnd_earliest = rnd_earliest,
                 )
-                if match_courts != active_courts:
-                    flexible_slot = _find_best_slot(
-                        match        = match,
-                        active_courts= active_courts,
-                        court_tls    = court_tls,
-                        player_tl    = player_tl,
-                        duration     = duration,
-                        all_days     = all_days,
-                        day_start    = day_start,
-                        day_end      = day_end,
-                        rnd_earliest = rnd_earliest,
-                    )
-                    if slot is None or (
-                        flexible_slot is not None and flexible_slot[0] < slot[0]
-                    ):
-                        slot = flexible_slot
-
                 if slot is None:
                     match.status = TMatchStatus.CONFLICT
                     match.conflict_reason = (
@@ -294,26 +282,24 @@ def _ordered_wave_divisions(config: TournamentConfig, matches: list[TournamentMa
     return ordered
 
 
-def _courts_by_division(
-    active_courts: list[TournamentCourt],
+def _interleave_matches_by_division(
+    matches: list[TournamentMatch],
     divisions: list[str | None],
-) -> dict[str | None, list[TournamentCourt]]:
-    """Reparte pistas entre categorias simultaneas de una misma tanda."""
-    if len(divisions) <= 1 or len(active_courts) < len(divisions):
-        return {}
+) -> list[TournamentMatch]:
+    """Intercala categorias de la misma tanda para que avancen en paralelo."""
+    if len(divisions) <= 1:
+        return matches
 
-    total_courts = len(active_courts)
-    total_divisions = len(divisions)
-    base = total_courts // total_divisions
-    extra = total_courts % total_divisions
+    by_division: dict[str | None, list[TournamentMatch]] = defaultdict(list)
+    for match in matches:
+        by_division[match.division].append(match)
 
-    result: dict[str | None, list[TournamentCourt]] = {}
-    start = 0
-    for idx, division in enumerate(divisions):
-        size = base + (1 if idx < extra else 0)
-        result[division] = active_courts[start:start + size]
-        start += size
-    return result
+    ordered: list[TournamentMatch] = []
+    while any(by_division.values()):
+        for division in divisions:
+            if by_division[division]:
+                ordered.append(by_division[division].pop(0))
+    return ordered
 
 
 def _duration_for_match(config: TournamentConfig, match: TournamentMatch) -> timedelta:
