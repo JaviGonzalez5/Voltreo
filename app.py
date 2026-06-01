@@ -5373,6 +5373,7 @@ elif page == "t_generate":
     _existing_draws_g = {d.key: d for d in (getattr(t, "division_draws", []) or [])}
 
     _final_opts_g = {
+        0:  "🔁 Liguilla (sin final)",
         2:  "🏁 Solo final",
         4:  "🥈 Semifinales + final",
         8:  "🎾 Cuartos + semis + final",
@@ -5401,7 +5402,12 @@ elif page == "t_generate":
             if _ng_key not in st.session_state:
                 st.session_state[_ng_key] = int(getattr(_prev, "num_groups", 0) or 0) or _rec["num_groups"]
             if _fp_key not in st.session_state:
-                _fp_init = int(getattr(_prev, "bracket_size", 0) or 0) or _rec["bracket_size"]
+                if t.format == TournamentFormat.GROUPS:
+                    _fp_init = 0  # solo grupos = liguilla, sin final
+                elif _prev is not None:
+                    _fp_init = int(getattr(_prev, "bracket_size", 0) or 0)
+                else:
+                    _fp_init = _rec["bracket_size"]
                 if _fp_init not in _final_keys_g:
                     _fp_init = _rec["bracket_size"] if _rec["bracket_size"] in _final_keys_g else 4
                 st.session_state[_fp_key] = _fp_init
@@ -5430,14 +5436,15 @@ elif page == "t_generate":
                     _dist = [str(_base + 1)] * _extra + [str(_base)] * (int(_ng_val) - _extra)
                     st.caption(f"Reparto: {' · '.join(_dist)} parejas")
                 with _gc2:
-                    if t.format == TournamentFormat.GROUPS_BRACKET:
-                        st.selectbox(
-                            "Fase final", options=_final_keys_g,
-                            format_func=lambda b: _final_opts_g[b],
-                            key=_fp_key,
-                        )
-                    else:
-                        st.caption("Formato solo grupos (sin fase eliminatoria).")
+                    st.selectbox(
+                        "Fase final", options=_final_keys_g,
+                        format_func=lambda b: _final_opts_g[b],
+                        key=_fp_key,
+                        help="«Liguilla» = todos contra todos, sin eliminatoria. "
+                             "El resto añade una fase final tras los grupos.",
+                    )
+                    if int(st.session_state.get(_fp_key, 0)) == 0 and int(_ng_val) == 1:
+                        st.caption("🔁 Liguilla pura: todos contra todos, gana quien más puntos sume.")
     else:
         _section_start("🎯", "Previsión del torneo")
         bs = max(4, min(t.bracket_size, 1 << (n_pairs.bit_length()-1) if n_pairs >= 2 else 4))
@@ -5453,12 +5460,14 @@ elif page == "t_generate":
                 if _div_pairs_n < 2:
                     continue
                 _ng_v = int(st.session_state.get(f"tg_ng_{_dk}", 2))
-                _fp_v = int(st.session_state.get(f"tg_fp_{_dk}", 4)) if t.format == TournamentFormat.GROUPS_BRACKET else 2
+                _fp_v = int(st.session_state.get(f"tg_fp_{_dk}", 0))
+                # Fase final 0 = liguilla pura (solo grupos, sin eliminatoria)
+                _div_fmt = TournamentFormat.GROUPS if _fp_v == 0 else TournamentFormat.GROUPS_BRACKET
                 _dcat_g, _dsub_g = _parse_division_key(_dk) if _dk else (t.category, t.subcategory)
                 _draws_g[_dk] = _TDivG(
                     key=_dk or "default", category=_dcat_g, subcategory=_dsub_g,
-                    format=t.format, num_groups=_ng_v, group_size=t.group_size,
-                    bracket_size=_fp_v, groups_qualifiers=2,
+                    format=_div_fmt, num_groups=_ng_v, group_size=t.group_size,
+                    bracket_size=_fp_v or 2, groups_qualifiers=2,
                     third_place_match=t.third_place_match,
                     pairs=[p for p in t.pairs if (p.division == _dk or _dk is None)],
                 )

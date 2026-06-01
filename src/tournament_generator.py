@@ -485,9 +485,12 @@ def generate_tournament_structure(config: TournamentConfig) -> TournamentConfig:
     _s_num_groups = int(getattr(_single_draw, "num_groups", 0) or 0) if _single_draw else 0
     _s_bracket    = int(getattr(_single_draw, "bracket_size", 0) or 0) if _single_draw else 0
     _s_qualif     = int(getattr(_single_draw, "groups_qualifiers", 0) or 0) if _single_draw else 0
+    # Si la división se configuró como liguilla (formato GROUPS), respetarlo
+    _s_format     = getattr(_single_draw, "format", None) if _single_draw else None
+    _eff_format   = _s_format or config.format
 
     groups, all_matches, eff_bracket = _generate_one_division(
-        list(config.pairs), config.format, config.group_size,
+        list(config.pairs), _eff_format, config.group_size,
         _s_qualif or config.groups_qualifiers,
         _s_bracket or config.bracket_size,
         config.third_place_match,
