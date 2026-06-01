@@ -2069,15 +2069,24 @@ def _tournament_schedule_excel_bytes(t_obj) -> bytes:
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
 
-    navy = "0B1F33"
+    navy = "07111D"
     green = "0F9B57"
     light_green = "E8F7EF"
     light_blue = "EEF5FF"
+    gold = "F6C453"
+    purple = "EFE7FF"
+    peach = "FFF1E6"
     white = "FFFFFF"
     grid_fill = PatternFill("solid", fgColor=white)
     header_fill = PatternFill("solid", fgColor=navy)
     time_fill = PatternFill("solid", fgColor=light_blue)
     match_fill = PatternFill("solid", fgColor=light_green)
+    round_fills = {
+        "Fase de Grupos": PatternFill("solid", fgColor="E8F7EF"),
+        "Semifinal": PatternFill("solid", fgColor=purple),
+        "Final": PatternFill("solid", fgColor="FFF8D8"),
+        "3er y 4º Puesto": PatternFill("solid", fgColor=peach),
+    }
     thin = Side(style="thin", color="D9E2EC")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
@@ -2094,10 +2103,10 @@ def _tournament_schedule_excel_bytes(t_obj) -> bytes:
         end_col = max(2, len(courts) + 1)
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=end_col)
         c = ws.cell(1, 1, title)
-        c.font = Font(bold=True, size=18, color="FFFFFF")
+        c.font = Font(bold=True, size=20, color="FFFFFF")
         c.fill = header_fill
         c.alignment = Alignment(horizontal="left", vertical="center")
-        ws.row_dimensions[1].height = 30
+        ws.row_dimensions[1].height = 34
         if subtitle:
             ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=end_col)
             sc = ws.cell(2, 1, subtitle)
@@ -2126,6 +2135,11 @@ def _tournament_schedule_excel_bytes(t_obj) -> bytes:
             ws_summary.cell(r, c).alignment = Alignment(vertical="center")
     ws_summary.column_dimensions["A"].width = 24
     ws_summary.column_dimensions["B"].width = 44
+    ws_summary.cell(14, 1, "Leyenda").font = Font(bold=True, size=12, color="0B1F33")
+    for i, (label, fill) in enumerate(round_fills.items(), 15):
+        ws_summary.cell(i, 1, label).fill = fill
+        ws_summary.cell(i, 1).border = border
+        ws_summary.cell(i, 1).font = Font(bold=True, color="0B1F33")
 
     # Cuadrícula por día: filas hora, columnas pistas.
     used_names: set[str] = {"Resumen"}
@@ -2155,7 +2169,7 @@ def _tournament_schedule_excel_bytes(t_obj) -> bytes:
                 m = by_slot_court.get((slot, court.id))
                 cell = ws.cell(ri, ci)
                 cell.border = border
-                cell.fill = match_fill if m else grid_fill
+                cell.fill = round_fills.get(m.round_display, match_fill) if m else grid_fill
                 cell.alignment = Alignment(wrap_text=True, vertical="top")
                 if m:
                     cell.value = (
@@ -2164,6 +2178,7 @@ def _tournament_schedule_excel_bytes(t_obj) -> bytes:
                         f"{m.p1_display}\nvs\n{m.p2_display}\n"
                         f"{m.start_time.strftime('%H:%M')} - {m.end_time.strftime('%H:%M') if m.end_time else ''}"
                     )
+                    cell.font = Font(bold=m.round_display in ("Semifinal", "Final"), color="0B1F33", size=10)
         ws.freeze_panes = "B5"
         ws.column_dimensions["A"].width = 10
         for ci in range(2, len(courts) + 2):
@@ -2194,6 +2209,7 @@ def _tournament_schedule_excel_bytes(t_obj) -> bytes:
         for ci, v in enumerate(vals, 1):
             cell = ws_list.cell(ri, ci, v)
             cell.border = border
+            cell.fill = round_fills.get(m.round_display, grid_fill)
             cell.alignment = Alignment(wrap_text=True, vertical="center")
     ws_list.freeze_panes = "A2"
     ws_list.auto_filter.ref = ws_list.dimensions
