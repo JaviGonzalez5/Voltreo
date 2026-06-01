@@ -21,6 +21,64 @@ from .tournament_models import (
 
 
 # ---------------------------------------------------------------------------
+# Recomendación de estructura (IA heurística)
+# ---------------------------------------------------------------------------
+
+def recommend_structure(n_pairs: int) -> dict:
+    """
+    Recomienda una estructura de torneo razonable según el nº de parejas.
+
+    Heurística: grupos de 3-4 parejas (lo ideal en pádel/pickleball para que
+    todos jueguen varios partidos sin alargar demasiado), clasifican los 2
+    primeros de cada grupo, y la fase final es la mayor potencia de 2 que cabe
+    en los clasificados.
+
+    Devuelve: {num_groups, group_size_aprox, qualifiers, bracket_size,
+               bracket_label, reason}
+    """
+    if n_pairs < 2:
+        return {
+            "num_groups": 1, "group_size_aprox": n_pairs, "qualifiers": 1,
+            "bracket_size": 0, "bracket_label": "Sin partidos",
+            "reason": "Hacen falta al menos 2 parejas.",
+        }
+
+    if n_pairs <= 3:
+        return {
+            "num_groups": 1, "group_size_aprox": n_pairs, "qualifiers": 2,
+            "bracket_size": 2, "bracket_label": "Solo final",
+            "reason": f"Con {n_pairs} parejas, una liguilla y final entre los 2 primeros.",
+        }
+
+    # Menor nº de grupos tal que el grupo más grande tenga como máximo 4 parejas
+    # (grupos de 3-4 es lo ideal: varios partidos por pareja sin alargar demasiado).
+    num_groups = 1
+    while ceil(n_pairs / num_groups) > 4:
+        num_groups += 1
+    qualifiers = 2
+    total_q = num_groups * qualifiers
+
+    # Mayor potencia de 2 <= total_q, acotada a [2, 16]
+    bs = 1 << (total_q.bit_length() - 1) if total_q >= 2 else 2
+    bs = max(2, min(bs, 16))
+
+    labels = {2: "Solo final", 4: "Semifinales + final",
+              8: "Cuartos + semis + final", 16: "Dieciseisavos en adelante"}
+    base = n_pairs // num_groups
+    extra = n_pairs % num_groups
+    dist = f"{extra}×{base+1} y {num_groups-extra}×{base}" if extra else f"{num_groups}×{base}"
+    return {
+        "num_groups": num_groups,
+        "group_size_aprox": base,
+        "qualifiers": qualifiers,
+        "bracket_size": bs,
+        "bracket_label": labels.get(bs, f"Cuadro de {bs}"),
+        "reason": f"{n_pairs} parejas → {num_groups} grupos ({dist}), "
+                  f"clasifican 2 por grupo → {labels.get(bs, bs)}.",
+    }
+
+
+# ---------------------------------------------------------------------------
 # Reparto en grupos
 # ---------------------------------------------------------------------------
 
