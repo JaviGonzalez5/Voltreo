@@ -2351,11 +2351,19 @@ if _db_ok:
     if not is_authenticated() and _db is not None:
         # ── 2 ciclos de warmup: el componente de cookies necesita 1 ciclo para
         # que el JS del navegador devuelva el valor de la cookie al servidor.
-        _warmup = st.session_state.get("_cookie_warmup", 0)
-        if _warmup < 2:
-            st.session_state["_cookie_warmup"] = _warmup + 1
-            st.rerun()
-        restore_session_from_cookie(_db)
+        # Si acabamos de hacer logout, NO intentar restaurar la cookie todavía:
+        # el borrado de la cookie es asíncrono (JS del browser) y puede tardar
+        # 1-2 ciclos de rerun en ejecutarse. Sin este bloqueo, restore_session_from_cookie
+        # encuentra la cookie aún presente y vuelve a loguear al usuario.
+        if st.session_state.get("_logout_done"):
+            # La cookie ya debería estar borrada en este ciclo. Quitar el flag.
+            st.session_state.pop("_logout_done", None)
+        else:
+            _warmup = st.session_state.get("_cookie_warmup", 0)
+            if _warmup < 2:
+                st.session_state["_cookie_warmup"] = _warmup + 1
+                st.rerun()
+            restore_session_from_cookie(_db)
 
     if not is_authenticated():
         # ── Landing pública: se muestra a visitantes no autenticados a menos que

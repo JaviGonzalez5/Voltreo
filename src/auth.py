@@ -334,13 +334,18 @@ def login(db, username: str, password: str) -> Optional[dict]:
 def logout() -> None:
     """Elimina el usuario de la sesión y recarga la app."""
     clear_remember_cookie()
-    # Preservar el CookieManager y el contador de warmup para que el próximo
-    # intento de login pueda leer la cookie en el primer ciclo.
+    # Preservar el CookieManager para que siga funcionando después del logout.
     _mgr = st.session_state.get("_cookie_manager")
     for key in list(st.session_state.keys()):
         del st.session_state[key]
     if _mgr is not None:
         st.session_state["_cookie_manager"] = _mgr
+    # _logout_done bloquea restore_session_from_cookie durante los ciclos de
+    # rerun post-logout. Sin este flag, el warmup lanza 2 reruns adicionales y
+    # la cookie (aún no borrada por el JS del browser) vuelve a loguear al usuario.
+    st.session_state["_logout_done"] = True
+    # Resetear el warmup para que el próximo login funcione correctamente.
+    st.session_state["_cookie_warmup"] = 0
     st.rerun()
 
 
