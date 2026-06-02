@@ -67,6 +67,40 @@ def _match_player_keys(match: TournamentMatch) -> list[str]:
     return keys
 
 
+def _all_potential_player_keys(
+    match: TournamentMatch,
+    all_matches: "list[TournamentMatch]",
+) -> list[str]:
+    """
+    Claves de jugadores de un partido, incluyendo los POTENCIALES si es TBD.
+
+    Para partidos con pareja ya conocida devuelve lo mismo que _match_player_keys.
+    Para partidos TBD (bracket cuadro aún no resuelto) sube recursivamente a la
+    ronda anterior para encontrar todos los jugadores que podrían llegar a ese
+    slot. Así el _PlayerTimeline bloquea correctamente a jugadores de Tanda 1
+    que aún no saben si llegarán a la final, evitando solapamientos con Tanda 2.
+    """
+    direct = _match_player_keys(match)
+    if direct:
+        return direct
+
+    # Partido TBD: buscar los partidos de la ronda anterior que alimentan este slot
+    # "Ganador Cuartos 1" → partido de cuartos match_number=1 con misma división
+    feeder_matches: list[TournamentMatch] = []
+    for slot_num in (match.match_number * 2 - 1, match.match_number * 2):
+        # Los partidos de la ronda anterior tienen round.order == match.round.order - 1
+        for m in all_matches:
+            if (m.division == match.division
+                    and m.round.order == match.round.order - 1
+                    and m.match_number == slot_num):
+                feeder_matches.append(m)
+
+    keys: list[str] = []
+    for fm in feeder_matches:
+        keys.extend(_all_potential_player_keys(fm, all_matches))
+    return list(dict.fromkeys(keys))  # dedup preservando orden
+
+
 # ---------------------------------------------------------------------------
 # Utilidades
 # ---------------------------------------------------------------------------
@@ -272,6 +306,7 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
                     match=m, active_courts=active_courts, court_tls=court_tls,
                     player_tl=player_tl, duration=duration, all_days=all_days,
                     day_start=day_start, day_end=day_end, rnd_earliest=rnd_earliest,
+                    all_matches=config.matches,
                 )
                 if slot is not None:
                     s_start, s_end, court = slot
@@ -318,7 +353,11 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
             best_match.status     = TMatchStatus.SCHEDULED
 
             court_tls[court.id].mark_occupied(s_end)
-            player_tl.record(_match_player_keys(best_match), s_end)
+            # Registrar con jugadores potenciales (TBD → busca en rondas anteriores)
+            # para que el _PlayerTimeline bloquee correctamente cross-wave
+            player_tl.record(
+                _all_potential_player_keys(best_match, config.matches), s_end
+            )
 
             _dk = (best_match.division, best_match.round)
             completed_rounds[_dk] += 1
@@ -447,6 +486,7 @@ def _find_best_slot(
     day_start:     time,
     day_end:       time,
     rnd_earliest:  Optional[datetime],
+    all_matches:   "list[TournamentMatch] | None" = None,
 ) -> Optional[tuple[datetime, datetime, TournamentCourt]]:
     """
     Devuelve (start, end, court) del hueco más temprano disponible
@@ -458,8 +498,12 @@ def _find_best_slot(
     Tiene en cuenta a TODOS los jugadores del partido: si alguno juega en otra
     categoría, no puede tener dos partidos a la vez.
     """
-    # Momento más temprano en que todos los jugadores del partido están libres
-    players_avail = player_tl.available_from(_match_player_keys(match))
+    # Momento más temprano en que todos los jugadores del partido están libres.
+    # Usa jugadores potenciales (incl. TBD) para evitar solapamiento cross-wave.
+    _am = all_matches or []
+    players_avail = player_tl.available_from(
+        _all_potential_player_keys(match, _am)
+    )
 
     for d in all_days:
         day_start_dt = _dt(d, day_start)
