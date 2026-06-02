@@ -600,11 +600,6 @@ def render_landing_screen() -> None:
         f'<h1 class="lp-h1">{_esc(BRAND_HEADLINE.replace("profesional.", ""))}'
         f'<span class="accent">profesional.</span></h1>'
         f'<p class="lp-sub">{_esc(BRAND_SUBHEAD)}</p>'
-        f'<div class="lp-cta-row">'
-        f'<a class="lp-btn-sec" href="?show_login=1">Acceder al panel →</a>'
-        f'<a class="lp-btn-sec" href="mailto:{BRAND_CONTACT}" '
-        f'style="border-color:#e2eaf4">Solicitar acceso</a>'
-        f'</div>'
         f'<div class="lp-stats">'
         f'<div><div class="lp-stat-n">3+</div><div class="lp-stat-l">Deportes</div></div>'
         f'<div><div class="lp-stat-n">100%</div><div class="lp-stat-l">Aislamiento por club</div></div>'
@@ -622,6 +617,15 @@ def render_landing_screen() -> None:
         f'</div>',
         unsafe_allow_html=True,
     )
+
+    # ── Botones CTA del hero — st.button() reales (no href) para no salir de la página
+    _h1, _h2, _h3 = st.columns([2, 2, 4])
+    with _h1:
+        if st.button("🔑  Acceder al panel", type="primary", use_container_width=True, key="lp_login_hero"):
+            st.session_state["_show_login"] = True
+            st.rerun()
+    with _h2:
+        st.link_button("✉️  Solicitar acceso", f"mailto:{BRAND_CONTACT}", use_container_width=True)
 
     # ── Features grid ────────────────────────────────────────────────────────
     st.markdown(
@@ -683,14 +687,17 @@ def render_landing_screen() -> None:
         f'<h2>Gratis durante la beta.</h2>'
         f'<p>Estamos creciendo con clubes reales. El acceso es por invitación '
         f'para garantizar la calidad del servicio.</p>'
-        f'<div class="lp-cta-row" style="justify-content:center;gap:.8rem;flex-wrap:wrap">'
-        f'<a class="lp-btn-pri" href="?show_login=1">Acceder al panel →</a>'
-        f'<a class="lp-btn-sec" href="mailto:{BRAND_CONTACT}">Solicitar invitación</a>'
-        f'</div>'
-        f'<div class="lp-pricing-note">¿Ya tienes credenciales? Usa el botón "Acceder al panel".</div>'
         f'</div>',
         unsafe_allow_html=True,
     )
+    # Botones del pricing como st.button() reales
+    _p1, _p2, _p3 = st.columns([1, 2, 2])
+    with _p2:
+        if st.button("🔑  Acceder al panel", type="primary", use_container_width=True, key="lp_login_pricing"):
+            st.session_state["_show_login"] = True
+            st.rerun()
+    with _p3:
+        st.link_button("✉️  Solicitar invitación", f"mailto:{BRAND_CONTACT}", use_container_width=True)
 
     # ── Footer ───────────────────────────────────────────────────────────────
     st.markdown(

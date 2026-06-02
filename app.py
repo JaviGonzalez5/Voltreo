@@ -2367,10 +2367,11 @@ if _db_ok:
 
     if not is_authenticated():
         # ── Landing pública: se muestra a visitantes no autenticados a menos que
-        # hayan pulsado "Acceder al panel" (?show_login=1) o vengan del keep-alive.
+        # hayan pulsado el botón "Acceder al panel" (que pone _show_login en
+        # session_state) o vengan del keep-alive/health-check.
         _show_login = (
-            st.query_params.get("show_login") == "1"
-            or st.session_state.get("_show_login")
+            st.session_state.get("_show_login")
+            or st.query_params.get("show_login") == "1"  # compatibilidad con links antiguos
             or _qp_health is not None
         )
         if not _show_login:
