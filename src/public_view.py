@@ -267,26 +267,32 @@ def render_public_registration(tournament_id: str) -> None:
     except Exception:
         pass
 
-    # Contar inscritos ya aprobados por división
-    _approved = [r for r in getattr(t, "registrations", [])
-                 if r.status == RegistrationStatus.APPROVED]
-    _confirmed = [p for p in t.pairs]
+    # Contadores por división para mostrar plazas
+    _max_pairs = getattr(t, "registration_max_pairs", {}) or {}
+    _confirmed_total = t.confirmed_count()
+    _pending_total   = len([r for r in getattr(t, "registrations", [])
+                             if r.status == RegistrationStatus.PENDING])
+
+    # Resumen de plazas
+    _slots_parts = []
+    if _div_keys:
+        for _dk in _div_keys:
+            _mx = _max_pairs.get(_dk, 0)
+            _cn = t.confirmed_count(_dk)
+            _lbl = _div_labels.get(_dk, _dk)
+            if _mx:
+                _slots_parts.append(f"{_lbl}: {_cn}/{_mx}")
+            else:
+                _slots_parts.append(f"{_lbl}: {_cn} inscritas")
+    _slots_str = " · ".join(_slots_parts) if _slots_parts else f"{_confirmed_total} parejas confirmadas"
 
     st.markdown(
         f'<div style="background:rgba(0,200,83,.07);border:1px solid rgba(0,200,83,.25);'
         f'border-radius:12px;padding:.9rem 1.2rem;margin:1rem 0;font-size:.9rem;color:#005a29;font-weight:600">'
-        f'✅ Inscripciones abiertas · {len(_confirmed)} parejas confirmadas · '
-        f'{len([r for r in getattr(t,"registrations",[]) if r.status == RegistrationStatus.PENDING])} pendientes de revisión'
+        f'✅ Inscripciones abiertas · {_slots_str}'
         f'</div>',
         unsafe_allow_html=True,
     )
-
-    # Formulario de inscripción
-    _section_header = (
-        '<div style="font-size:.7rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;'
-        'color:#00843d;margin:1.4rem 0 .5rem">FORMULARIO DE INSCRIPCIÓN</div>'
-    )
-    st.markdown(_section_header, unsafe_allow_html=True)
 
     # Guardar "inscrito con éxito" en session_state para no mostrar el form de nuevo
     if st.session_state.get(f"_reg_done_{tournament_id}"):
@@ -294,14 +300,36 @@ def render_public_registration(tournament_id: str) -> None:
         st.caption("Puedes cerrar esta ventana o compartir el enlace con otro jugador.")
         st.stop()
 
+    st.markdown(
+        '<div style="font-size:.7rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;'
+        'color:#00843d;margin:1.4rem 0 .5rem">FORMULARIO DE INSCRIPCIÓN</div>',
+        unsafe_allow_html=True,
+    )
+
     with st.form("public_registration_form"):
         st.markdown("**Datos de la pareja**")
         pair_name = st.text_input("Nombre de la pareja (ej. García / López)", placeholder="García / López")
 
         if _div_keys:
-            div_opts = ["— Elige tu categoría —"] + list(_div_labels.values())
-            div_sel_label = st.selectbox("Categoría", options=div_opts)
-            div_sel_key = next((k for k, v in _div_labels.items() if v == div_sel_label), None)
+            # Construir opciones filtrando categorías llenas
+            def _div_opt_label(k):
+                mx = _max_pairs.get(k, 0)
+                cn = t.confirmed_count(k)
+                lbl = _div_labels.get(k, k)
+                if mx and cn >= mx:
+                    return f"{lbl} — COMPLETO ({cn}/{mx})"
+                if mx:
+                    return f"{lbl} ({cn}/{mx} plazas)"
+                return lbl
+
+            div_opts  = ["— Elige tu categoría —"] + [_div_opt_label(k) for k in _div_keys]
+            div_sel_display = st.selectbox("Categoría", options=div_opts)
+            # Recuperar la clave original a partir del display seleccionado
+            div_sel_key = None
+            for k in _div_keys:
+                if _div_opt_label(k) == div_sel_display:
+                    div_sel_key = k
+                    break
         else:
             div_sel_key = None
 
@@ -332,6 +360,9 @@ def render_public_registration(tournament_id: str) -> None:
             errors.append("Rellena el nombre del Jugador 2.")
         if _div_keys and not div_sel_key:
             errors.append("Selecciona una categoría.")
+        # Bloquear si la categoría elegida ya está llena
+        if div_sel_key and t.is_division_full(div_sel_key):
+            errors.append(f"La categoría seleccionada ya está completa. Elige otra o contacta con el organizador.")
         for e in errors:
             st.error(e)
         if not errors:

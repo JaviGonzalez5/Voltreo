@@ -367,6 +367,7 @@ class TournamentConfig(BaseModel):
     registration_open: bool = False                    # el admin abre/cierra manualmente
     registration_opens_date: Optional[date] = None    # apertura automática (fecha)
     registration_closes_date: Optional[date] = None   # cierre automático (fecha)
+    registration_max_pairs: dict[str, int] = Field(default_factory=dict)  # {division_key: max} — 0 = sin límite
     registrations: list["TournamentRegistration"] = Field(default_factory=list)
 
     # ---------------------------------------------------------------------------
@@ -384,6 +385,21 @@ class TournamentConfig(BaseModel):
     @property
     def total_match_count(self) -> int:
         return len(self.matches)
+
+    def confirmed_count(self, division: Optional[str] = None) -> int:
+        """Parejas ya confirmadas (aprobadas + importadas directamente) en una división."""
+        direct = sum(1 for p in self.pairs if division is None or p.division == division)
+        approved = sum(1 for r in self.registrations
+                       if r.status == "approved"
+                       and (division is None or r.division == division))
+        return direct + approved
+
+    def is_division_full(self, division: Optional[str] = None) -> bool:
+        """True si la división ya alcanzó el máximo de parejas configurado."""
+        max_p = (self.registration_max_pairs or {}).get(division or "_", 0)
+        if not max_p:
+            return False
+        return self.confirmed_count(division) >= max_p
 
     def is_registration_active(self, today: Optional[date] = None) -> bool:
         """

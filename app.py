@@ -5747,6 +5747,45 @@ elif page == "t_config":
                 if _closes_cfg: _parts.append(f"cierra el **{_closes_cfg.strftime('%d/%m/%Y')}**")
                 st.caption(f"⏱️ Configurado: {' · '.join(_parts)}. Fuera de ese rango el formulario se bloquea solo.")
 
+            # ── Máximo de parejas por categoría ──────────────────────────────
+            st.markdown("**🎯 Máximo de parejas por categoría** (0 = sin límite)")
+            _max_cfg = dict(getattr(_cfg_t, "registration_max_pairs", {}) or {})
+            _all_divs_cfg = list(getattr(_cfg_t, "divisions", []) or []) or [None]
+            _, _dl_cfg = _division_option_maps()
+            _max_changed = False
+            _max_cols = st.columns(min(len(_all_divs_cfg), 4))
+            for _mi, _dk_m in enumerate(_all_divs_cfg):
+                with _max_cols[_mi % 4]:
+                    _lbl_m = _dl_cfg.get(_dk_m, _dk_m or "General")
+                    _cur_max = _safe_int(_max_cfg.get(_dk_m or "_", 0), 0)
+                    _confirmed_now = _cfg_t.confirmed_count(_dk_m)
+                    _new_max = st.number_input(
+                        _lbl_m, min_value=0, max_value=200,
+                        value=_cur_max, step=1,
+                        key=f"reg_max_{_dk_m}",
+                        help=f"{_confirmed_now} confirmadas",
+                    )
+                    if _new_max != _cur_max:
+                        _max_cfg[_dk_m or "_"] = _new_max
+                        _max_changed = True
+                    if _cur_max and _confirmed_now >= _cur_max:
+                        st.caption(f"🔴 Completo ({_confirmed_now}/{_cur_max})")
+                    elif _cur_max:
+                        st.caption(f"🟢 {_confirmed_now}/{_cur_max} plazas")
+            if _max_changed:
+                _cfg_t.registration_max_pairs = _max_cfg
+                st.session_state["tournament"] = _cfg_t
+                if _db_ok and _db is not None:
+                    _rc_m = current_club_id()
+                    if _rc_m:
+                        try:
+                            _rp_m = tournament_to_db(_cfg_t, _rc_m, _cfg_tid)
+                            _db.upsert_tournament(club_id=_rc_m, name=_rp_m["name"],
+                                start_date=_rp_m["start_date"], end_date=_rp_m["end_date"],
+                                tournament_data=_rp_m["tournament_data"], tournament_id=_cfg_tid)
+                        except Exception:
+                            pass
+
             st.divider()
 
             # ── Toggle manual + enlace ────────────────────────────────────
