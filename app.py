@@ -5681,21 +5681,52 @@ elif page == "t_config":
         st.divider()
         with st.expander("📩 Inscripciones públicas — enlace para jugadores", expanded=False):
             from src.branding import BRAND_NAME as _BN_cfg
-            _join_url_cfg = f"https://{_BN_cfg.lower()}.streamlit.app/?join={_cfg_tid}"
-            _reg_open_cfg = getattr(_cfg_t, "registration_open", False)
-            _c_tog, _c_link = st.columns([1, 2])
-            with _c_tog:
-                _lbl = "🟢 Abiertas" if _reg_open_cfg else "🔴 Cerradas"
-                st.markdown(f"**Inscripciones:** {_lbl}")
-                if st.button(
-                    "Cerrar inscripciones" if _reg_open_cfg else "Abrir inscripciones",
-                    key="toggle_reg_cfg",
-                    type="secondary" if _reg_open_cfg else "primary",
-                    use_container_width=True,
-                ):
-                    _cfg_t.registration_open = not _reg_open_cfg
+            import datetime as _dt_reg
+            _join_url_cfg  = f"https://{_BN_cfg.lower()}.streamlit.app/?join={_cfg_tid}"
+            _reg_active    = _cfg_t.is_registration_active()
+            _reg_open_cfg  = getattr(_cfg_t, "registration_open", False)
+            _opens_cfg     = getattr(_cfg_t, "registration_opens_date", None)
+            _closes_cfg    = getattr(_cfg_t, "registration_closes_date", None)
+
+            # ── Estado actual ─────────────────────────────────────────────
+            if _reg_active:
+                _state_html = ('<div style="display:inline-flex;align-items:center;gap:.4rem;'
+                               'background:rgba(0,200,83,.10);border:1px solid rgba(0,200,83,.28);'
+                               'border-radius:8px;padding:.3rem .8rem;font-size:.85rem;'
+                               'font-weight:700;color:#005a29">🟢 Inscripciones ABIERTAS</div>')
+            else:
+                _state_html = ('<div style="display:inline-flex;align-items:center;gap:.4rem;'
+                               'background:rgba(220,53,53,.08);border:1px solid rgba(220,53,53,.20);'
+                               'border-radius:8px;padding:.3rem .8rem;font-size:.85rem;'
+                               'font-weight:700;color:#8b0000">🔴 Inscripciones CERRADAS</div>')
+            st.markdown(_state_html, unsafe_allow_html=True)
+            st.markdown("")
+
+            # ── Fechas automáticas ────────────────────────────────────────
+            _fd1, _fd2, _fd3 = st.columns([2, 2, 1])
+            with _fd1:
+                _new_opens = st.date_input(
+                    "📅 Apertura automática (opcional)",
+                    value=_opens_cfg,
+                    help="Si lo dejas vacío, abre/cierra con el botón manual.",
+                    key="reg_opens_date",
+                )
+            with _fd2:
+                _closes_min = _new_opens if _new_opens else _dt_reg.date.today()
+                _closes_default = _closes_cfg if (_closes_cfg and _closes_cfg >= _closes_min) else None
+                _new_closes = st.date_input(
+                    "📅 Cierre automático (opcional)",
+                    value=_closes_default,
+                    min_value=_closes_min,
+                    help="El formulario de inscripción se bloquea automáticamente en esta fecha.",
+                    key="reg_closes_date",
+                )
+            with _fd3:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("💾 Guardar fechas", key="save_reg_dates", use_container_width=True):
+                    _cfg_t.registration_opens_date  = _new_opens  or None
+                    _cfg_t.registration_closes_date = _new_closes or None
                     st.session_state["tournament"] = _cfg_t
-                    # Guardar en BD
                     if _db_ok and _db is not None:
                         _rc = current_club_id()
                         if _rc:
@@ -5706,17 +5737,54 @@ elif page == "t_config":
                                     tournament_data=_rp["tournament_data"], tournament_id=_cfg_tid)
                             except Exception:
                                 pass
+                    st.success("Fechas guardadas.")
                     st.rerun()
-            with _c_link:
-                if _reg_open_cfg:
-                    st.caption("Comparte este enlace con los jugadores para que se inscriban:")
+
+            # Resumen de fechas activas
+            if _opens_cfg or _closes_cfg:
+                _parts = []
+                if _opens_cfg:  _parts.append(f"abre el **{_opens_cfg.strftime('%d/%m/%Y')}**")
+                if _closes_cfg: _parts.append(f"cierra el **{_closes_cfg.strftime('%d/%m/%Y')}**")
+                st.caption(f"⏱️ Configurado: {' · '.join(_parts)}. Fuera de ese rango el formulario se bloquea solo.")
+
+            st.divider()
+
+            # ── Toggle manual + enlace ────────────────────────────────────
+            _tm1, _tm2 = st.columns([1, 2])
+            with _tm1:
+                if not (_opens_cfg or _closes_cfg):
+                    # Sin fechas automáticas: mostrar toggle manual
+                    if st.button(
+                        "Cerrar inscripciones" if _reg_open_cfg else "Abrir inscripciones",
+                        key="toggle_reg_cfg",
+                        type="secondary" if _reg_open_cfg else "primary",
+                        use_container_width=True,
+                    ):
+                        _cfg_t.registration_open = not _reg_open_cfg
+                        st.session_state["tournament"] = _cfg_t
+                        if _db_ok and _db is not None:
+                            _rc2 = current_club_id()
+                            if _rc2:
+                                try:
+                                    _rp2 = tournament_to_db(_cfg_t, _rc2, _cfg_tid)
+                                    _db.upsert_tournament(club_id=_rc2, name=_rp2["name"],
+                                        start_date=_rp2["start_date"], end_date=_rp2["end_date"],
+                                        tournament_data=_rp2["tournament_data"], tournament_id=_cfg_tid)
+                                except Exception:
+                                    pass
+                        st.rerun()
+                else:
+                    st.caption("Las fechas automáticas controlan la apertura y el cierre.")
+            with _tm2:
+                if _reg_active:
+                    st.caption("Comparte este enlace con los jugadores:")
                     st.code(_join_url_cfg, language="text")
                     _pending_cfg = [r for r in getattr(_cfg_t, "registrations", [])
                                     if getattr(r, "status", "") == "pending"]
                     if _pending_cfg:
                         st.warning(f"⚠️ {len(_pending_cfg)} inscripción(es) pendiente(s) → ve a **Añadir parejas**.")
                 else:
-                    st.caption("Abre las inscripciones para obtener el enlace que puedes mandar por WhatsApp o email.")
+                    st.caption("El enlace aparecerá cuando las inscripciones estén abiertas.")
 
     _t_nav_buttons(1)
 
@@ -6563,18 +6631,26 @@ elif page == "t_results":
                 st.code(_pub_url, language="text")
                 st.markdown(f"[Abrir vista pública]({_pub_url})")
             with _tr_c2:
-                st.markdown("**📩 Enlace de inscripción para jugadores**")
+                st.markdown("**📩 Inscripciones**")
+                _reg_active_tr = t.is_registration_active()
                 _reg_open = getattr(t, "registration_open", False)
-                _reg_label = "🟢 Inscripciones ABIERTAS" if _reg_open else "🔴 Inscripciones CERRADAS"
+                _opens_tr  = getattr(t, "registration_opens_date", None)
+                _closes_tr = getattr(t, "registration_closes_date", None)
+                _reg_label = "🟢 ABIERTAS" if _reg_active_tr else "🔴 CERRADAS"
                 st.caption(_reg_label)
-                if st.button("Abrir inscripciones" if not _reg_open else "Cerrar inscripciones",
-                             key="toggle_reg_open",
-                             type="primary" if not _reg_open else "secondary"):
-                    t.registration_open = not _reg_open
-                    st.session_state["tournament"] = t
-                    _persist_tournament(t)
-                    st.rerun()
-                if _reg_open:
+                if _opens_tr:  st.caption(f"Apertura: {_opens_tr.strftime('%d/%m/%Y')}")
+                if _closes_tr: st.caption(f"Cierre: {_closes_tr.strftime('%d/%m/%Y')}")
+                if not (_opens_tr or _closes_tr):
+                    if st.button("Abrir inscripciones" if not _reg_open else "Cerrar inscripciones",
+                                 key="toggle_reg_open",
+                                 type="primary" if not _reg_open else "secondary"):
+                        t.registration_open = not _reg_open
+                        st.session_state["tournament"] = t
+                        _persist_tournament(t)
+                        st.rerun()
+                else:
+                    st.caption("Gestiona las fechas en **Configurar torneo**.")
+                if _reg_active_tr:
                     st.code(_join_url, language="text")
                     st.markdown(f"[🔎 Ver formulario de inscripción]({_join_url})")
                     _pending_regs = [r for r in getattr(t, "registrations", [])

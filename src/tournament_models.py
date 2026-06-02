@@ -364,7 +364,9 @@ class TournamentConfig(BaseModel):
     division_draws: list[TournamentDivision] = Field(default_factory=list)
 
     # Inscripciones públicas: parejas que se registran desde el enlace público
-    registration_open: bool = False           # el admin abre/cierra las inscripciones
+    registration_open: bool = False                    # el admin abre/cierra manualmente
+    registration_opens_date: Optional[date] = None    # apertura automática (fecha)
+    registration_closes_date: Optional[date] = None   # cierre automático (fecha)
     registrations: list["TournamentRegistration"] = Field(default_factory=list)
 
     # ---------------------------------------------------------------------------
@@ -382,6 +384,27 @@ class TournamentConfig(BaseModel):
     @property
     def total_match_count(self) -> int:
         return len(self.matches)
+
+    def is_registration_active(self, today: Optional[date] = None) -> bool:
+        """
+        Las inscripciones están activas si:
+          1. El admin las ha abierto manualmente (registration_open=True), O
+          2. Las fechas automáticas están configuradas y hoy cae dentro del rango.
+        El cierre automático tiene prioridad: si hoy > closes_date → cerradas.
+        """
+        from datetime import date as _date
+        _today = today or _date.today()
+        # Cierre automático: si hay fecha de cierre y ya pasó → siempre cerradas
+        if self.registration_closes_date and _today > self.registration_closes_date:
+            return False
+        # Apertura automática: si hay fecha de apertura y aún no llegó → cerradas
+        if self.registration_opens_date and _today < self.registration_opens_date:
+            return False
+        # Si alguna fecha automática aplica y hoy está en rango → abiertas
+        if self.registration_opens_date or self.registration_closes_date:
+            return True
+        # Sin fechas automáticas: depende del toggle manual
+        return self.registration_open
 
     @property
     def is_multi_division(self) -> bool:

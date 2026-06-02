@@ -240,7 +240,7 @@ def render_public_registration(tournament_id: str) -> None:
     )
 
     # Comprobar si las inscripciones están abiertas
-    if not getattr(t, "registration_open", False):
+    if not t.is_registration_active():
         st.markdown(
             '<div style="text-align:center;padding:3rem 1.5rem;background:#f5f8fc;'
             'border-radius:16px;border:2px dashed #d0e0f0;margin:1rem 0">'
