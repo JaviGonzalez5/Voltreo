@@ -5674,6 +5674,50 @@ elif page == "t_config":
             st.session_state["_nav_page"] = "t_pairs"
             st.rerun()
 
+    # ── Inscripciones públicas (disponible desde el paso 1) ────────────────────
+    _cfg_tid = st.session_state.get("db_tournament_id")
+    _cfg_t   = st.session_state.get("tournament")
+    if _cfg_tid and _cfg_t:
+        st.divider()
+        with st.expander("📩 Inscripciones públicas — enlace para jugadores", expanded=False):
+            from src.branding import BRAND_NAME as _BN_cfg
+            _join_url_cfg = f"https://{_BN_cfg.lower()}.streamlit.app/?join={_cfg_tid}"
+            _reg_open_cfg = getattr(_cfg_t, "registration_open", False)
+            _c_tog, _c_link = st.columns([1, 2])
+            with _c_tog:
+                _lbl = "🟢 Abiertas" if _reg_open_cfg else "🔴 Cerradas"
+                st.markdown(f"**Inscripciones:** {_lbl}")
+                if st.button(
+                    "Cerrar inscripciones" if _reg_open_cfg else "Abrir inscripciones",
+                    key="toggle_reg_cfg",
+                    type="secondary" if _reg_open_cfg else "primary",
+                    use_container_width=True,
+                ):
+                    _cfg_t.registration_open = not _reg_open_cfg
+                    st.session_state["tournament"] = _cfg_t
+                    # Guardar en BD
+                    if _db_ok and _db is not None:
+                        _rc = current_club_id()
+                        if _rc:
+                            try:
+                                _rp = tournament_to_db(_cfg_t, _rc, _cfg_tid)
+                                _db.upsert_tournament(club_id=_rc, name=_rp["name"],
+                                    start_date=_rp["start_date"], end_date=_rp["end_date"],
+                                    tournament_data=_rp["tournament_data"], tournament_id=_cfg_tid)
+                            except Exception:
+                                pass
+                    st.rerun()
+            with _c_link:
+                if _reg_open_cfg:
+                    st.caption("Comparte este enlace con los jugadores para que se inscriban:")
+                    st.code(_join_url_cfg, language="text")
+                    _pending_cfg = [r for r in getattr(_cfg_t, "registrations", [])
+                                    if getattr(r, "status", "") == "pending"]
+                    if _pending_cfg:
+                        st.warning(f"⚠️ {len(_pending_cfg)} inscripción(es) pendiente(s) → ve a **Añadir parejas**.")
+                else:
+                    st.caption("Abre las inscripciones para obtener el enlace que puedes mandar por WhatsApp o email.")
+
     _t_nav_buttons(1)
 
 
