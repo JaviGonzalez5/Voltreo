@@ -2321,8 +2321,9 @@ try:
     _qp_tid    = st.query_params.get("t")
     _qp_rid    = st.query_params.get("r")
     _qp_health = st.query_params.get("health")
+    _qp_join   = st.query_params.get("join")   # inscripción pública en torneo
 except Exception:
-    _qp_tid = _qp_rid = _qp_health = None
+    _qp_tid = _qp_rid = _qp_health = _qp_join = None
 
 # Health-check endpoint (?health=1) — usado por el keep-alive de GitHub Actions
 # y por herramientas de monitorización para saber si la app responde
@@ -2339,6 +2340,9 @@ if _qp_health:
 if _qp_tid:
     from src.public_view import render_public_tournament
     render_public_tournament(_qp_tid)  # llama a st.stop() internamente
+if _qp_join:
+    from src.public_view import render_public_registration
+    render_public_registration(_qp_join)  # llama a st.stop() internamente
 if _qp_rid:
     from src.public_ranking import render_public_ranking
     render_public_ranking(_qp_rid)  # llama a st.stop() internamente
@@ -5706,6 +5710,63 @@ elif page == "t_pairs":
     else:
         st.info(f"💡 Torneo: **{t.name}** · {len(t.pairs)} parejas inscritas · Formato: **{t.format.value}**")
 
+    # ── Bandeja de inscripciones pendientes ───────────────────────────────────
+    from src.tournament_models import RegistrationStatus as _RegSt
+    _pending_regs = [r for r in getattr(t, "registrations", []) if r.status == _RegSt.PENDING]
+    if _pending_regs:
+        st.markdown(
+            f'<div style="background:linear-gradient(135deg,#fff8e1,#fff3cd);'
+            f'border:1.5px solid #ffc107;border-radius:14px;padding:1rem 1.2rem;margin-bottom:1rem">'
+            f'<div style="font-weight:800;color:#856404;font-size:.95rem;margin-bottom:.5rem">'
+            f'📩 {len(_pending_regs)} inscripción(es) pendiente(s) de revisión</div>'
+            f'<div style="font-size:.82rem;color:#856404">Revísalas y aprueba o rechaza cada una.</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        for _reg in _pending_regs:
+            with st.expander(f"📩 **{escape(_reg.pair_name or 'Sin nombre')}** — {_reg.player1_name} / {_reg.player2_name}"):
+                _rc1, _rc2 = st.columns(2)
+                with _rc1:
+                    st.markdown(f"**Jugador 1:** {escape(_reg.player1_name)}")
+                    if _reg.player1_phone: st.caption(f"📱 {escape(_reg.player1_phone)}")
+                    if _reg.player1_email: st.caption(f"📧 {escape(_reg.player1_email)}")
+                with _rc2:
+                    st.markdown(f"**Jugador 2:** {escape(_reg.player2_name)}")
+                    if _reg.player2_phone: st.caption(f"📱 {escape(_reg.player2_phone)}")
+                    if _reg.player2_email: st.caption(f"📧 {escape(_reg.player2_email)}")
+                if _reg.division and _t_div_keys:
+                    st.caption(f"Categoría solicitada: **{_div_label(_reg.division)}**")
+                if _reg.notes:
+                    st.caption(f"💬 {escape(_reg.notes)}")
+                _btn_a, _btn_r = st.columns(2)
+                with _btn_a:
+                    if st.button("✅ Aprobar", key=f"reg_approve_{_reg.id}", type="primary", use_container_width=True):
+                        # Aprobar → crear TournamentPair y moverlo a t.pairs
+                        new_pair = TournamentPair(
+                            name=_reg.pair_name or f"{_reg.player1_name} / {_reg.player2_name}",
+                            player_1=TournamentPlayer(name=_reg.player1_name,
+                                                      phone=_reg.player1_phone,
+                                                      email=_reg.player1_email),
+                            player_2=TournamentPlayer(name=_reg.player2_name,
+                                                      phone=_reg.player2_phone,
+                                                      email=_reg.player2_email),
+                            division=_reg.division,
+                        )
+                        t.pairs.append(new_pair)
+                        t.groups = []; t.matches = []; t.division_draws = []
+                        _reg.status = _RegSt.APPROVED
+                        st.session_state["tournament"] = t
+                        _autosave_tournament(t)
+                        st.success(f"✅ **{_reg.pair_name}** aprobada y añadida al torneo.")
+                        st.rerun()
+                with _btn_r:
+                    if st.button("❌ Rechazar", key=f"reg_reject_{_reg.id}", use_container_width=True):
+                        _reg.status = _RegSt.REJECTED
+                        st.session_state["tournament"] = t
+                        _autosave_tournament(t)
+                        st.rerun()
+        st.divider()
+
     _section_start("👥", "Añadir parejas")
     pair_tab_a, pair_tab_b = st.tabs(["📝 Añadir manualmente", "📂 Importar CSV"])
 
@@ -6433,17 +6494,40 @@ elif page == "t_results":
         key="t_results_search", label_visibility="collapsed",
     )
 
-    # ── Enlace público compartible ──────────────────────────────────────────
+    # ── Enlace público + inscripciones ─────────────────────────────────────────
     _share_tid = st.session_state.get("db_tournament_id")
-    with st.expander("🔗 Compartir torneo (enlace público para jugadores)", expanded=False):
+    with st.expander("🔗 Compartir torneo (resultados + inscripciones)", expanded=False):
         if not _share_tid:
-            st.info("Guarda el torneo primero (registra algún resultado) para generar el enlace público.")
+            st.info("Guarda el torneo primero para generar los enlaces.")
         else:
             from src.branding import BRAND_NAME as _BN
-            _pub_url = f"https://{_BN.lower()}.streamlit.app/?t={_share_tid}"
-            st.caption("Cualquiera con este enlace puede ver el cuadro, los horarios y los resultados **sin iniciar sesión** (solo lectura).")
-            st.code(_pub_url, language="text")
-            st.markdown(f"[🔎 Abrir vista pública en una pestaña nueva]({_pub_url})")
+            _pub_url  = f"https://{_BN.lower()}.streamlit.app/?t={_share_tid}"
+            _join_url = f"https://{_BN.lower()}.streamlit.app/?join={_share_tid}"
+            _tr_c1, _tr_c2 = st.columns(2)
+            with _tr_c1:
+                st.markdown("**📺 Ver resultados y calendario**")
+                st.caption("Solo lectura — sin login.")
+                st.code(_pub_url, language="text")
+                st.markdown(f"[Abrir vista pública]({_pub_url})")
+            with _tr_c2:
+                st.markdown("**📩 Enlace de inscripción para jugadores**")
+                _reg_open = getattr(t, "registration_open", False)
+                _reg_label = "🟢 Inscripciones ABIERTAS" if _reg_open else "🔴 Inscripciones CERRADAS"
+                st.caption(_reg_label)
+                if st.button("Abrir inscripciones" if not _reg_open else "Cerrar inscripciones",
+                             key="toggle_reg_open",
+                             type="primary" if not _reg_open else "secondary"):
+                    t.registration_open = not _reg_open
+                    st.session_state["tournament"] = t
+                    _persist_tournament(t)
+                    st.rerun()
+                if _reg_open:
+                    st.code(_join_url, language="text")
+                    st.markdown(f"[🔎 Ver formulario de inscripción]({_join_url})")
+                    _pending_regs = [r for r in getattr(t, "registrations", [])
+                                     if r.status == "pending"]
+                    if _pending_regs:
+                        st.warning(f"⚠️ {len(_pending_regs)} inscripción(es) pendientes de revisión — ve a **Añadir parejas**.")
 
     _tr_div_keys = list(getattr(t, "divisions", []) or [])
     _tr_multi = len(_tr_div_keys) > 1

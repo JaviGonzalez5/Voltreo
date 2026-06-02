@@ -278,6 +278,35 @@ class TournamentDivision(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Inscripción pública de una pareja
+# ---------------------------------------------------------------------------
+
+class RegistrationStatus(str, Enum):
+    PENDING  = "pending"   # esperando revisión del admin
+    APPROVED = "approved"  # aprobada → pasa a t.pairs
+    REJECTED = "rejected"  # rechazada
+
+
+class TournamentRegistration(BaseModel):
+    """
+    Registro de una pareja enviado desde el enlace público de inscripción.
+    El admin lo revisa y aprueba (→ pasa a TournamentConfig.pairs) o rechaza.
+    """
+    id:          str = Field(default_factory=lambda: str(uuid4()))
+    pair_name:   str = ""
+    player1_name: str = ""
+    player1_phone: Optional[str] = None
+    player1_email: Optional[str] = None
+    player2_name: str = ""
+    player2_phone: Optional[str] = None
+    player2_email: Optional[str] = None
+    division:    Optional[str] = None    # categoría solicitada
+    notes:       str = ""                # mensaje libre del jugador
+    status:      RegistrationStatus = RegistrationStatus.PENDING
+    submitted_at: str = ""               # ISO timestamp
+
+
+# ---------------------------------------------------------------------------
 # Configuración del torneo (objeto raíz)
 # ---------------------------------------------------------------------------
 
@@ -333,6 +362,10 @@ class TournamentConfig(BaseModel):
     groups:  list[TournamentGroup] = Field(default_factory=list)
     matches: list[TournamentMatch] = Field(default_factory=list)
     division_draws: list[TournamentDivision] = Field(default_factory=list)
+
+    # Inscripciones públicas: parejas que se registran desde el enlace público
+    registration_open: bool = False           # el admin abre/cierra las inscripciones
+    registrations: list["TournamentRegistration"] = Field(default_factory=list)
 
     # ---------------------------------------------------------------------------
     # Propiedades de conveniencia
