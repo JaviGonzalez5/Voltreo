@@ -1298,6 +1298,14 @@ def _empty_state(icon: str, title: str, text: str) -> None:
     )
 
 
+def _safe_int(val, default: int = 0) -> int:
+    """Convierte a int sin crashear si el valor de la BD es None, '' o inválido."""
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return default
+
+
 def _page_header(icon: str, title: str, subtitle: str = "") -> None:
     st.markdown(
         f'<div class="pp-page-title">'
@@ -1348,8 +1356,7 @@ def _info_grid(cards: list[tuple[str, str]]) -> None:
         # Extract number prefix like "1. " if present
         clean_title = title
         num_badge = ""
-        import re as _re
-        m = _re.match(r'^(\d+)\.\s*(.*)', title)
+        m = re.match(r'^(\d+)\.\s*(.*)', title)
         if m:
             num_badge = (
                 f'<span style="width:22px;height:22px;border-radius:50%;'
@@ -2395,7 +2402,13 @@ if _db_ok and is_authenticated():
     _user = get_session_user()
 
     if is_superadmin() and _db is not None:
-        _clubs = _db.list_clubs()
+        # Cachear lista de clubs en session_state para no llamar a BD en cada rerun
+        if "_clubs_cache" not in st.session_state:
+            try:
+                st.session_state["_clubs_cache"] = _db.list_clubs()
+            except Exception:
+                st.session_state["_clubs_cache"] = []
+        _clubs = st.session_state["_clubs_cache"]
         if _clubs:
             _club_options = {c["name"]: c["id"] for c in _clubs}
             _prev = st.session_state.get("superadmin_selected_club_id")
@@ -2793,17 +2806,18 @@ if page == "tournaments":
                     _nav_to("t_schedule" if _n_matches else "t_config")
             with _btn_col3:
                 if st.button("🗑️", key=f"del_t_{_tid}", help="Eliminar torneo", use_container_width=True):
-                    st.session_state[f"_confirm_del_t_{_tid}"] = True
+                    # Una sola clave para evitar acumulación ilimitada de claves
+                    st.session_state["_confirm_del_tournament"] = _tid
                     st.rerun()
 
-            if st.session_state.get(f"_confirm_del_t_{_tid}"):
+            if st.session_state.get("_confirm_del_tournament") == _tid:
                 st.warning(f"⚠️ ¿Seguro que quieres eliminar **{_tname}**? Esta acción no se puede deshacer.")
                 _dc1, _dc2 = st.columns(2)
                 with _dc1:
                     if st.button("Sí, eliminar", key=f"confirm_yes_t_{_tid}", type="primary"):
                         try:
                             _db.delete_tournament(_tid, _tr_cid)
-                            st.session_state.pop(f"_confirm_del_t_{_tid}", None)
+                            st.session_state.pop("_confirm_del_tournament", None)
                             if _tid == _current_tid:
                                 st.session_state["tournament"] = None
                                 st.session_state["db_tournament_id"] = None
@@ -2813,7 +2827,7 @@ if page == "tournaments":
                             st.error(f"Error al eliminar: {_e_del}")
                 with _dc2:
                     if st.button("Cancelar", key=f"confirm_no_t_{_tid}"):
-                        st.session_state.pop(f"_confirm_del_t_{_tid}", None)
+                        st.session_state.pop("_confirm_del_tournament", None)
                         st.rerun()
 
     st.divider()
@@ -3055,9 +3069,9 @@ elif page == "club_config":
         )
         _section_start("🏟️", "Instalaciones")
         _cc_courts  = st.number_input("Número de pistas", min_value=1, max_value=30,
-                                      value=int(_settings.get("num_courts", 4)))
+                                      value=_safe_int(_settings.get("num_courts"), 4))
         _cc_indoor  = st.number_input("Pistas cubiertas", min_value=0, max_value=30,
-                                      value=int(_settings.get("indoor_courts", 0)))
+                                      value=_safe_int(_settings.get("indoor_courts"), 0))
         _section_start("⏰", "Horario de apertura")
         _cc_open  = st.time_input("Apertura",  value=_settings.get("open_time",  "08:00") if isinstance(_settings.get("open_time"), str) else time(8,0))
         _cc_close = st.time_input("Cierre",    value=_settings.get("close_time", "23:00") if isinstance(_settings.get("close_time"), str) else time(23,0))
@@ -3123,7 +3137,7 @@ elif page == "config":
     _cfg_club_row = _db.get_club_by_id(_cfg_cid) if (_db_ok and _db and _cfg_cid) else None
     _cfg_settings = (_cfg_club_row.get("settings") or {}) if _cfg_club_row else {}
     _cfg_club_name = (_cfg_club_row["name"] if _cfg_club_row else _s.get("club_name", "Mi Club"))
-    _cfg_n_courts_default = int(_cfg_settings.get("num_courts", 4))
+    _cfg_n_courts_default = _safe_int(_cfg_settings.get("num_courts"), 4)
     _cfg_open_default  = _cfg_settings.get("open_time",  "09:00")
     _cfg_close_default = _cfg_settings.get("close_time", "22:00")
 
@@ -3650,8 +3664,7 @@ elif page == "import":
                         _r_d = _conn_d._session.get(_url_d, timeout=20)
                         from bs4 import BeautifulSoup as _BS
                         _soup_d = _BS(_r_d.text, "html.parser")
-                        import re as _re
-                        _hrx = _re.compile(r"\bgrupo\s*\d+\b", _re.I)
+                        _hrx = re.compile(r"\bgrupo\s*\d+\b", re.I)
                         # 1. Headings con "Grupo"
                         _headings_info = []
                         for _tag in _soup_d.find_all(["h1","h2","h3","h4","h5","h6"]):
@@ -3898,6 +3911,9 @@ elif page == "generate":
     with col1:
         _section_start("⚡", "Acciones")
 
+        _had_schedule = st.session_state.matches_scheduled
+        if _had_schedule:
+            st.info("ℹ️ Regenerar creará un calendario nuevo. El anterior se borrará.")
         if st.button("⚡ Generar enfrentamientos", type="primary"):
             matches = generate_all_matches(phase.groups)
             st.session_state.matches = matches
@@ -3919,48 +3935,51 @@ elif page == "generate":
                 rows_diag.append({"Grupo": g.name, "Parejas": n, "Partidos esperados": comb(n, 2)})
             st.dataframe(rows_diag, use_container_width=True, hide_index=True)
 
-        if st.session_state.matches_generated:
-            if st.button("🗓️ Asignar horarios", type="primary"):
-                with st.spinner("Asignando horarios... "):
-                    scheduler = Scheduler(phase)
-                    result = scheduler.schedule(st.session_state.matches)
-                st.session_state.schedule_result = result
-                st.session_state.matches_scheduled = True
-                st.session_state.matches = result.scheduled + result.conflicts
+        # Siempre visible — deshabilitado hasta que los enfrentamientos estén generados
+        if not st.session_state.matches_generated:
+            st.caption("Primero genera los enfrentamientos para poder asignar horarios.")
+        if st.button("🗓️ Asignar horarios", type="primary",
+                     disabled=not st.session_state.matches_generated):
+            with st.spinner("Asignando horarios... "):
+                scheduler = Scheduler(phase)
+                result = scheduler.schedule(st.session_state.matches)
+            st.session_state.schedule_result = result
+            st.session_state.matches_scheduled = True
+            st.session_state.matches = result.scheduled + result.conflicts
 
-                # Persistir resultado del calendario en Supabase
-                if _db_ok and _db is not None:
-                    _cid = current_club_id()
-                    _pid = st.session_state.get("db_phase_id")
-                    if _cid and _pid and st.session_state.phase:
-                        try:
-                            _ph = st.session_state.phase
-                            _payload = phase_to_db(_ph, _cid, _pid)
-                            _db.upsert_phase(
-                                club_id=_cid,
-                                name=_payload["name"],
-                                start_date=_payload["start_date"],
-                                end_date=_payload["end_date"],
-                                phase_config=_payload["phase_config"],
-                                groups_data=_payload["groups_data"],
-                                bookings_data=_payload["bookings_data"],
-                                schedule_result=schedule_result_to_db(result),
-                                phase_id=_pid,
-                            )
-                        except Exception as _e:
-                            st.warning(f"⚠️ No se pudo guardar el calendario en BD: {_e}")
+            # Persistir resultado del calendario en Supabase
+            if _db_ok and _db is not None:
+                _cid = current_club_id()
+                _pid = st.session_state.get("db_phase_id")
+                if _cid and _pid and st.session_state.phase:
+                    try:
+                        _ph = st.session_state.phase
+                        _payload = phase_to_db(_ph, _cid, _pid)
+                        _db.upsert_phase(
+                            club_id=_cid,
+                            name=_payload["name"],
+                            start_date=_payload["start_date"],
+                            end_date=_payload["end_date"],
+                            phase_config=_payload["phase_config"],
+                            groups_data=_payload["groups_data"],
+                            bookings_data=_payload["bookings_data"],
+                            schedule_result=schedule_result_to_db(result),
+                            phase_id=_pid,
+                        )
+                    except Exception as _e:
+                        st.warning(f"⚠️ No se pudo guardar el calendario en BD: {_e}")
 
-                # Ejecutar validación automáticamente
-                violations = validate_schedule(result, phase)
-                st.session_state["schedule_violations"] = violations
+            # Ejecutar validación automáticamente
+            violations = validate_schedule(result, phase)
+            st.session_state["schedule_violations"] = violations
 
-                if result.conflict_count == 0:
-                    st.success(f"✅ Todos los partidos asignados ({result.scheduled_count}).")
-                else:
-                    st.warning(
-                        f"⚠️ {result.scheduled_count} partidos programados, "
-                        f"{result.conflict_count} con conflictos."
-                    )
+            if result.conflict_count == 0:
+                st.success(f"✅ Todos los partidos asignados ({result.scheduled_count}).")
+            else:
+                st.warning(
+                    f"⚠️ {result.scheduled_count} partidos programados, "
+                    f"{result.conflict_count} con conflictos."
+                )
 
         # ---- Botón exportar Excel (plantilla grupos) ----
         if st.session_state.matches_scheduled and st.session_state.schedule_result:
@@ -6007,6 +6026,11 @@ elif page == "t_generate":
         st.metric("Parejas en el cuadro", bs)
 
     st.divider()
+    # Avisar si ya hay resultados registrados (se perderán al regenerar)
+    _has_played = any(getattr(m, "winner_id", None) for m in getattr(t, "matches", []))
+    if _has_played:
+        st.warning("⚠️ Tienes resultados ya registrados. Regenerar la estructura los borrará. "
+                   "Asegúrate de haberlos anotado antes de continuar.")
     if st.button("⚡ Generar estructura del torneo", type="primary", use_container_width=True):
         # Construir division_draws desde la configuración elegida
         if _is_groups_fmt:
@@ -6242,13 +6266,98 @@ elif page == "t_results":
                 except Exception as _e:
                     st.warning(f"⚠️ Guardado local OK, BD falló: {_e}")
 
-    # Resumen de progreso
+    # Resumen de progreso global
     _summ = _tsumm(t)
     _stat_chips(
         (f"{_summ['played']} jugados", "green", "✅"),
         (f"{_summ['pending']} pendientes", "orange", "⏳"),
         (f"Campeón: {_summ['champion']}" if _summ['champion'] else "Sin campeón aún",
          "green" if _summ['champion'] else "red", "🏆"),
+    )
+
+    # ── Progreso detallado por ronda ──────────────────────────────────────────
+    _playable_all = [m for m in t.matches if m.pair_1 and m.pair_2]
+    if _playable_all:
+        with st.expander("📊 Progreso por ronda y categoría", expanded=False):
+            _prog_rows = []
+            _rnd_order = sorted({m.round for m in _playable_all}, key=lambda r: r.order)
+            _div_prog = sorted({m.division for m in _playable_all if m.division} or [None])
+            for _rnd_p in _rnd_order:
+                for _div_p in _div_prog:
+                    _ms_p = [m for m in _playable_all
+                              if m.round == _rnd_p and (m.division == _div_p or _div_p is None)]
+                    if not _ms_p:
+                        continue
+                    _played_p = sum(1 for m in _ms_p if getattr(m, "winner_id", None))
+                    _total_p  = len(_ms_p)
+                    _pct = int(_played_p / _total_p * 100) if _total_p else 0
+                    _label_div = ""
+                    if _div_p:
+                        _, _dl = _division_option_maps()
+                        _label_div = _dl.get(_div_p, _div_p)
+                    _prog_rows.append({
+                        "Ronda":     _rnd_p.display,
+                        "Categoría": _label_div or "—",
+                        "Jugados":   f"{_played_p}/{_total_p}",
+                        "Progreso":  f"{'█' * (_pct // 10)}{'░' * (10 - _pct // 10)} {_pct}%",
+                    })
+            if _prog_rows:
+                st.dataframe(_prog_rows, use_container_width=True, hide_index=True)
+
+    # ── Cuadro visual (bracket tree) ─────────────────────────────────────────
+    from src.tournament_models import MatchRound as _MRB
+    _bracket_rounds = [_MRB.ROUND_OF_16, _MRB.QUARTERFINAL, _MRB.SEMIFINAL, _MRB.FINAL]
+    _has_bracket = any(m.round in _bracket_rounds for m in t.matches)
+    if _has_bracket:
+        _tr_div_keys_b = sorted({m.division for m in t.matches if m.division and m.round in _bracket_rounds} or [None])
+        with st.expander("🏆 Ver cuadro eliminatorio", expanded=len(_summ.get('played', 0) and True)):
+            for _dk_b in _tr_div_keys_b:
+                _div_ms = {r: sorted([m for m in t.matches if m.round == r
+                                       and (m.division == _dk_b or _dk_b is None)],
+                                     key=lambda m: m.match_number)
+                           for r in _bracket_rounds}
+                _label_b = ""
+                if _dk_b:
+                    _, _dl_b = _division_option_maps()
+                    _label_b = _dl_b.get(_dk_b, _dk_b)
+                if _label_b:
+                    st.markdown(f'<div style="font-size:.75rem;font-weight:800;letter-spacing:.1em;'
+                                f'text-transform:uppercase;color:#00843d;margin:.8rem 0 .3rem">'
+                                f'🎾 {escape(_label_b)}</div>', unsafe_allow_html=True)
+                # Construir tabla visual por rondas de derecha a izquierda
+                _rounds_present = [r for r in _bracket_rounds if _div_ms.get(r)]
+                _cols_b = st.columns(len(_rounds_present)) if _rounds_present else []
+                for _ci_b, _rnd_b in enumerate(_rounds_present):
+                    with _cols_b[_ci_b]:
+                        st.markdown(f'<div style="text-align:center;font-size:.72rem;font-weight:700;'
+                                    f'color:#7088a0;text-transform:uppercase;letter-spacing:.08em;'
+                                    f'padding-bottom:.3rem;border-bottom:1px solid #e2eaf4;margin-bottom:.4rem">'
+                                    f'{escape(_rnd_b.display)}</div>', unsafe_allow_html=True)
+                        for _m_b in _div_ms[_rnd_b]:
+                            _w_id = getattr(_m_b, "winner_id", None)
+                            def _pstyle(pid):
+                                if not _w_id: return "color:#0b1a2b;font-weight:500"
+                                return "color:#00843d;font-weight:700" if pid and pid==_w_id else "color:#94a8be"
+                            _p1_s = _pstyle(_m_b.pair_1.id if _m_b.pair_1 else None)
+                            _p2_s = _pstyle(_m_b.pair_2.id if _m_b.pair_2 else None)
+                            _score_b = escape(_m_b.score) if getattr(_m_b, "score", "") else ""
+                            _score_html_b = (f'<div style="font-size:.7rem;color:#7088a0;margin-top:.2rem">'
+                                             f'{_score_b}</div>') if _score_b else ""
+                            st.markdown(
+                                f'<div style="background:#fff;border:1px solid #e2eaf4;border-radius:8px;'
+                                f'padding:.45rem .6rem;margin-bottom:.35rem;font-size:.82rem">'
+                                f'<div style="{_p1_s}">{escape(_m_b.p1_display)}</div>'
+                                f'<div style="height:1px;background:#f0f4f8;margin:.2rem 0"></div>'
+                                f'<div style="{_p2_s}">{escape(_m_b.p2_display)}</div>'
+                                f'{_score_html_b}'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+
+    # ── Búsqueda de pareja ────────────────────────────────────────────────────
+    _search_pair = st.text_input(
+        "🔍 Buscar pareja", placeholder="Escribe un nombre para filtrar partidos...",
+        key="t_results_search", label_visibility="collapsed",
     )
 
     # ── Enlace público compartible ──────────────────────────────────────────
@@ -6294,13 +6403,17 @@ elif page == "t_results":
             unsafe_allow_html=True,
         )
 
-    # Partidos jugables (ambas parejas conocidas), ordenados por ronda
+    # Partidos jugables (ambas parejas conocidas), ordenados por ronda, filtrados por búsqueda
+    _q = (_search_pair or "").strip().lower()
     _playable = sorted(
-        [m for m in t.matches if m.pair_1 and m.pair_2],
+        [m for m in t.matches if m.pair_1 and m.pair_2
+         if not _q or _q in m.p1_display.lower() or _q in m.p2_display.lower()],
         key=lambda m: (m.round.order, m.match_number),
     )
+    if _q and not _playable:
+        st.info(f"No hay partidos que coincidan con «{escape(_q)}».")
 
-    if not _playable:
+    if not _playable and not _q:
         st.info("Aún no hay partidos con ambas parejas definidas. "
                 "En formato grupos+cuadro, juega primero la fase de grupos.")
 
@@ -6547,6 +6660,7 @@ elif page == "admin":
                         st.session_state["superadmin_selected_club_name"] = _created["name"]
                         st.session_state["_active_club_id"] = _created["id"]
                         _reset_club_runtime_state()
+                        st.session_state.pop("_clubs_cache", None)  # invalidar caché
                         st.success(f"✅ Club '{_created['name']}' creado (ID: {_created['id']})")
                         st.rerun()
                     except Exception as _ex:
