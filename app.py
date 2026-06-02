@@ -1317,16 +1317,45 @@ header[data-testid="stHeader"] * {
     /* Métricas en 2 columnas */
     [data-testid="stMetricValue"] { font-size: 1.6rem !important; }
 
-    /* Sidebar en móvil: overlay nativo de Streamlit, ancho máximo sensato */
+    /* Sidebar en móvil: overlay al abrir, no empuja el contenido */
     [data-testid="stSidebar"] {
         min-width: min(88vw, 300px) !important;
         max-width: min(88vw, 300px) !important;
+        position: fixed !important;
+        height: 100% !important;
+        z-index: 9999 !important;
     }
-    /* Botón hamburguesa siempre visible */
-    [data-testid="collapsedControl"] {
+    /* Quitar margen izquierdo que Streamlit reserva para el sidebar */
+    .main, section.main {
+        margin-left: 0 !important;
+    }
+    .main .block-container {
+        margin-left: 0 !important;
+        max-width: 100% !important;
+        width: 100% !important;
+    }
+    /* Botón de menú personalizado visible siempre en móvil */
+    .mob-menu-btn {
         display: flex !important;
-        visibility: visible !important;
+        position: fixed;
+        top: .7rem; left: .7rem;
+        z-index: 10000;
+        background: #07111d;
+        color: #c8dff5;
+        border: 1px solid rgba(255,255,255,.15);
+        border-radius: 10px;
+        padding: .45rem .7rem;
+        font-size: 1.1rem;
+        cursor: pointer;
+        box-shadow: 0 2px 12px rgba(0,0,0,.4);
+        align-items: center; gap: .35rem;
+        font-weight: 700; font-family: system-ui, sans-serif;
+        -webkit-tap-highlight-color: transparent;
+        user-select: none;
     }
+    .mob-menu-btn:active { opacity: .7; }
+    /* Espacio para que el botón no tape el contenido */
+    .main .block-container { padding-top: 3.5rem !important; }
 
     /* Hero más compacto */
     .pp-hero { padding: 1rem !important; border-radius: 12px !important; }
@@ -1344,6 +1373,38 @@ header[data-testid="stHeader"] * {
 
 def _inject_css() -> None:
     st.markdown(_CSS, unsafe_allow_html=True)
+    # Botón ☰ personalizado para móvil + JS para abrir sidebar nativo de Streamlit
+    st.markdown("""
+<div class="mob-menu-btn" id="mob-open-btn" onclick="openSidebar()">☰ Menú</div>
+<script>
+function openSidebar() {
+    // Streamlit sidebar toggle: buscar el botón real y hacer click
+    var triggers = [
+        '[data-testid="collapsedControl"] button',
+        'button[data-testid="stBaseButton-headerNoPadding"]',
+        '[data-testid="stSidebarCollapsedControl"] button',
+        'button[kind="headerNoPadding"]'
+    ];
+    for (var i = 0; i < triggers.length; i++) {
+        var btn = document.querySelector(triggers[i]);
+        if (btn) { btn.click(); return; }
+    }
+    // Fallback: buscar cualquier botón dentro del control colapsado
+    var cc = document.querySelector('[data-testid="collapsedControl"]');
+    if (cc) {
+        var b = cc.querySelector('button') || cc;
+        b.click();
+    }
+}
+// Ocultar el botón de menú de Streamlit (usamos el nuestro)
+(function hide() {
+    if (window.innerWidth >= 640) return;
+    var style = document.createElement('style');
+    style.textContent = '@media(max-width:640px){[data-testid="collapsedControl"]{opacity:0!important;pointer-events:none!important;width:0!important;overflow:hidden!important}}';
+    document.head.appendChild(style);
+})();
+</script>
+""", unsafe_allow_html=True)
 
 
 def _section_start(icon: str, title: str) -> None:
