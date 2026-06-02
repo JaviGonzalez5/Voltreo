@@ -293,11 +293,15 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
             # 4. Número de partido y UUID (determinismo)
             # NOTA: round.order no se usa aquí porque _is_ready_wave ya garantiza que
             # no se programa un partido de cuadro antes de que sus grupos terminen.
+            # Empaque máximo: SIEMPRE el hueco que empiece antes (pista libre lo
+            # antes posible). Sin retrasar partidos por "equidad" — en un torneo
+            # comprimido lo prioritario es no dejar pistas vacías.
+            # Desempates (mismo inicio): rotar grupo/división solo para variar el
+            # orden visual, nunca para retrasar.
             candidates.sort(key=lambda c: (
-                c[0],                                                                  # inicio más temprano
-                placed_per_div[c[3].division],                                        # división menos favorecida
-                c[3].division == last_placed_div,                                     # alternar divisiones
-                placed_per_group_name[_gid_to_name.get(c[3].group_id, "")],          # rotar nombres de grupo (A, B, C…)
+                c[0],                                                          # inicio más temprano (densidad)
+                c[1],                                                          # fin más temprano (partidos cortos primero)
+                placed_per_group_name[_gid_to_name.get(c[3].group_id, "")],   # rotación visual de grupos
                 c[3].match_number,
                 c[3].id,
             ))
