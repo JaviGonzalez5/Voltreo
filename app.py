@@ -1317,17 +1317,26 @@ header[data-testid="stHeader"] * {
     /* Métricas en 2 columnas */
     [data-testid="stMetricValue"] { font-size: 1.6rem !important; }
 
-    /* Sidebar: ancho completo en móvil */
-    [data-testid="stSidebar"] {
-        min-width: 88vw !important;
-        max-width: 88vw !important;
-    }
+    /* ── CLAVE: ocultar sidebar y su botón por completo en móvil ──
+       La navegación se hace con la barra inferior.
+       El contenido usa el 100% del ancho de pantalla. */
+    [data-testid="stSidebar"],
+    section[data-testid="stSidebar"]          { display: none !important; visibility: hidden !important; }
+    [data-testid="collapsedControl"],
+    [data-testid="stSidebarCollapsedControl"],
+    button[kind="headerNoPadding"],
+    [data-testid="stBaseButton-headerNoPadding"] { display: none !important; }
 
-    /* Ocultar sidebar colapsado para no ocupar espacio */
-    [data-testid="collapsedControl"] {
-        display: flex !important;
-        visibility: visible !important;
+    /* Quitar el margen/padding que Streamlit reserva para el sidebar */
+    .main                                     { margin-left: 0 !important; padding-left: 0 !important; }
+    .main .block-container {
+        margin-left: 0 !important;
+        max-width: 100% !important;
+        width: 100% !important;
     }
+    [data-testid="stAppViewContainer"]        { padding-left: 0 !important; margin-left: 0 !important; }
+    [data-testid="stMainBlockContainer"]      { margin-left: 0 !important; }
+    .stApp > .stAppViewContainer > .main      { margin-left: 0 !important; }
 
     /* Hero más compacto */
     .pp-hero { padding: 1rem !important; border-radius: 12px !important; }
@@ -1337,31 +1346,31 @@ header[data-testid="stHeader"] * {
 
 /* ══════════════════════════════════════════════════════════════════
    BARRA DE NAVEGACIÓN INFERIOR (solo móvil < 640px)
-   Muestra los accesos rápidos para no tener que abrir el sidebar.
    ══════════════════════════════════════════════════════════════════ */
 .mob-nav {
     display: none;
-    position: fixed; bottom: 0; left: 0; right: 0; z-index: 9999;
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 99999;
     background: #07111d;
-    border-top: 1px solid rgba(255,255,255,.10);
-    padding: .45rem .3rem env(safe-area-inset-bottom, 0px);
+    border-top: 1px solid rgba(255,255,255,.12);
+    padding: .5rem .2rem calc(.5rem + env(safe-area-inset-bottom, 0px));
     justify-content: space-around; align-items: center;
-    box-shadow: 0 -4px 20px rgba(0,0,0,.35);
+    box-shadow: 0 -6px 24px rgba(0,0,0,.45);
+    gap: .2rem;
 }
 .mob-nav-btn {
-    display: flex; flex-direction: column; align-items: center; gap: .15rem;
+    display: flex; flex-direction: column; align-items: center; gap: .18rem;
     background: none; border: none; cursor: pointer;
-    color: #4a7aa0; font-size: .6rem; font-weight: 700;
-    letter-spacing: .04em; text-transform: uppercase;
-    padding: .3rem .5rem; border-radius: 8px;
-    min-width: 52px; text-align: center;
-    transition: color .15s, background .15s;
-    text-decoration: none;
+    color: #4a7aa0; font-size: .58rem; font-weight: 800;
+    letter-spacing: .05em; text-transform: uppercase;
+    padding: .35rem .4rem; border-radius: 10px;
+    flex: 1; text-align: center;
+    transition: color .12s, background .12s;
+    -webkit-tap-highlight-color: transparent;
 }
-.mob-nav-btn .mob-nav-icon { font-size: 1.3rem; line-height: 1; }
-.mob-nav-btn:hover, .mob-nav-btn.active {
+.mob-nav-btn .mob-nav-icon { font-size: 1.45rem; line-height: 1.1; }
+.mob-nav-btn.active {
     color: #7fffc0 !important;
-    background: rgba(0,200,83,.12);
+    background: rgba(0,200,83,.14);
 }
 @media (max-width: 640px) {
     .mob-nav { display: flex !important; }
@@ -1370,8 +1379,42 @@ header[data-testid="stHeader"] * {
 """
 
 
+def _inject_mobile_close() -> None:
+    """
+    JavaScript que cierra/oculta el sidebar de Streamlit en móvil.
+    El CSS ya lo oculta, pero Streamlit puede reactivarlo dinámicamente
+    (aria-expanded). El MutationObserver re-aplica el cierre en cada rerender.
+    """
+    st.markdown(
+        """<script>
+(function(){
+    function hideSidebar(){
+        if(window.innerWidth>=640)return;
+        var sb=document.querySelector('[data-testid="stSidebar"]');
+        if(sb){sb.style.display='none';sb.style.visibility='hidden';}
+        var main=document.querySelector('.main');
+        if(main)main.style.marginLeft='0';
+        var bc=document.querySelector('.main .block-container');
+        if(bc){bc.style.marginLeft='0';bc.style.maxWidth='100%';}
+        var avc=document.querySelector('[data-testid="stAppViewContainer"]');
+        if(avc)avc.style.paddingLeft='0';
+    }
+    hideSidebar();
+    if(document.readyState==='loading')
+        document.addEventListener('DOMContentLoaded',hideSidebar);
+    window.addEventListener('resize',hideSidebar);
+    new MutationObserver(function(m){
+        for(var i=0;i<m.length;i++){if(m[i].addedNodes.length>0){hideSidebar();break;}}
+    }).observe(document.body,{childList:true,subtree:true});
+})();
+</script>""",
+        unsafe_allow_html=True,
+    )
+
+
 def _inject_css() -> None:
     st.markdown(_CSS, unsafe_allow_html=True)
+    _inject_mobile_close()
 
 
 def _section_start(icon: str, title: str) -> None:
@@ -1488,54 +1531,90 @@ def _nav_to(target: str) -> None:
 def _render_mobile_nav(current_page: str) -> None:
     """
     Barra de navegación inferior para móvil (< 640px).
-    Usa 4 st.button() en columnas estrechas superpuestos al HTML fijo.
-    Los botones son visualmente transparentes en desktop (ocultos por CSS)
-    y aparecen como la barra inferior en móvil.
+    La barra HTML se posiciona fija al fondo vía CSS.
+    Los st.button() están DENTRO de la barra para que Streamlit los procese.
+    En desktop (> 640px) toda la sección queda oculta por CSS.
     """
-    _ranking_pages = {"config", "import", "generate", "export", "review",
-                      "results", "standings", "syltek"}
+    _ranking_pages  = {"config", "import", "generate", "export", "review",
+                       "results", "standings", "syltek"}
     _tournament_pages = {"t_config", "t_pairs", "t_generate", "t_schedule",
                          "t_results", "t_export"}
 
-    def _active(pages):
-        return "active" if current_page in pages else ""
+    def _a(pages): return "active" if current_page in pages else ""
 
-    # Barra visual HTML (solo visible en móvil via CSS)
+    # Estilos para que los botones de Streamlit dentro de la barra se vean correctos
     st.markdown(
-        f'<div class="mob-nav" id="mob-nav-bar">'
-        f'<span class="mob-nav-btn {_active({"home"})}"><span class="mob-nav-icon">🏠</span>Inicio</span>'
-        f'<span class="mob-nav-btn {_active(_ranking_pages)}"><span class="mob-nav-icon">📊</span>Ranking</span>'
-        f'<span class="mob-nav-btn {_active(_tournament_pages)}"><span class="mob-nav-icon">🏆</span>Torneos</span>'
-        f'<span class="mob-nav-btn {_active({"club_config"})}"><span class="mob-nav-icon">⚙️</span>Club</span>'
-        f'</div>',
+        """
+        <style>
+        /* Contenedor de la barra inferior real */
+        .mob-nav-container {
+            display: none;
+            position: fixed; bottom: 0; left: 0; right: 0; z-index: 99999;
+            background: #07111d;
+            border-top: 1px solid rgba(255,255,255,.12);
+            padding: .4rem .3rem calc(.4rem + env(safe-area-inset-bottom, 0px));
+            box-shadow: 0 -6px 24px rgba(0,0,0,.45);
+        }
+        @media (max-width: 640px) { .mob-nav-container { display: block !important; } }
+
+        /* Botones de Streamlit dentro de la barra */
+        .mob-nav-container .stButton > button {
+            background: transparent !important;
+            border: none !important;
+            color: #4a7aa0 !important;
+            font-size: .58rem !important;
+            font-weight: 800 !important;
+            letter-spacing: .05em !important;
+            text-transform: uppercase !important;
+            padding: .25rem .2rem !important;
+            height: auto !important;
+            min-height: 52px !important;
+            border-radius: 10px !important;
+            box-shadow: none !important;
+            transform: none !important;
+            flex-direction: column !important;
+            line-height: 1.2 !important;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .mob-nav-container .stButton > button:hover,
+        .mob-nav-container .stButton > button:focus {
+            background: rgba(0,200,83,.14) !important;
+            color: #7fffc0 !important;
+            box-shadow: none !important;
+            transform: none !important;
+        }
+        /* Icono + texto en el botón (emoji tiene tamaño diferente) */
+        .mob-nav-container .stButton > button p {
+            font-size: .58rem !important;
+            white-space: pre-line !important;
+            text-align: center !important;
+            margin: 0 !important;
+        }
+        </style>
+        """,
         unsafe_allow_html=True,
     )
-    # Botones reales de Streamlit posicionados encima de la barra (invisible en desktop)
-    st.markdown(
-        '<style>'
-        '.mob-nav-real{display:none;position:fixed;bottom:0;left:0;right:0;z-index:10000;'
-        'height:62px;background:transparent;pointer-events:none}'
-        '.mob-nav-real .stButton>button{'
-        'height:62px!important;background:transparent!important;border:none!important;'
-        'color:transparent!important;font-size:0!important;pointer-events:all}'
-        '@media(max-width:640px){.mob-nav-real{display:flex!important}}'
-        '</style>'
-        '<div class="mob-nav-real">',
-        unsafe_allow_html=True,
-    )
+
+    # Abrir contenedor fijo
+    st.markdown('<div class="mob-nav-container">', unsafe_allow_html=True)
+
     _mn1, _mn2, _mn3, _mn4 = st.columns(4)
+    _home_active    = "🏠\nInicio"
+    _ranking_active = "📊\nRanking"
+    _torneos_active = "🏆\nTorneos"
+    _club_active    = "⚙️\nClub"
+
     with _mn1:
-        if st.button("🏠 Inicio", key="mob_home", use_container_width=True):
-            _nav_to("home")
+        if st.button(_home_active,    key="mob_home",    use_container_width=True): _nav_to("home")
     with _mn2:
-        if st.button("📊 Ranking", key="mob_ranking", use_container_width=True):
+        if st.button(_ranking_active, key="mob_ranking",  use_container_width=True):
             _nav_to("config" if current_page not in _ranking_pages else current_page)
     with _mn3:
-        if st.button("🏆 Torneos", key="mob_torneos", use_container_width=True):
+        if st.button(_torneos_active, key="mob_torneos",  use_container_width=True):
             _nav_to("t_config" if current_page not in _tournament_pages else current_page)
     with _mn4:
-        if st.button("⚙️ Club", key="mob_club", use_container_width=True):
-            _nav_to("club_config")
+        if st.button(_club_active,    key="mob_club",     use_container_width=True): _nav_to("club_config")
+
     st.markdown('</div>', unsafe_allow_html=True)
 
 
