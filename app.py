@@ -1317,26 +1317,68 @@ header[data-testid="stHeader"] * {
     /* Métricas en 2 columnas */
     [data-testid="stMetricValue"] { font-size: 1.6rem !important; }
 
-    /* ── CLAVE: ocultar sidebar y su botón por completo en móvil ──
-       La navegación se hace con la barra inferior.
-       El contenido usa el 100% del ancho de pantalla. */
-    [data-testid="stSidebar"],
-    section[data-testid="stSidebar"]          { display: none !important; visibility: hidden !important; }
-    [data-testid="collapsedControl"],
-    [data-testid="stSidebarCollapsedControl"],
-    button[kind="headerNoPadding"],
-    [data-testid="stBaseButton-headerNoPadding"] { display: none !important; }
+    /* ── SIDEBAR en móvil: drawer de pantalla completa ──────────────
+       El sidebar NO empuja el contenido — se superpone como un drawer.
+       Cuando está cerrado: invisible, contenido a ancho completo.
+       Cuando está abierto: cubre la pantalla con el menú completo. */
 
-    /* Quitar el margen/padding que Streamlit reserva para el sidebar */
-    .main                                     { margin-left: 0 !important; padding-left: 0 !important; }
+    /* Sidebar cerrado: invisible pero no eliminado del DOM */
+    [data-testid="stSidebar"][aria-expanded="false"],
+    [data-testid="stSidebar"]:not([aria-expanded="true"]) {
+        transform: translateX(-100%) !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
+        transition: transform .25s ease, visibility .25s !important;
+    }
+    /* Sidebar abierto: drawer de pantalla completa */
+    [data-testid="stSidebar"][aria-expanded="true"] {
+        transform: translateX(0) !important;
+        visibility: visible !important;
+        pointer-events: all !important;
+        position: fixed !important;
+        top: 0 !important; left: 0 !important; bottom: 0 !important;
+        width: min(85vw, 320px) !important;
+        min-width: unset !important;
+        max-width: min(85vw, 320px) !important;
+        z-index: 99998 !important;
+        overflow-y: auto !important;
+        box-shadow: 4px 0 32px rgba(0,0,0,.55) !important;
+        transition: transform .25s ease !important;
+    }
+    /* Overlay oscuro detrás del drawer */
+    [data-testid="stSidebar"][aria-expanded="true"]::before {
+        content: "";
+        position: fixed; top:0; left: min(85vw,320px); right:0; bottom:0;
+        background: rgba(0,0,0,.55);
+        z-index: -1;
+    }
+    /* Botón ☰ de Streamlit: visible y bien posicionado */
+    [data-testid="collapsedControl"] {
+        display: flex !important;
+        visibility: visible !important;
+        position: fixed !important;
+        top: .6rem !important;
+        left: .6rem !important;
+        z-index: 99997 !important;
+        background: #07111d !important;
+        border-radius: 10px !important;
+        padding: .3rem .5rem !important;
+        box-shadow: 0 2px 12px rgba(0,0,0,.4) !important;
+    }
+    [data-testid="collapsedControl"] button,
+    [data-testid="collapsedControl"] svg { color: #c8dff5 !important; fill: #c8dff5 !important; }
+
+    /* Contenido: ancho completo, con pequeño padding-top para el botón ☰ */
+    .main                       { margin-left: 0 !important; padding-left: 0 !important; }
     .main .block-container {
         margin-left: 0 !important;
         max-width: 100% !important;
         width: 100% !important;
+        padding-top: 3.2rem !important;  /* espacio para el botón hamburguesa */
     }
-    [data-testid="stAppViewContainer"]        { padding-left: 0 !important; margin-left: 0 !important; }
-    [data-testid="stMainBlockContainer"]      { margin-left: 0 !important; }
-    .stApp > .stAppViewContainer > .main      { margin-left: 0 !important; }
+    [data-testid="stAppViewContainer"]   { padding-left: 0 !important; margin-left: 0 !important; }
+    [data-testid="stMainBlockContainer"] { margin-left: 0 !important; }
+    .stApp > .stAppViewContainer > .main { margin-left: 0 !important; }
 
     /* Hero más compacto */
     .pp-hero { padding: 1rem !important; border-radius: 12px !important; }
@@ -1344,67 +1386,75 @@ header[data-testid="stHeader"] * {
     .pp-hero p  { font-size: .88rem !important; }
 }
 
-/* ══════════════════════════════════════════════════════════════════
-   BARRA DE NAVEGACIÓN INFERIOR (solo móvil < 640px)
-   ══════════════════════════════════════════════════════════════════ */
-.mob-nav {
-    display: none;
-    position: fixed; bottom: 0; left: 0; right: 0; z-index: 99999;
-    background: #07111d;
-    border-top: 1px solid rgba(255,255,255,.12);
-    padding: .5rem .2rem calc(.5rem + env(safe-area-inset-bottom, 0px));
-    justify-content: space-around; align-items: center;
-    box-shadow: 0 -6px 24px rgba(0,0,0,.45);
-    gap: .2rem;
-}
-.mob-nav-btn {
-    display: flex; flex-direction: column; align-items: center; gap: .18rem;
-    background: none; border: none; cursor: pointer;
-    color: #4a7aa0; font-size: .58rem; font-weight: 800;
-    letter-spacing: .05em; text-transform: uppercase;
-    padding: .35rem .4rem; border-radius: 10px;
-    flex: 1; text-align: center;
-    transition: color .12s, background .12s;
-    -webkit-tap-highlight-color: transparent;
-}
-.mob-nav-btn .mob-nav-icon { font-size: 1.45rem; line-height: 1.1; }
-.mob-nav-btn.active {
-    color: #7fffc0 !important;
-    background: rgba(0,200,83,.14);
-}
+/* Espacio extra al fondo en móvil para que el contenido no quede oculto */
 @media (max-width: 640px) {
-    .mob-nav { display: flex !important; }
+    .main .block-container { padding-bottom: 2rem !important; }
 }
 </style>
 """
 
 
-def _inject_mobile_close() -> None:
+def _inject_mobile_js() -> None:
     """
-    JavaScript que cierra/oculta el sidebar de Streamlit en móvil.
-    El CSS ya lo oculta, pero Streamlit puede reactivarlo dinámicamente
-    (aria-expanded). El MutationObserver re-aplica el cierre en cada rerender.
+    JavaScript para móvil:
+    1. Arranca con el sidebar CERRADO en móvil (evita el overlay automático).
+    2. Quita el margen izquierdo que Streamlit deja aunque el sidebar esté cerrado.
+    3. Vigila reruns (MutationObserver) para mantener el margen a 0.
+    El sidebar SIGUE siendo accesible — el usuario lo abre con el botón ☰.
     """
     st.markdown(
         """<script>
 (function(){
-    function hideSidebar(){
+    var MOBILE = window.innerWidth < 640;
+
+    function fixLayout(){
         if(window.innerWidth>=640)return;
-        var sb=document.querySelector('[data-testid="stSidebar"]');
-        if(sb){sb.style.display='none';sb.style.visibility='hidden';}
-        var main=document.querySelector('.main');
-        if(main)main.style.marginLeft='0';
-        var bc=document.querySelector('.main .block-container');
-        if(bc){bc.style.marginLeft='0';bc.style.maxWidth='100%';}
-        var avc=document.querySelector('[data-testid="stAppViewContainer"]');
-        if(avc)avc.style.paddingLeft='0';
+        // Quitar margen izquierdo del contenido
+        var main = document.querySelector('.main');
+        if(main) main.style.marginLeft='0';
+        var bc = document.querySelector('.main .block-container');
+        if(bc){ bc.style.marginLeft='0'; bc.style.maxWidth='100%'; }
+        var avc = document.querySelector('[data-testid="stAppViewContainer"]');
+        if(avc) avc.style.paddingLeft='0';
     }
-    hideSidebar();
-    if(document.readyState==='loading')
-        document.addEventListener('DOMContentLoaded',hideSidebar);
-    window.addEventListener('resize',hideSidebar);
+
+    function closeSidebarOnce(){
+        if(!MOBILE) return;
+        // Buscar el botón de colapsar dentro del sidebar y hacer clic
+        var btn = document.querySelector(
+            '[data-testid="stSidebar"] [data-testid="stBaseButton-headerNoPadding"], ' +
+            '[data-testid="stSidebar"] button[kind="headerNoPadding"]'
+        );
+        if(btn){ btn.click(); }
+        fixLayout();
+    }
+
+    // Cerrar sidebar al cargar (una sola vez)
+    if(document.readyState==='loading'){
+        document.addEventListener('DOMContentLoaded', function(){
+            setTimeout(closeSidebarOnce, 200);
+        });
+    } else {
+        setTimeout(closeSidebarOnce, 200);
+    }
+
+    // Mantener layout correcto en cada rerender de Streamlit
+    window.addEventListener('resize', fixLayout);
+    var _fixed = false;
     new MutationObserver(function(m){
-        for(var i=0;i<m.length;i++){if(m[i].addedNodes.length>0){hideSidebar();break;}}
+        for(var i=0;i<m.length;i++){
+            if(m[i].addedNodes.length>0){
+                fixLayout();
+                // Re-cerrar sidebar si Streamlit lo reabre solo
+                if(!_fixed && window.innerWidth<640){
+                    var sb = document.querySelector('[data-testid="stSidebar"]');
+                    if(sb && sb.getAttribute('aria-expanded')==='true'){
+                        setTimeout(closeSidebarOnce, 100);
+                    }
+                }
+                break;
+            }
+        }
     }).observe(document.body,{childList:true,subtree:true});
 })();
 </script>""",
@@ -1414,7 +1464,7 @@ def _inject_mobile_close() -> None:
 
 def _inject_css() -> None:
     st.markdown(_CSS, unsafe_allow_html=True)
-    _inject_mobile_close()
+    _inject_mobile_js()
 
 
 def _section_start(icon: str, title: str) -> None:
@@ -1526,96 +1576,6 @@ def _info_grid(cards: list[tuple[str, str]]) -> None:
 def _nav_to(target: str) -> None:
     st.session_state["_nav_page"] = target
     st.rerun()
-
-
-def _render_mobile_nav(current_page: str) -> None:
-    """
-    Barra de navegación inferior para móvil (< 640px).
-    La barra HTML se posiciona fija al fondo vía CSS.
-    Los st.button() están DENTRO de la barra para que Streamlit los procese.
-    En desktop (> 640px) toda la sección queda oculta por CSS.
-    """
-    _ranking_pages  = {"config", "import", "generate", "export", "review",
-                       "results", "standings", "syltek"}
-    _tournament_pages = {"t_config", "t_pairs", "t_generate", "t_schedule",
-                         "t_results", "t_export"}
-
-    def _a(pages): return "active" if current_page in pages else ""
-
-    # Estilos para que los botones de Streamlit dentro de la barra se vean correctos
-    st.markdown(
-        """
-        <style>
-        /* Contenedor de la barra inferior real */
-        .mob-nav-container {
-            display: none;
-            position: fixed; bottom: 0; left: 0; right: 0; z-index: 99999;
-            background: #07111d;
-            border-top: 1px solid rgba(255,255,255,.12);
-            padding: .4rem .3rem calc(.4rem + env(safe-area-inset-bottom, 0px));
-            box-shadow: 0 -6px 24px rgba(0,0,0,.45);
-        }
-        @media (max-width: 640px) { .mob-nav-container { display: block !important; } }
-
-        /* Botones de Streamlit dentro de la barra */
-        .mob-nav-container .stButton > button {
-            background: transparent !important;
-            border: none !important;
-            color: #4a7aa0 !important;
-            font-size: .58rem !important;
-            font-weight: 800 !important;
-            letter-spacing: .05em !important;
-            text-transform: uppercase !important;
-            padding: .25rem .2rem !important;
-            height: auto !important;
-            min-height: 52px !important;
-            border-radius: 10px !important;
-            box-shadow: none !important;
-            transform: none !important;
-            flex-direction: column !important;
-            line-height: 1.2 !important;
-            -webkit-tap-highlight-color: transparent;
-        }
-        .mob-nav-container .stButton > button:hover,
-        .mob-nav-container .stButton > button:focus {
-            background: rgba(0,200,83,.14) !important;
-            color: #7fffc0 !important;
-            box-shadow: none !important;
-            transform: none !important;
-        }
-        /* Icono + texto en el botón (emoji tiene tamaño diferente) */
-        .mob-nav-container .stButton > button p {
-            font-size: .58rem !important;
-            white-space: pre-line !important;
-            text-align: center !important;
-            margin: 0 !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # Abrir contenedor fijo
-    st.markdown('<div class="mob-nav-container">', unsafe_allow_html=True)
-
-    _mn1, _mn2, _mn3, _mn4 = st.columns(4)
-    _home_active    = "🏠\nInicio"
-    _ranking_active = "📊\nRanking"
-    _torneos_active = "🏆\nTorneos"
-    _club_active    = "⚙️\nClub"
-
-    with _mn1:
-        if st.button(_home_active,    key="mob_home",    use_container_width=True): _nav_to("home")
-    with _mn2:
-        if st.button(_ranking_active, key="mob_ranking",  use_container_width=True):
-            _nav_to("config" if current_page not in _ranking_pages else current_page)
-    with _mn3:
-        if st.button(_torneos_active, key="mob_torneos",  use_container_width=True):
-            _nav_to("t_config" if current_page not in _tournament_pages else current_page)
-    with _mn4:
-        if st.button(_club_active,    key="mob_club",     use_container_width=True): _nav_to("club_config")
-
-    st.markdown('</div>', unsafe_allow_html=True)
 
 
 def _sidebar_button(label: str, target: str, current_page: str, key: str) -> None:
@@ -2830,9 +2790,6 @@ st.sidebar.markdown(
     unsafe_allow_html=True,
 )
 
-# ── Barra de navegación inferior (móvil) ─────────────────────────────────────
-if _db_ok and is_authenticated():
-    _render_mobile_nav(page)
 
 # ---------------------------------------------------------------------------
 # TORNEOS — helpers (deben definirse antes del routing)
