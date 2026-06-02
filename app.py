@@ -5354,7 +5354,28 @@ elif page == "t_config":
         _t_end_default = t.end_date if t else _dt_mod.date.today()
         if _t_end_default < t_start:
             _t_end_default = t_start
-        t_end    = st.date_input("Fecha de fin", value=_t_end_default, min_value=t_start)
+        t_end = st.date_input("Fecha de fin", value=_t_end_default, min_value=t_start)
+
+        # ── Cierre de inscripciones — campo simple junto a las fechas ──────
+        _t_reg_close_prev = getattr(t, "registration_closes_date", None) if t else None
+        _t_reg_close_chk  = st.checkbox(
+            "Cerrar inscripciones automáticamente en una fecha",
+            value=_t_reg_close_prev is not None,
+            key="t_reg_close_chk",
+            help="Si lo marcas, el formulario de inscripción pública se bloquea ese día.",
+        )
+        if _t_reg_close_chk:
+            _t_close_min = _dt_mod.date.today()
+            _t_close_def = _t_reg_close_prev if (_t_reg_close_prev and _t_reg_close_prev >= _t_close_min) else t_start
+            t_reg_close = st.date_input(
+                "📅 Fecha de cierre de inscripciones",
+                value=_t_close_def,
+                min_value=_t_close_min,
+                key="t_reg_close_date",
+            )
+        else:
+            t_reg_close = None
+
         t_format = st.selectbox(
             "Formato",
             options=[TournamentFormat.GROUPS, TournamentFormat.BRACKET, TournamentFormat.GROUPS_BRACKET],
@@ -5646,6 +5667,12 @@ elif page == "t_config":
                 third_place_match=t_third_place, groups_qualifiers=t_qualifiers,
                 groups=[], matches=[],
                 division_draws=_new_division_draws,
+                # Preservar configuración de inscripciones al re-guardar
+                registration_open=getattr(t, "registration_open", False) if t else False,
+                registration_opens_date=getattr(t, "registration_opens_date", None) if t else None,
+                registration_closes_date=t_reg_close,   # del campo del formulario
+                registration_max_pairs=getattr(t, "registration_max_pairs", {}) if t else {},
+                registrations=list(getattr(t, "registrations", [])) if t else [],
             )
             try:
                 new_t = TournamentConfig(**_t_payload_new)
