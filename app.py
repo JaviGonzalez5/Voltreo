@@ -1529,7 +1529,7 @@ from src.tournament_generator import (
 from src.tournament_scheduler import _duration_for_match, schedule_tournament, tournament_schedule_summary
 from src.db import get_db, is_db_configured
 from src.auth import (
-    render_login_screen, is_authenticated, get_session_user,
+    render_login_screen, render_landing_screen, is_authenticated, get_session_user,
     is_superadmin, current_club_id, current_club_name, logout, restore_session_from_cookie,
 )
 from src.db_converters import (
@@ -2352,7 +2352,19 @@ if _db_ok:
             st.session_state["_cookie_warmup"] = _warmup + 1
             st.rerun()
         restore_session_from_cookie(_db)
+
     if not is_authenticated():
+        # ── Landing pública: se muestra a visitantes no autenticados a menos que
+        # hayan pulsado "Acceder al panel" (?show_login=1) o vengan del keep-alive.
+        _show_login = (
+            st.query_params.get("show_login") == "1"
+            or st.session_state.get("_show_login")
+            or _qp_health is not None
+        )
+        if not _show_login:
+            render_landing_screen()   # calls st.stop() internally
+        # El usuario quiere entrar → guardamos en session_state para sobrevivir reruns
+        st.session_state["_show_login"] = True
         render_login_screen(_db)   # calls st.stop() internally
     else:
         # Cargar fase activa del club si aún no hay datos en sesión
@@ -2907,6 +2919,54 @@ if page == "home":
                 unsafe_allow_html=True,
             )
         elif not _groups_home and _tournament_home is None:
+            # ── Onboarding de 4 pasos para club_admin nuevo ────────────────
+            _ob_club_ok = bool(_home_club and _home_club != "Tu club")
+            _ob_phase_ok = _s.phase is not None
+            _ob_tournament_ok = _tournament_home is not None
+            _ob_done = [_ob_club_ok, _ob_phase_ok or _ob_tournament_ok, False, False]
+
+            def _ob_step(n, title, desc, done, active, nav_key):
+                _dot_bg  = "#00c853" if done else ("#07111d" if active else "#e2eaf4")
+                _dot_col = "#fff" if (done or active) else "#94a8be"
+                _dot_txt = "✓" if done else str(n)
+                _txt_col = "#07111d" if active else ("#0b1a2b" if done else "#94a8be")
+                _row_bg  = "rgba(0,200,83,.06)" if active else "transparent"
+                st.markdown(
+                    f'<div style="display:flex;align-items:flex-start;gap:.75rem;'
+                    f'padding:.6rem .8rem;border-radius:10px;background:{_row_bg};margin-bottom:.3rem">'
+                    f'<div style="width:26px;height:26px;border-radius:50%;flex-shrink:0;'
+                    f'background:{_dot_bg};color:{_dot_col};display:flex;align-items:center;'
+                    f'justify-content:center;font-size:.75rem;font-weight:800">{_dot_txt}</div>'
+                    f'<div style="flex:1">'
+                    f'<div style="font-weight:700;color:{_txt_col};font-size:.92rem">{title}</div>'
+                    f'<div style="font-size:.8rem;color:#7088a0;margin-top:.1rem">{desc}</div>'
+                    f'</div></div>',
+                    unsafe_allow_html=True,
+                )
+                if active and nav_key:
+                    if st.button(f"Ir a {title} →", key=f"ob_{nav_key}", type="primary"):
+                        st.session_state["_nav_page"] = nav_key; st.rerun()
+
+            st.markdown(
+                '<div style="background:#fff;border:1px solid #e2eaf4;border-radius:16px;'
+                'padding:1.4rem 1.6rem;margin:1.2rem 0;box-shadow:0 2px 12px rgba(11,26,43,.07)">'
+                '<div style="font-size:.68rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;'
+                'color:#00843d;margin-bottom:.8rem">🚀 Primeros pasos</div>'
+                '<div style="font-size:.95rem;font-weight:700;color:#07111d;margin-bottom:.9rem">'
+                'Empieza en menos de 5 minutos</div>',
+                unsafe_allow_html=True,
+            )
+            _ob_step(1, "Configura tu club", "Nombre, deporte y pistas disponibles",
+                     _ob_club_ok, not _ob_club_ok, "club_config")
+            _ob_step(2, "Crea un ranking o torneo", "Elige el tipo de competición",
+                     _ob_phase_ok or _ob_tournament_ok,
+                     _ob_club_ok and not (_ob_phase_ok or _ob_tournament_ok), "config")
+            _ob_step(3, "Añade jugadores o parejas", "Importa desde CSV o añade manualmente",
+                     False, (_ob_phase_ok or _ob_tournament_ok), "import")
+            _ob_step(4, "Genera el calendario", "El sistema asigna pistas y horarios automáticamente",
+                     False, False, "generate")
+            st.markdown('</div>', unsafe_allow_html=True)
+
             st.markdown(
                 '<div class="pp-next-step">'
                 '<div class="pp-next-step-title">Empieza configurando tu primera competici&oacute;n</div>'

@@ -398,6 +398,310 @@ def current_club_name() -> str:
 
 
 # ---------------------------------------------------------------------------
+# UI: landing pública (antes del login)
+# ---------------------------------------------------------------------------
+
+def render_landing_screen() -> None:
+    """
+    Página de marketing pública. Muestra las características de Voltreo
+    y un CTA de acceso. No requiere BD — funciona siempre.
+    Llama a st.stop() al final.
+    """
+    from .branding import (
+        BRAND_NAME, BRAND_MONOGRAM, BRAND_GRADIENT,
+        BRAND_HEADLINE, BRAND_SUBHEAD, BRAND_PITCH, BRAND_BETA_MSG, BRAND_CONTACT,
+    )
+    from html import escape as _esc
+
+    st.markdown(
+        f"""
+        <style>
+        #MainMenu, footer, [data-testid="stToolbar"], [data-testid="stDecoration"],
+        [data-testid="stStatusWidget"], [data-testid="collapsedControl"],
+        .stDeployButton, [data-testid="stSidebar"],
+        [data-testid="stSidebarCollapsedControl"] {{
+            display: none !important;
+        }}
+        header[data-testid="stHeader"] {{ display: none !important; }}
+
+        .stApp {{ background: #f7f7f5 !important; }}
+        .main .block-container {{
+            max-width: 1100px !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+        }}
+
+        /* ── Nav ───────────────────────────────────────────────────── */
+        .lp-nav {{
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 1.1rem 0; margin-bottom: .5rem;
+        }}
+        .lp-logo {{ display: flex; align-items: center; gap: .6rem; }}
+        .lp-logo-mark {{
+            width: 34px; height: 34px; border-radius: 9px;
+            background: {BRAND_GRADIENT};
+            display: flex; align-items: center; justify-content: center;
+            color: #fff; font-weight: 900; font-size: .95rem;
+            box-shadow: 0 3px 12px rgba(0,200,83,.35);
+        }}
+        .lp-logo-name {{ font-size: 1.05rem; font-weight: 800; color: #0b1a2b; letter-spacing: -.01em; }}
+        .lp-logo-sub  {{ font-size: .65rem; color: #94a8be; text-transform: uppercase; letter-spacing: .12em; }}
+
+        /* ── Hero ───────────────────────────────────────────────────── */
+        .lp-hero {{
+            padding: 4rem 0 3.5rem;
+            display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; align-items: center;
+        }}
+        .lp-badge {{
+            display: inline-flex; align-items: center; gap: .4rem;
+            background: rgba(0,200,83,.10); border: 1px solid rgba(0,200,83,.28);
+            border-radius: 20px; padding: .22rem .85rem;
+            font-size: .72rem; font-weight: 800; letter-spacing: .1em;
+            text-transform: uppercase; color: #00843d; margin-bottom: .9rem;
+        }}
+        .lp-h1 {{
+            font-size: 2.6rem; font-weight: 850; color: #07111d;
+            line-height: 1.12; letter-spacing: -.03em; margin: 0 0 1rem;
+        }}
+        .lp-h1 .accent {{ color: #00843d; }}
+        .lp-sub {{ font-size: 1.05rem; color: #5d7a96; line-height: 1.6; margin: 0 0 2rem; max-width: 480px; }}
+        .lp-cta-row {{ display: flex; gap: .8rem; flex-wrap: wrap; }}
+        .lp-btn-pri {{
+            display: inline-flex; align-items: center; gap: .4rem;
+            background: {BRAND_GRADIENT}; color: #fff;
+            border: none; border-radius: 10px; padding: .7rem 1.6rem;
+            font-size: .92rem; font-weight: 700; cursor: pointer; text-decoration: none;
+            box-shadow: 0 4px 16px rgba(0,200,83,.35);
+        }}
+        .lp-btn-sec {{
+            display: inline-flex; align-items: center;
+            background: #fff; color: #0b1a2b;
+            border: 1.5px solid #d8e8f4; border-radius: 10px; padding: .7rem 1.6rem;
+            font-size: .92rem; font-weight: 600; cursor: pointer; text-decoration: none;
+        }}
+        .lp-stats {{ display: flex; gap: 2rem; margin-top: 2.5rem; flex-wrap: wrap; }}
+        .lp-stat-n {{ font-size: 1.5rem; font-weight: 850; color: #07111d; line-height: 1; }}
+        .lp-stat-l {{ font-size: .75rem; color: #7088a0; margin-top: .15rem; }}
+
+        /* ── Mock widget ────────────────────────────────────────────── */
+        .lp-widget {{
+            background: #07111d; border-radius: 18px; padding: 1.4rem 1.6rem;
+            box-shadow: 0 20px 60px rgba(7,17,29,.35), 0 4px 16px rgba(0,0,0,.15);
+        }}
+        .lp-widget-label {{
+            font-size: .62rem; font-weight: 800; letter-spacing: .14em;
+            text-transform: uppercase; color: #00c853; margin-bottom: .8rem;
+        }}
+        .lp-widget-row {{
+            display: flex; align-items: center; justify-content: space-between;
+            padding: .55rem .6rem; border-radius: 8px; margin-bottom: .3rem;
+            background: rgba(255,255,255,.04);
+        }}
+        .lp-widget-row:first-of-type {{ background: rgba(0,200,83,.14); }}
+        .lp-widget-pos {{ color: #4a7aa0; font-size: .8rem; font-weight: 700; width: 20px; }}
+        .lp-widget-name {{ color: #e8f4ff; font-size: .88rem; font-weight: 600; flex: 1; margin-left: .5rem; }}
+        .lp-widget-pts {{ color: #7fffc0; font-size: .82rem; font-weight: 700; }}
+        .lp-widget-tag {{
+            font-size: .62rem; font-weight: 800; letter-spacing: .06em;
+            background: rgba(0,200,83,.18); color: #7fffc0; border-radius: 6px;
+            padding: .2rem .5rem; margin-top: .8rem; display: inline-block;
+        }}
+
+        /* ── Features ───────────────────────────────────────────────── */
+        .lp-section {{ padding: 4rem 0; }}
+        .lp-section-label {{
+            font-size: .7rem; font-weight: 800; letter-spacing: .14em;
+            text-transform: uppercase; color: #00843d; margin-bottom: .5rem;
+        }}
+        .lp-section-title {{ font-size: 2rem; font-weight: 850; color: #07111d; margin: 0 0 .5rem; letter-spacing: -.02em; }}
+        .lp-section-sub {{ font-size: 1rem; color: #5d7a96; margin-bottom: 2.5rem; }}
+        .lp-grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.2rem; }}
+        .lp-card {{
+            background: #fff; border: 1px solid #e2eaf4; border-radius: 14px;
+            padding: 1.3rem 1.4rem;
+            box-shadow: 0 1px 4px rgba(11,26,43,.05);
+            transition: box-shadow .15s, transform .15s;
+        }}
+        .lp-card:hover {{ box-shadow: 0 6px 20px rgba(11,26,43,.10); transform: translateY(-2px); }}
+        .lp-card-icon {{ font-size: 1.5rem; margin-bottom: .6rem; }}
+        .lp-card-title {{ font-size: .95rem; font-weight: 800; color: #07111d; margin-bottom: .35rem; }}
+        .lp-card-text {{ font-size: .85rem; color: #5d7a96; line-height: 1.5; }}
+
+        /* ── Why section ────────────────────────────────────────────── */
+        .lp-why {{
+            background: #07111d; border-radius: 20px; padding: 3rem 3.5rem;
+            margin: 2rem 0; display: grid; grid-template-columns: 1fr 1fr; gap: 3rem;
+        }}
+        .lp-why h2 {{ font-size: 1.8rem; font-weight: 850; color: #fff; margin: 0 0 .8rem; letter-spacing: -.02em; }}
+        .lp-why p {{ color: #9ec0dc; font-size: .95rem; line-height: 1.65; }}
+        .lp-check {{ display: flex; align-items: flex-start; gap: .6rem; margin-top: .9rem; }}
+        .lp-check-dot {{
+            width: 20px; height: 20px; border-radius: 6px; flex-shrink: 0; margin-top: .1rem;
+            background: rgba(0,200,83,.18); border: 1px solid rgba(0,200,83,.35);
+            display: flex; align-items: center; justify-content: center;
+            font-size: .65rem; color: #7fffc0;
+        }}
+        .lp-check-text {{ color: #cfe2f2; font-size: .9rem; line-height: 1.4; }}
+
+        /* ── Pricing ────────────────────────────────────────────────── */
+        .lp-pricing {{
+            text-align: center; background: #fff; border: 1px solid #e2eaf4;
+            border-radius: 20px; padding: 3rem; margin: 2rem 0;
+            box-shadow: 0 4px 24px rgba(11,26,43,.07);
+        }}
+        .lp-pricing h2 {{ font-size: 1.8rem; font-weight: 850; color: #07111d; margin: 0 0 .5rem; }}
+        .lp-pricing p {{ font-size: 1rem; color: #5d7a96; max-width: 480px; margin: 0 auto 1.8rem; }}
+        .lp-pricing-note {{
+            font-size: .8rem; color: #94a8be; margin-top: 1.2rem;
+        }}
+
+        /* ── Footer ─────────────────────────────────────────────────── */
+        .lp-footer {{
+            text-align: center; padding: 2.5rem 0;
+            border-top: 1px solid #e8f0f8; color: #94a8be; font-size: .82rem;
+        }}
+
+        @media (max-width: 850px) {{
+            .lp-hero {{ grid-template-columns: 1fr; gap: 2rem; padding: 2.5rem 0; }}
+            .lp-why {{ grid-template-columns: 1fr; }}
+            .lp-grid {{ grid-template-columns: 1fr 1fr; }}
+        }}
+        @media (max-width: 550px) {{
+            .lp-grid {{ grid-template-columns: 1fr; }}
+            .lp-h1 {{ font-size: 2rem; }}
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # ── Navbar ──────────────────────────────────────────────────────────────
+    st.markdown(
+        f'<div class="lp-nav">'
+        f'<div class="lp-logo">'
+        f'<div class="lp-logo-mark">{_esc(BRAND_MONOGRAM)}</div>'
+        f'<div><div class="lp-logo-name">{_esc(BRAND_NAME)}</div>'
+        f'<div class="lp-logo-sub">Sports Manager</div></div>'
+        f'</div></div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── Hero ────────────────────────────────────────────────────────────────
+    st.markdown(
+        f'<div class="lp-hero">'
+        # Izquierda
+        f'<div>'
+        f'<div class="lp-badge">✦ Software para clubes</div>'
+        f'<h1 class="lp-h1">{_esc(BRAND_HEADLINE.replace("profesional.", ""))}'
+        f'<span class="accent">profesional.</span></h1>'
+        f'<p class="lp-sub">{_esc(BRAND_SUBHEAD)}</p>'
+        f'<div class="lp-cta-row">'
+        f'<a class="lp-btn-sec" href="?show_login=1">Acceder al panel →</a>'
+        f'<a class="lp-btn-sec" href="mailto:{BRAND_CONTACT}" '
+        f'style="border-color:#e2eaf4">Solicitar acceso</a>'
+        f'</div>'
+        f'<div class="lp-stats">'
+        f'<div><div class="lp-stat-n">3+</div><div class="lp-stat-l">Deportes</div></div>'
+        f'<div><div class="lp-stat-n">100%</div><div class="lp-stat-l">Aislamiento por club</div></div>'
+        f'<div><div class="lp-stat-n">&lt;5 min</div><div class="lp-stat-l">Primer torneo</div></div>'
+        f'</div></div>'
+        # Derecha — mock ranking widget
+        f'<div class="lp-widget">'
+        f'<div class="lp-widget-label">📊 Ranking · Top jugadores</div>'
+        f'<div class="lp-widget-row"><span class="lp-widget-pos">1</span><span class="lp-widget-name">Lucía Hernández</span><span class="lp-widget-pts">1 240 pts</span></div>'
+        f'<div class="lp-widget-row"><span class="lp-widget-pos">2</span><span class="lp-widget-name">Marta Ruiz</span><span class="lp-widget-pts">1 115 pts</span></div>'
+        f'<div class="lp-widget-row"><span class="lp-widget-pos">3</span><span class="lp-widget-name">David Pérez</span><span class="lp-widget-pts">980 pts</span></div>'
+        f'<div class="lp-widget-row"><span class="lp-widget-pos">4</span><span class="lp-widget-name">Carlos Vidal</span><span class="lp-widget-pts">870 pts</span></div>'
+        f'<div class="lp-widget-tag">Actualizado automáticamente ✓</div>'
+        f'</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── Features grid ────────────────────────────────────────────────────────
+    st.markdown(
+        '<div class="lp-section">'
+        '<div class="lp-section-label">Funcionalidades</div>'
+        '<h2 class="lp-section-title">Todo lo que tu club necesita.<br>Nada más.</h2>'
+        '<p class="lp-section-sub">Sin hojas de cálculo, sin WhatsApp caótico, sin errores de planificación.</p>'
+        '<div class="lp-grid">'
+        '<div class="lp-card"><div class="lp-card-icon">🏆</div>'
+        '<div class="lp-card-title">Rankings en vivo</div>'
+        '<div class="lp-card-text">Clasificaciones automáticas por jugadores o parejas. Se actualizan solos al registrar resultados.</div></div>'
+        '<div class="lp-card"><div class="lp-card-icon">🎾</div>'
+        '<div class="lp-card-title">Torneos profesionales</div>'
+        '<div class="lp-card-text">Grupos + cuadro eliminatorio en segundos. Bracket visual, resultados y avance automático.</div></div>'
+        '<div class="lp-card"><div class="lp-card-icon">🗓️</div>'
+        '<div class="lp-card-title">Calendario sin solapamientos</div>'
+        '<div class="lp-card-text">Asigna pistas y horarios con validaciones automáticas. Nadie juega dos partidos a la vez.</div></div>'
+        '<div class="lp-card"><div class="lp-card-icon">🌐</div>'
+        '<div class="lp-card-title">Multi-club y multi-deporte</div>'
+        '<div class="lp-card-text">Pádel, pickleball o ambos. Cada club con sus propios datos, jugadores y permisos.</div></div>'
+        '<div class="lp-card"><div class="lp-card-icon">📤</div>'
+        '<div class="lp-card-title">Exportación y enlace público</div>'
+        '<div class="lp-card-text">Descarga el calendario en Excel o comparte un enlace directo para que los jugadores vean su horario.</div></div>'
+        '<div class="lp-card"><div class="lp-card-icon">🔒</div>'
+        '<div class="lp-card-title">Datos seguros, por diseño</div>'
+        '<div class="lp-card-text">Aislamiento por club, sesiones cifradas y permisos por rol. Lo que esperas de un software serio.</div></div>'
+        '</div></div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── Why Voltreo ──────────────────────────────────────────────────────────
+    st.markdown(
+        '<div class="lp-why">'
+        '<div>'
+        '<h2>Tu Excel no era el problema.<br>El proceso, sí.</h2>'
+        '<p>Cada semana: calcular rankings a mano, buscar huecos en pistas, '
+        'avisar por WhatsApp a 60 jugadores. Voltreo lo automatiza todo.</p>'
+        '</div>'
+        '<div>'
+        '<div class="lp-check"><div class="lp-check-dot">✓</div>'
+        '<div class="lp-check-text">Cuadros de torneo generados en segundos</div></div>'
+        '<div class="lp-check"><div class="lp-check-dot">✓</div>'
+        '<div class="lp-check-text">Ranking recalculado tras cada resultado</div></div>'
+        '<div class="lp-check"><div class="lp-check-dot">✓</div>'
+        '<div class="lp-check-text">Horarios comprimidos sin solapamientos</div></div>'
+        '<div class="lp-check"><div class="lp-check-dot">✓</div>'
+        '<div class="lp-check-text">Enlace público compartible para jugadores</div></div>'
+        '<div class="lp-check"><div class="lp-check-dot">✓</div>'
+        '<div class="lp-check-text">Roles y permisos por club</div></div>'
+        '</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── Pricing (acceso por invitación) ──────────────────────────────────────
+    st.markdown(
+        f'<div class="lp-pricing">'
+        f'<div class="lp-section-label">ACCESO</div>'
+        f'<h2>Gratis durante la beta.</h2>'
+        f'<p>Estamos creciendo con clubes reales. El acceso es por invitación '
+        f'para garantizar la calidad del servicio.</p>'
+        f'<div class="lp-cta-row" style="justify-content:center;gap:.8rem;flex-wrap:wrap">'
+        f'<a class="lp-btn-pri" href="?show_login=1">Acceder al panel →</a>'
+        f'<a class="lp-btn-sec" href="mailto:{BRAND_CONTACT}">Solicitar invitación</a>'
+        f'</div>'
+        f'<div class="lp-pricing-note">¿Ya tienes credenciales? Usa el botón "Acceder al panel".</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── Footer ───────────────────────────────────────────────────────────────
+    st.markdown(
+        f'<div class="lp-footer">'
+        f'<strong>{_esc(BRAND_NAME)}</strong> · Sports Manager &nbsp;|&nbsp; '
+        f'{BRAND_PITCH} &nbsp;|&nbsp; '
+        f'<a href="mailto:{BRAND_CONTACT}" style="color:#94a8be">{BRAND_CONTACT}</a>'
+        f'<br>© 2026 {_esc(BRAND_NAME)}'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.stop()
+
+
+# ---------------------------------------------------------------------------
 # UI: pantalla de login
 # ---------------------------------------------------------------------------
 
