@@ -1317,68 +1317,16 @@ header[data-testid="stHeader"] * {
     /* Métricas en 2 columnas */
     [data-testid="stMetricValue"] { font-size: 1.6rem !important; }
 
-    /* ── SIDEBAR en móvil: drawer de pantalla completa ──────────────
-       El sidebar NO empuja el contenido — se superpone como un drawer.
-       Cuando está cerrado: invisible, contenido a ancho completo.
-       Cuando está abierto: cubre la pantalla con el menú completo. */
-
-    /* Sidebar cerrado: invisible pero no eliminado del DOM */
-    [data-testid="stSidebar"][aria-expanded="false"],
-    [data-testid="stSidebar"]:not([aria-expanded="true"]) {
-        transform: translateX(-100%) !important;
-        visibility: hidden !important;
-        pointer-events: none !important;
-        transition: transform .25s ease, visibility .25s !important;
+    /* Sidebar en móvil: overlay nativo de Streamlit, ancho máximo sensato */
+    [data-testid="stSidebar"] {
+        min-width: min(88vw, 300px) !important;
+        max-width: min(88vw, 300px) !important;
     }
-    /* Sidebar abierto: drawer de pantalla completa */
-    [data-testid="stSidebar"][aria-expanded="true"] {
-        transform: translateX(0) !important;
-        visibility: visible !important;
-        pointer-events: all !important;
-        position: fixed !important;
-        top: 0 !important; left: 0 !important; bottom: 0 !important;
-        width: min(85vw, 320px) !important;
-        min-width: unset !important;
-        max-width: min(85vw, 320px) !important;
-        z-index: 99998 !important;
-        overflow-y: auto !important;
-        box-shadow: 4px 0 32px rgba(0,0,0,.55) !important;
-        transition: transform .25s ease !important;
-    }
-    /* Overlay oscuro detrás del drawer */
-    [data-testid="stSidebar"][aria-expanded="true"]::before {
-        content: "";
-        position: fixed; top:0; left: min(85vw,320px); right:0; bottom:0;
-        background: rgba(0,0,0,.55);
-        z-index: -1;
-    }
-    /* Botón ☰ de Streamlit: visible y bien posicionado */
+    /* Botón hamburguesa siempre visible */
     [data-testid="collapsedControl"] {
         display: flex !important;
         visibility: visible !important;
-        position: fixed !important;
-        top: .6rem !important;
-        left: .6rem !important;
-        z-index: 99997 !important;
-        background: #07111d !important;
-        border-radius: 10px !important;
-        padding: .3rem .5rem !important;
-        box-shadow: 0 2px 12px rgba(0,0,0,.4) !important;
     }
-    [data-testid="collapsedControl"] button,
-    [data-testid="collapsedControl"] svg { color: #c8dff5 !important; fill: #c8dff5 !important; }
-
-    /* Contenido: ancho completo, con pequeño padding-top para el botón ☰ */
-    .main                       { margin-left: 0 !important; padding-left: 0 !important; }
-    .main .block-container {
-        margin-left: 0 !important;
-        max-width: 100% !important;
-        width: 100% !important;
-        padding-top: 3.2rem !important;  /* espacio para el botón hamburguesa */
-    }
-    [data-testid="stAppViewContainer"]   { padding-left: 0 !important; margin-left: 0 !important; }
-    [data-testid="stMainBlockContainer"] { margin-left: 0 !important; }
-    .stApp > .stAppViewContainer > .main { margin-left: 0 !important; }
 
     /* Hero más compacto */
     .pp-hero { padding: 1rem !important; border-radius: 12px !important; }
@@ -1394,77 +1342,8 @@ header[data-testid="stHeader"] * {
 """
 
 
-def _inject_mobile_js() -> None:
-    """
-    JavaScript para móvil:
-    1. Arranca con el sidebar CERRADO en móvil (evita el overlay automático).
-    2. Quita el margen izquierdo que Streamlit deja aunque el sidebar esté cerrado.
-    3. Vigila reruns (MutationObserver) para mantener el margen a 0.
-    El sidebar SIGUE siendo accesible — el usuario lo abre con el botón ☰.
-    """
-    st.markdown(
-        """<script>
-(function(){
-    var MOBILE = window.innerWidth < 640;
-
-    function fixLayout(){
-        if(window.innerWidth>=640)return;
-        // Quitar margen izquierdo del contenido
-        var main = document.querySelector('.main');
-        if(main) main.style.marginLeft='0';
-        var bc = document.querySelector('.main .block-container');
-        if(bc){ bc.style.marginLeft='0'; bc.style.maxWidth='100%'; }
-        var avc = document.querySelector('[data-testid="stAppViewContainer"]');
-        if(avc) avc.style.paddingLeft='0';
-    }
-
-    function closeSidebarOnce(){
-        if(!MOBILE) return;
-        // Buscar el botón de colapsar dentro del sidebar y hacer clic
-        var btn = document.querySelector(
-            '[data-testid="stSidebar"] [data-testid="stBaseButton-headerNoPadding"], ' +
-            '[data-testid="stSidebar"] button[kind="headerNoPadding"]'
-        );
-        if(btn){ btn.click(); }
-        fixLayout();
-    }
-
-    // Cerrar sidebar al cargar (una sola vez)
-    if(document.readyState==='loading'){
-        document.addEventListener('DOMContentLoaded', function(){
-            setTimeout(closeSidebarOnce, 200);
-        });
-    } else {
-        setTimeout(closeSidebarOnce, 200);
-    }
-
-    // Mantener layout correcto en cada rerender de Streamlit
-    window.addEventListener('resize', fixLayout);
-    var _fixed = false;
-    new MutationObserver(function(m){
-        for(var i=0;i<m.length;i++){
-            if(m[i].addedNodes.length>0){
-                fixLayout();
-                // Re-cerrar sidebar si Streamlit lo reabre solo
-                if(!_fixed && window.innerWidth<640){
-                    var sb = document.querySelector('[data-testid="stSidebar"]');
-                    if(sb && sb.getAttribute('aria-expanded')==='true'){
-                        setTimeout(closeSidebarOnce, 100);
-                    }
-                }
-                break;
-            }
-        }
-    }).observe(document.body,{childList:true,subtree:true});
-})();
-</script>""",
-        unsafe_allow_html=True,
-    )
-
-
 def _inject_css() -> None:
     st.markdown(_CSS, unsafe_allow_html=True)
-    _inject_mobile_js()
 
 
 def _section_start(icon: str, title: str) -> None:
@@ -2459,7 +2338,7 @@ st.set_page_config(
     page_title=f"{BRAND_NAME} · {BRAND_SUFFIX}",
     page_icon="🎾",
     layout="wide",
-    initial_sidebar_state="auto",
+    initial_sidebar_state="collapsed",  # empieza cerrado en móvil y desktop
 )
 
 # ---------------------------------------------------------------------------
