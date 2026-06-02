@@ -384,14 +384,10 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
             )
 
         # ── Barrera para la tanda siguiente ────────────────────────────────
-        # Usamos el fin de los GRUPOS (no las finales) como barrera de inicio
-        # de la siguiente tanda. Esto permite que la Tanda 2 ocupe pistas libres
-        # mientras aún se juegan finales de Tanda 1, reduciendo tiempos muertos.
-        # El _PlayerTimeline garantiza que cada jugador espere su propia final
-        # antes de poder jugar en la siguiente tanda.
-        _wave_barrier = wave_group_end if wave_group_end is not None else wave_latest_end
-        if _wave_barrier is not None:
-            _next = _wave_barrier + _rest_td
+        # La siguiente tanda (Mixto) NO empieza hasta que el ÚLTIMO partido
+        # de esta tanda (Masculino + Femenino) haya terminado completamente.
+        if wave_latest_end is not None:
+            _next = wave_latest_end + _rest_td
             wave_prev_end = max(wave_prev_end, _next) if wave_prev_end else _next
 
     return config
