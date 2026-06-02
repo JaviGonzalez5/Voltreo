@@ -2316,13 +2316,26 @@ _init_cookie_mgr()   # registra el CookieManager en session_state de forma estab
 _db_ok = is_db_configured()
 _db = get_db() if _db_ok else None
 
-# ── Vistas públicas compartibles — sin login ─────────────────────────────────
+# ── Vistas públicas compartibles y health-check — sin login ──────────────────
 try:
-    _qp_tid = st.query_params.get("t")
-    _qp_rid = st.query_params.get("r")
+    _qp_tid    = st.query_params.get("t")
+    _qp_rid    = st.query_params.get("r")
+    _qp_health = st.query_params.get("health")
 except Exception:
-    _qp_tid = None
-    _qp_rid = None
+    _qp_tid = _qp_rid = _qp_health = None
+
+# Health-check endpoint (?health=1) — usado por el keep-alive de GitHub Actions
+# y por herramientas de monitorización para saber si la app responde
+if _qp_health:
+    st.set_page_config(page_title="OK", page_icon="✅", layout="centered")
+    st.markdown(
+        '<div style="text-align:center;padding:2rem">'
+        '<div style="font-size:3rem">✅</div>'
+        '<div style="font-size:1.2rem;font-weight:700;color:#00843d">Voltreo está activo</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+    st.stop()
 if _qp_tid:
     from src.public_view import render_public_tournament
     render_public_tournament(_qp_tid)  # llama a st.stop() internamente

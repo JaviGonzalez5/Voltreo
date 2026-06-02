@@ -1,0 +1,32 @@
+name: Keep Voltreo Awake
+
+# Hace ping a la app cada 5 minutos para que Streamlit Cloud no la duerma.
+# También lo hace si alguien accede al repo (push/PR) para garantizar
+# que la app está activa cuando un cliente potencial la visita.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # cada 5 minutos, 24/7
+  workflow_dispatch:          # activación manual desde GitHub Actions
+  push:
+    branches: [main]          # también al desplegar código nuevo
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping Voltreo
+        run: |
+          echo "Pinging voltreo.streamlit.app..."
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 30 \
+            --retry 2 \
+            --retry-delay 5 \
+            "https://voltreo.streamlit.app/?health=1")
+          echo "HTTP status: $STATUS"
+          if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 400 ]; then
+            echo "App is awake ✓"
+          else
+            echo "App returned $STATUS — may be starting up"
+          fi
