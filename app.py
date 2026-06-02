@@ -5647,7 +5647,8 @@ elif page == "t_pairs":
                 )
                 t.pairs.append(new_pair)
                 t.groups = []; t.matches = []; t.division_draws = []
-                _autosave_tournament(t)  # guardar en la nube para no perder nada
+                st.session_state["tournament"] = t   # persistir ANTES del rerun
+                _autosave_tournament(t)
                 st.success(f"✅ '{new_pair.display_name}' añadida{(' a ' + _div_label(_sel_div)) if _sel_div else ''}.")
                 st.rerun()
             else:
@@ -5711,6 +5712,7 @@ elif page == "t_pairs":
                     if st.button(f"✅ Importar {len(new_pairs_csv)} parejas", type="primary"):
                         t.pairs.extend(new_pairs_csv)
                         t.groups = []; t.matches = []; t.division_draws = []
+                        st.session_state["tournament"] = t   # persistir ANTES del rerun
                         _autosave_tournament(t)
                         st.success(f"✅ {len(new_pairs_csv)} parejas importadas."); st.rerun()
             except Exception as _csv_err:
@@ -5719,45 +5721,66 @@ elif page == "t_pairs":
     st.divider()
     if t.pairs:
         _section_start("📋", f"Parejas inscritas ({len(t.pairs)})")
-        def _pair_row(_pi, _pp):
-            _r = {"#": _pi+1, "Pareja": _pp.display_name,
-                  "Jugador 1": _pp.player_1.full_name, "Jugador 2": _pp.player_2.full_name,
-                  "Cabeza serie": f"#{_pp.seed}" if _pp.seed else "—"}
-            if _t_multi:
-                _r = {"#": _pi+1, "Categoría": _div_label(_pp.division) if _pp.division else "⚠️ sin asignar",
-                      "Pareja": _pp.display_name, "Jugador 1": _pp.player_1.full_name,
-                      "Jugador 2": _pp.player_2.full_name,
-                      "Cabeza serie": f"#{_pp.seed}" if _pp.seed else "—"}
-            return _r
-        # Ordenar por categoría cuando es multi
-        _pairs_sorted = sorted(enumerate(t.pairs), key=lambda x: (x[1].division or "zzz")) if _t_multi else list(enumerate(t.pairs))
-        st.dataframe([_pair_row(_i, _p) for _i, _p in _pairs_sorted], use_container_width=True, hide_index=True)
+
         if _t_multi:
-            # Recuento por categoría
             from collections import Counter as _Counter
             _cnt = _Counter(_div_label(p.division) if p.division else "⚠️ sin asignar" for p in t.pairs)
             _stat_chips(*[(f"{v} · {k}", "green" if "sin asignar" not in k else "red", "🎾") for k, v in _cnt.items()])
-        # ── Guardar / Exportar (para no perder el trabajo) ──────────────────
+
+        # ── Tabla editable: editar categoría + eliminar pareja ──────────────
+        _pairs_sorted = sorted(enumerate(t.pairs), key=lambda x: (x[1].division or "zzz")) if _t_multi else list(enumerate(t.pairs))
+        _pair_id_to_idx = {p.id: i for i, p in enumerate(t.pairs)}
+        _changed = False
+        for _orig_idx, _pp in _pairs_sorted:
+            _c1, _c2, _c3, _c4 = st.columns([3, 2, 1, 1])
+            with _c1:
+                st.markdown(f"**{escape(_pp.display_name)}**")
+                st.caption(f"{escape(_pp.player_1.full_name)} · {escape(_pp.player_2.full_name)}")
+            with _c2:
+                if _t_multi:
+                    _new_div = st.selectbox(
+                        "Categoría", options=_t_div_keys,
+                        index=_t_div_keys.index(_pp.division) if _pp.division in _t_div_keys else 0,
+                        format_func=_div_label, key=f"tdiv_edit_{_pp.id}",
+                        label_visibility="collapsed",
+                    )
+                    if _new_div != _pp.division:
+                        t.pairs[_pair_id_to_idx[_pp.id]].division = _new_div
+                        _changed = True
+                else:
+                    st.caption(f"Cabeza serie: {_pp.seed or '—'}")
+            with _c3:
+                _new_seed = st.number_input(
+                    "Seed", min_value=0, max_value=99,
+                    value=int(_pp.seed) if _pp.seed else 0,
+                    key=f"tseed_edit_{_pp.id}", label_visibility="collapsed",
+                )
+                if (_new_seed or None) != _pp.seed:
+                    t.pairs[_pair_id_to_idx[_pp.id]].seed = _new_seed if _new_seed > 0 else None
+                    _changed = True
+            with _c4:
+                if st.button("🗑️", key=f"tdel_{_pp.id}", help=f"Eliminar {_pp.display_name}"):
+                    t.pairs = [p for p in t.pairs if p.id != _pp.id]
+                    t.groups = []; t.matches = []; t.division_draws = []
+                    _autosave_tournament(t)
+                    st.rerun()
+
+        if _changed:
+            # Cambio de categoría o seed: resetear cuadro y guardar
+            t.groups = []; t.matches = []; t.division_draws = []
+            st.session_state["tournament"] = t
+            _autosave_tournament(t)
+
+        st.divider()
+        # ── Guardar / Exportar ──────────────────────────────────────────────
         _exp_c1, _exp_c2, _exp_c3 = st.columns([2, 2, 1])
         with _exp_c1:
-            # Exportar parejas a CSV (copia de seguridad descargable)
-            _csv_rows = []
-            for _p in t.pairs:
-                _csv_rows.append({
-                    "pair_name": _p.display_name,
-                    "player1_name": _p.player_1.full_name,
-                    "player1_phone": _p.player_1.phone or "",
-                    "player2_name": _p.player_2.full_name,
-                    "player2_phone": _p.player_2.phone or "",
-                    "seed": _p.seed or "",
-                    "division": _p.division or "",
-                })
-            _csv_bytes = pd.DataFrame(_csv_rows).to_csv(index=False).encode("utf-8")
-            st.download_button(
-                "⬇️ Exportar parejas (CSV)", data=_csv_bytes,
-                file_name=f"parejas_{t.name.replace(' ', '_')}.csv",
-                mime="text/csv", use_container_width=True,
-            )
+            _csv_rows = [{"pair_name": _p.display_name,
+                          "player1_name": _p.player_1.full_name, "player1_phone": _p.player_1.phone or "",
+                          "player2_name": _p.player_2.full_name, "player2_phone": _p.player_2.phone or "",
+                          "seed": _p.seed or "", "division": _p.division or ""} for _p in t.pairs]
+            st.download_button("⬇️ Exportar CSV", data=pd.DataFrame(_csv_rows).to_csv(index=False).encode("utf-8"),
+                               file_name=f"parejas_{t.name.replace(' ','_')}.csv", mime="text/csv", use_container_width=True)
         with _exp_c2:
             if st.button("💾 Guardar en la nube", type="primary", use_container_width=True):
                 if _db_ok and _db is not None:
@@ -5765,23 +5788,19 @@ elif page == "t_pairs":
                     if _cid_sv:
                         try:
                             _p_sv = tournament_to_db(t, _cid_sv, st.session_state.get("db_tournament_id"))
-                            _s_sv = _db.upsert_tournament(
-                                club_id=_cid_sv, name=_p_sv["name"],
+                            _s_sv = _db.upsert_tournament(club_id=_cid_sv, name=_p_sv["name"],
                                 start_date=_p_sv["start_date"], end_date=_p_sv["end_date"],
-                                tournament_data=_p_sv["tournament_data"],
-                                tournament_id=_p_sv["tournament_id"],
-                            )
+                                tournament_data=_p_sv["tournament_data"], tournament_id=_p_sv["tournament_id"])
                             st.session_state["db_tournament_id"] = _s_sv["id"]
-                            st.success("✅ Guardado en la nube. No perderás las parejas aunque refresques.")
+                            st.success("✅ Guardado en la nube.")
                         except Exception as _e_sv:
                             st.error(f"No se pudo guardar: {_e_sv}")
                     else:
                         st.warning("No hay club activo.")
-                else:
-                    st.warning("Base de datos no conectada — usa el CSV como copia de seguridad.")
         with _exp_c3:
-            if st.button("🗑️ Vaciar", type="secondary", use_container_width=True):
-                t.pairs = []; t.groups = []; t.matches = []; t.division_draws = []; st.rerun()
+            if st.button("🗑️ Vaciar todo", type="secondary", use_container_width=True):
+                t.pairs = []; t.groups = []; t.matches = []; t.division_draws = []
+                _autosave_tournament(t); st.rerun()
     else:
         _empty_state("👥", "Sin parejas", "Añade las parejas del torneo manualmente o importa un CSV.")
 
@@ -5935,6 +5954,7 @@ elif page == "t_generate":
 
         # ── Autoguardar la configuración elegida (sin generar partidos) ──────
         # Así, al refrescar, los grupos y la fase final quedan como la última vez.
+        from src.tournament_models import TournamentDivision  # necesario en este bloque
         _cfg_signature = []
         _cfg_draws = {d.key: d for d in (getattr(t, "division_draws", []) or [])}
         for _dk in _editor_divs_g:
