@@ -255,6 +255,7 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
         placed_per_group_name: dict[str, int]   = defaultdict(int)  # nombre del grupo ("Grupo A"…)
         last_placed_div:       object            = None
         _gid_to_name = {g.id: g.name for g in config.groups}
+        wave_group_end: Optional[datetime]      = None   # fin del último partido de GRUPOS
 
         while unscheduled_wave and _safety > 0:
             _safety -= 1
@@ -328,6 +329,10 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
                 div_round_latest[_dk] = s_end
             if wave_latest_end is None or s_end > wave_latest_end:
                 wave_latest_end = s_end
+            # Fin del último partido de GRUPOS de esta tanda (para barrear la siguiente)
+            if best_match.round == MatchRound.GROUP:
+                if wave_group_end is None or s_end > wave_group_end:
+                    wave_group_end = s_end
 
             unscheduled_wave.remove(best_match)
 
@@ -339,9 +344,15 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
                 "añade más pistas o reduce la duración de los partidos."
             )
 
-        # La próxima tanda no empieza antes de que acabe esta
-        if wave_latest_end is not None:
-            _next = wave_latest_end + _rest_td
+        # ── Barrera para la tanda siguiente ────────────────────────────────
+        # Usamos el fin de los GRUPOS (no las finales) como barrera de inicio
+        # de la siguiente tanda. Esto permite que la Tanda 2 ocupe pistas libres
+        # mientras aún se juegan finales de Tanda 1, reduciendo tiempos muertos.
+        # El _PlayerTimeline garantiza que cada jugador espere su propia final
+        # antes de poder jugar en la siguiente tanda.
+        _wave_barrier = wave_group_end if wave_group_end is not None else wave_latest_end
+        if _wave_barrier is not None:
+            _next = _wave_barrier + _rest_td
             wave_prev_end = max(wave_prev_end, _next) if wave_prev_end else _next
 
     return config
