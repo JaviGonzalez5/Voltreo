@@ -26,6 +26,29 @@ header[data-testid="stHeader"] {{ display: none !important; }}
 .stApp {{ background: #0a1622 !important; }}
 .main .block-container {{ max-width: 1040px !important; padding-top: 2.5rem !important; }}
 
+/* ── Móvil ── */
+@media (max-width: 640px) {{
+    .main .block-container {{
+        padding-top: 1rem !important;
+        padding-left: .8rem !important;
+        padding-right: .8rem !important;
+    }}
+    .pubv-hero {{ padding: 1.1rem 1.1rem !important; border-radius: 12px !important; }}
+    .pubv-hero h1 {{ font-size: 1.35rem !important; }}
+    .pubv-hero .meta {{ font-size: .82rem !important; }}
+    .pubv-divh {{ font-size: .68rem !important; }}
+    .pubv-match {{ flex-wrap: wrap; gap: .4rem !important; }}
+    /* Inputs grandes para dedos */
+    [data-testid="stTextInput"] input,
+    [data-testid="stSelectbox"] > div > div,
+    [data-testid="stTextArea"] textarea {{
+        font-size: 16px !important;
+        min-height: 44px !important;
+    }}
+    .stButton > button {{ min-height: 48px !important; font-size: .95rem !important; }}
+    .stForm [data-testid="stVerticalBlock"] > div {{ gap: .5rem !important; }}
+}}
+
 .pubv-brand {{ display:flex; align-items:center; gap:.7rem; margin-bottom:1.4rem; }}
 .pubv-logo {{
     width:40px; height:40px; border-radius:12px; background:{BRAND_GRADIENT};
@@ -334,17 +357,18 @@ def render_public_registration(tournament_id: str) -> None:
             div_sel_key = None
 
         st.divider()
+        # Jugador 1 — columnas que colapsan a una en móvil
         st.markdown("**Jugador 1**")
-        c1a, c1b, c1c = st.columns(3)
-        with c1a: p1_name  = st.text_input("Nombre", key="p1n", placeholder="Carlos García")
-        with c1b: p1_phone = st.text_input("Teléfono", key="p1ph", placeholder="+34 600 000 000")
-        with c1c: p1_email = st.text_input("Email", key="p1em", placeholder="carlos@email.com")
+        p1_name  = st.text_input("Nombre del jugador 1", key="p1n", placeholder="Carlos García")
+        _p1col1, _p1col2 = st.columns(2)
+        with _p1col1: p1_phone = st.text_input("Teléfono J1", key="p1ph", placeholder="+34 600 000 000")
+        with _p1col2: p1_email = st.text_input("Email J1 (opcional)", key="p1em", placeholder="carlos@email.com")
 
         st.markdown("**Jugador 2**")
-        c2a, c2b, c2c = st.columns(3)
-        with c2a: p2_name  = st.text_input("Nombre", key="p2n", placeholder="Marta López")
-        with c2b: p2_phone = st.text_input("Teléfono", key="p2ph", placeholder="+34 600 000 001")
-        with c2c: p2_email = st.text_input("Email", key="p2em", placeholder="marta@email.com")
+        p2_name  = st.text_input("Nombre del jugador 2", key="p2n", placeholder="Marta López")
+        _p2col1, _p2col2 = st.columns(2)
+        with _p2col1: p2_phone = st.text_input("Teléfono J2", key="p2ph", placeholder="+34 600 000 001")
+        with _p2col2: p2_email = st.text_input("Email J2 (opcional)", key="p2em", placeholder="marta@email.com")
 
         notes = st.text_area("Nota para el organizador (opcional)", placeholder="Cualquier información adicional…", height=80)
 

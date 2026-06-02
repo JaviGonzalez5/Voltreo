@@ -811,6 +811,19 @@ def render_login_screen(db) -> None:
         .stButton > button:hover {{ transform:translateY(-2px) !important; box-shadow:0 10px 28px rgba(0,200,83,.5) !important; }}
         [data-testid="stCheckbox"] label {{ color:#5d7a96 !important; font-size:.85rem !important; }}
         @media (max-width: 900px) {{ .lv-hero {{ padding-bottom:0; }} .lv-hero h1 {{ font-size:2rem; }} }}
+        @media (max-width: 640px) {{
+            .main .block-container {{ padding: .8rem .7rem 1.5rem !important; max-width:100% !important; }}
+            .lv-hero {{ grid-template-columns:1fr !important; padding:1.5rem 0 !important; }}
+            .lv-widget {{ display:none !important; }}   /* ocultar mock en móvil */
+            .lv-h1 {{ font-size:1.8rem !important; }}
+            .lv-stats {{ gap:1.2rem !important; }}
+            .lv-card-head {{ border-radius:14px 14px 0 0 !important; padding:1.2rem 1.2rem .4rem !important; }}
+            [data-testid="stForm"] {{ border-radius:0 0 14px 14px !important; padding:.3rem 1.2rem 1.4rem !important; }}
+            .lv-grid {{ grid-template-columns:1fr !important; }}
+            .lv-why {{ grid-template-columns:1fr !important; padding:2rem 1.4rem !important; }}
+            [data-testid="stTextInput"] input {{ font-size:16px !important; min-height:44px !important; }}
+            .stButton > button {{ min-height:46px !important; }}
+        }}
         </style>
         """,
         unsafe_allow_html=True,

@@ -1233,13 +1233,16 @@ header[data-testid="stHeader"] * {
     margin: .45rem .45rem .7rem;
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   RESPONSIVE — TABLET (< 900px)
+   ══════════════════════════════════════════════════════════════════ */
 @media (max-width: 900px) {
     .main .block-container {
         padding-left: 1rem !important;
         padding-right: 1rem !important;
         padding-top: 1.2rem !important;
     }
-    .pp-kpi-grid, .pp-two-grid { grid-template-columns: 1fr; }
+    .pp-kpi-grid, .pp-two-grid { grid-template-columns: 1fr 1fr; }
     .pp-hero h1 { font-size: 1.5rem; }
     [data-testid="stSidebar"] {
         min-width: min(82vw, 306px) !important;
@@ -1254,12 +1257,114 @@ header[data-testid="stHeader"] * {
         display: flex !important;
         visibility: visible !important;
     }
-    .pp-brand {
-        padding-top: 1rem;
+    .pp-brand { padding-top: 1rem; }
+    .pp-hero  { padding: 1.35rem 1.25rem 1.25rem !important; }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   RESPONSIVE — MÓVIL (< 640px)
+   ══════════════════════════════════════════════════════════════════ */
+@media (max-width: 640px) {
+    /* Más espacio respirable en pantalla pequeña */
+    .main .block-container {
+        padding-left: .7rem !important;
+        padding-right: .7rem !important;
+        padding-top: .8rem !important;
+        padding-bottom: 5rem !important;  /* espacio para la barra de navegación inferior */
     }
-    .pp-hero {
-        padding: 1.35rem 1.25rem 1.25rem !important;
+
+    /* Grids → una columna */
+    .pp-kpi-grid, .pp-two-grid, .pp-chips { grid-template-columns: 1fr !important; }
+
+    /* Página cabecera más compacta */
+    .pp-page-title { gap: .6rem; padding-bottom: .9rem; margin-bottom: 1.2rem; }
+    .pp-page-title .pp-icon { width: 40px !important; height: 40px !important; font-size: 1.2rem !important; }
+    .pp-page-title .pp-text h1 { font-size: 1.3rem !important; }
+    .pp-page-title .pp-text p  { font-size: .8rem !important; }
+
+    /* Secciones sin padding lateral extra */
+    .pp-section { padding: 1rem 1rem .9rem; }
+
+    /* Botones con altura mínima para toque fácil */
+    .stButton > button {
+        min-height: 44px !important;
+        font-size: .9rem !important;
     }
+    [data-testid="stDownloadButton"] button { min-height: 44px !important; }
+
+    /* Inputs más grandes para dedos */
+    [data-testid="stTextInput"] input,
+    [data-testid="stNumberInput"] input,
+    [data-testid="stTextArea"] textarea {
+        font-size: 16px !important;  /* evita zoom automático en iOS */
+        min-height: 44px !important;
+    }
+    [data-testid="stSelectbox"] > div > div { min-height: 44px !important; }
+
+    /* Tabs: scrollables horizontalmente en lugar de cortarse */
+    [data-testid="stTabs"] [role="tablist"] {
+        overflow-x: auto !important;
+        flex-wrap: nowrap !important;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+    [data-testid="stTabs"] [role="tablist"]::-webkit-scrollbar { display: none; }
+    [data-testid="stTabs"] button[role="tab"] { white-space: nowrap !important; }
+
+    /* DataFrames: scroll horizontal en lugar de overflow roto */
+    [data-testid="stDataFrame"] { overflow-x: auto !important; }
+
+    /* Métricas en 2 columnas */
+    [data-testid="stMetricValue"] { font-size: 1.6rem !important; }
+
+    /* Sidebar: ancho completo en móvil */
+    [data-testid="stSidebar"] {
+        min-width: 88vw !important;
+        max-width: 88vw !important;
+    }
+
+    /* Ocultar sidebar colapsado para no ocupar espacio */
+    [data-testid="collapsedControl"] {
+        display: flex !important;
+        visibility: visible !important;
+    }
+
+    /* Hero más compacto */
+    .pp-hero { padding: 1rem !important; border-radius: 12px !important; }
+    .pp-hero h1 { font-size: 1.4rem !important; }
+    .pp-hero p  { font-size: .88rem !important; }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   BARRA DE NAVEGACIÓN INFERIOR (solo móvil < 640px)
+   Muestra los accesos rápidos para no tener que abrir el sidebar.
+   ══════════════════════════════════════════════════════════════════ */
+.mob-nav {
+    display: none;
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 9999;
+    background: #07111d;
+    border-top: 1px solid rgba(255,255,255,.10);
+    padding: .45rem .3rem env(safe-area-inset-bottom, 0px);
+    justify-content: space-around; align-items: center;
+    box-shadow: 0 -4px 20px rgba(0,0,0,.35);
+}
+.mob-nav-btn {
+    display: flex; flex-direction: column; align-items: center; gap: .15rem;
+    background: none; border: none; cursor: pointer;
+    color: #4a7aa0; font-size: .6rem; font-weight: 700;
+    letter-spacing: .04em; text-transform: uppercase;
+    padding: .3rem .5rem; border-radius: 8px;
+    min-width: 52px; text-align: center;
+    transition: color .15s, background .15s;
+    text-decoration: none;
+}
+.mob-nav-btn .mob-nav-icon { font-size: 1.3rem; line-height: 1; }
+.mob-nav-btn:hover, .mob-nav-btn.active {
+    color: #7fffc0 !important;
+    background: rgba(0,200,83,.12);
+}
+@media (max-width: 640px) {
+    .mob-nav { display: flex !important; }
 }
 </style>
 """
@@ -1378,6 +1483,60 @@ def _info_grid(cards: list[tuple[str, str]]) -> None:
 def _nav_to(target: str) -> None:
     st.session_state["_nav_page"] = target
     st.rerun()
+
+
+def _render_mobile_nav(current_page: str) -> None:
+    """
+    Barra de navegación inferior para móvil (< 640px).
+    Usa 4 st.button() en columnas estrechas superpuestos al HTML fijo.
+    Los botones son visualmente transparentes en desktop (ocultos por CSS)
+    y aparecen como la barra inferior en móvil.
+    """
+    _ranking_pages = {"config", "import", "generate", "export", "review",
+                      "results", "standings", "syltek"}
+    _tournament_pages = {"t_config", "t_pairs", "t_generate", "t_schedule",
+                         "t_results", "t_export"}
+
+    def _active(pages):
+        return "active" if current_page in pages else ""
+
+    # Barra visual HTML (solo visible en móvil via CSS)
+    st.markdown(
+        f'<div class="mob-nav" id="mob-nav-bar">'
+        f'<span class="mob-nav-btn {_active({"home"})}"><span class="mob-nav-icon">🏠</span>Inicio</span>'
+        f'<span class="mob-nav-btn {_active(_ranking_pages)}"><span class="mob-nav-icon">📊</span>Ranking</span>'
+        f'<span class="mob-nav-btn {_active(_tournament_pages)}"><span class="mob-nav-icon">🏆</span>Torneos</span>'
+        f'<span class="mob-nav-btn {_active({"club_config"})}"><span class="mob-nav-icon">⚙️</span>Club</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    # Botones reales de Streamlit posicionados encima de la barra (invisible en desktop)
+    st.markdown(
+        '<style>'
+        '.mob-nav-real{display:none;position:fixed;bottom:0;left:0;right:0;z-index:10000;'
+        'height:62px;background:transparent;pointer-events:none}'
+        '.mob-nav-real .stButton>button{'
+        'height:62px!important;background:transparent!important;border:none!important;'
+        'color:transparent!important;font-size:0!important;pointer-events:all}'
+        '@media(max-width:640px){.mob-nav-real{display:flex!important}}'
+        '</style>'
+        '<div class="mob-nav-real">',
+        unsafe_allow_html=True,
+    )
+    _mn1, _mn2, _mn3, _mn4 = st.columns(4)
+    with _mn1:
+        if st.button("🏠 Inicio", key="mob_home", use_container_width=True):
+            _nav_to("home")
+    with _mn2:
+        if st.button("📊 Ranking", key="mob_ranking", use_container_width=True):
+            _nav_to("config" if current_page not in _ranking_pages else current_page)
+    with _mn3:
+        if st.button("🏆 Torneos", key="mob_torneos", use_container_width=True):
+            _nav_to("t_config" if current_page not in _tournament_pages else current_page)
+    with _mn4:
+        if st.button("⚙️ Club", key="mob_club", use_container_width=True):
+            _nav_to("club_config")
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 def _sidebar_button(label: str, target: str, current_page: str, key: str) -> None:
@@ -2591,6 +2750,10 @@ st.sidebar.markdown(
     f'<div class="pp-sidebar-footer"><span class="pp-mode-pill">{"🔒  " if _dry else "⚡  "}{escape(_mode_txt)}</span></div>',
     unsafe_allow_html=True,
 )
+
+# ── Barra de navegación inferior (móvil) ─────────────────────────────────────
+if _db_ok and is_authenticated():
+    _render_mobile_nav(page)
 
 # ---------------------------------------------------------------------------
 # TORNEOS — helpers (deben definirse antes del routing)
