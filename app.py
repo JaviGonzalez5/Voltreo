@@ -5842,22 +5842,26 @@ elif page == "t_generate":
             _ng_key = f"tg_ng_{_dk}"
             _fp_key = f"tg_fp_{_dk}"
             _sig_key = f"tg_sig_{_dk}"
-            _has_generated_structure = bool(
-                getattr(_prev, "groups", None) or getattr(_prev, "matches", None)
-            )
+            # ¿Hay config guardada para esta categoría? (num_groups ya elegido)
+            _saved_ng = int(getattr(_prev, "num_groups", 0) or 0) if _prev else 0
+            _has_saved_cfg = _saved_ng > 0
+            _saved_fp_val = int(getattr(_prev, "bracket_size", 0) or 0) if _prev else 0
+            # Si la división se guardó como solo-grupos (liguilla), fase final = 0
+            if _prev is not None and getattr(_prev, "format", None) == TournamentFormat.GROUPS:
+                _saved_fp_val = 0
+
             _state_sig = (
                 _div_pairs_n,
-                getattr(_prev, "num_groups", 0) if _has_generated_structure else _rec["num_groups"],
-                getattr(_prev, "bracket_size", 0) if _has_generated_structure else _rec["bracket_size"],
+                _saved_ng if _has_saved_cfg else _rec["num_groups"],
+                _saved_fp_val if _has_saved_cfg else _rec["bracket_size"],
                 t.format.value if hasattr(t.format, "value") else str(t.format),
             )
             if st.session_state.get(_sig_key) != _state_sig:
-                st.session_state[_ng_key] = int(getattr(_prev, "num_groups", 0) or 0) if _has_generated_structure else _rec["num_groups"]
+                st.session_state[_ng_key] = _saved_ng if _has_saved_cfg else _rec["num_groups"]
                 if t.format == TournamentFormat.GROUPS:
                     st.session_state[_fp_key] = 0
-                elif _has_generated_structure:
-                    _saved_fp = int(getattr(_prev, "bracket_size", 0) or 0)
-                    st.session_state[_fp_key] = _saved_fp if _saved_fp in _final_keys_g else _rec["bracket_size"]
+                elif _has_saved_cfg:
+                    st.session_state[_fp_key] = _saved_fp_val if _saved_fp_val in _final_keys_g else _rec["bracket_size"]
                 else:
                     st.session_state[_fp_key] = _rec["bracket_size"] if _rec["bracket_size"] in _final_keys_g else 4
                 st.session_state[_sig_key] = _state_sig
@@ -5928,6 +5932,55 @@ elif page == "t_generate":
                     )
                     if int(st.session_state.get(_fp_key, 0)) == 0 and int(_ng_val) == 1:
                         st.caption("🔁 Liguilla pura: todos contra todos, gana quien más puntos sume.")
+
+        # ── Autoguardar la configuración elegida (sin generar partidos) ──────
+        # Así, al refrescar, los grupos y la fase final quedan como la última vez.
+        _cfg_signature = []
+        _cfg_draws = {d.key: d for d in (getattr(t, "division_draws", []) or [])}
+        for _dk in _editor_divs_g:
+            _div_pairs_n = len([p for p in t.pairs if (p.division == _dk or _dk is None)])
+            if _div_pairs_n < 2:
+                continue
+            _ng_v = int(st.session_state.get(f"tg_ng_{_dk}", 2))
+            _fp_v = int(st.session_state.get(f"tg_fp_{_dk}", 0))
+            _cfg_signature.append((_dk, _ng_v, _fp_v))
+            _prev_d = _cfg_draws.get(_dk)
+            _div_fmt = TournamentFormat.GROUPS if _fp_v == 0 else TournamentFormat.GROUPS_BRACKET
+            _dcat_g, _dsub_g = _parse_division_key(_dk) if _dk else (t.category, t.subcategory)
+            if _prev_d is not None:
+                # Actualizar solo la config, preservando estructura ya generada
+                _prev_d.num_groups = _ng_v
+                _prev_d.bracket_size = _fp_v or 2
+                _prev_d.format = _div_fmt
+            else:
+                _cfg_draws[_dk] = TournamentDivision(
+                    key=_dk or "default", category=_dcat_g, subcategory=_dsub_g,
+                    format=_div_fmt, num_groups=_ng_v, group_size=t.group_size,
+                    bracket_size=_fp_v or 2, groups_qualifiers=2,
+                    third_place_match=t.third_place_match,
+                    pairs=[p for p in t.pairs if (p.division == _dk or _dk is None)],
+                )
+        t.division_draws = list(_cfg_draws.values())
+        st.session_state["tournament"] = t
+
+        # Persistir en BD solo si la configuración cambió (evita escrituras repetidas)
+        _sig_now = tuple(_cfg_signature)
+        if st.session_state.get("_tg_cfg_sig") != _sig_now:
+            st.session_state["_tg_cfg_sig"] = _sig_now
+            if _db_ok and _db is not None:
+                _cid_cfg = current_club_id()
+                if _cid_cfg:
+                    try:
+                        _pc = tournament_to_db(t, _cid_cfg, st.session_state.get("db_tournament_id"))
+                        _sc = _db.upsert_tournament(
+                            club_id=_cid_cfg, name=_pc["name"],
+                            start_date=_pc["start_date"], end_date=_pc["end_date"],
+                            tournament_data=_pc["tournament_data"],
+                            tournament_id=_pc["tournament_id"],
+                        )
+                        st.session_state["db_tournament_id"] = _sc["id"]
+                    except Exception:
+                        pass
     else:
         _section_start("🎯", "Previsión del torneo")
         bs = max(4, min(t.bracket_size, 1 << (n_pairs.bit_length()-1) if n_pairs >= 2 else 4))
