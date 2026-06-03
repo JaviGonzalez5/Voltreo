@@ -2469,6 +2469,35 @@ from src.auth import _cookie_manager as _init_cookie_mgr
 _init_cookie_mgr()   # registra el CookieManager en session_state de forma estable
 
 # ---------------------------------------------------------------------------
+# Detección de móvil (JavaScript → session_state)
+# La detección es pura: NO modifica ningún código de desktop.
+# ---------------------------------------------------------------------------
+st.markdown("""
+<script>
+(function(){
+    var w = window.innerWidth || document.documentElement.clientWidth;
+    var isMob = w < 768;
+    // Escribir en query param solo si cambia, para no causar reruns infinitos
+    var params = new URLSearchParams(window.location.search);
+    var cur = params.get('_mob');
+    if (isMob && cur !== '1') {
+        params.set('_mob', '1');
+        window.history.replaceState({}, '', '?' + params.toString());
+        window.dispatchEvent(new Event('streamlit:componentValue'));
+    } else if (!isMob && cur === '1') {
+        params.delete('_mob');
+        window.history.replaceState({}, '', params.toString() ? '?' + params.toString() : window.location.pathname);
+    }
+})();
+</script>
+""", unsafe_allow_html=True)
+
+try:
+    _is_mobile = st.query_params.get("_mob") == "1"
+except Exception:
+    _is_mobile = False
+
+# ---------------------------------------------------------------------------
 # Base de datos y autenticación
 # ---------------------------------------------------------------------------
 
@@ -3034,6 +3063,19 @@ if page == "tournaments":
     st.divider()
     st.caption(f"Total: {len(_all_t_rows)} torneo(s) guardado(s) en este club.")
 
+
+# ---------------------------------------------------------------------------
+# MÓVIL: si es dispositivo móvil y el usuario está autenticado,
+# activar la vista exclusiva de móvil.
+# Esta llamada está AISLADA: solo añade código nuevo, no toca nada de desktop.
+# En desktop (_is_mobile=False) se salta directamente al routing habitual.
+# ---------------------------------------------------------------------------
+if _is_mobile and _db_ok and is_authenticated():
+    from src.mobile_app import run as _mob_run
+    _mob_run(_db, _db_ok)
+    # Si _mob_run() no ha llamado st.stop() (páginas de desktop renderizadas
+    # con nav añadida), continuamos con el routing normal de desktop.
+    # La barra inferior se añade al final de cada página via la flag.
 
 # ---------------------------------------------------------------------------
 # PÁGINA: Inicio
@@ -7340,3 +7382,32 @@ elif page == "admin":
                         st.error(f"Error al eliminar el usuario: {_ex}")
         else:
             st.info("No hay usuarios para eliminar.")
+
+
+# ---------------------------------------------------------------------------
+# MÓVIL: barra de navegación inferior en páginas de desktop
+# Se añade al final de CUALQUIER página cuando el usuario viene de móvil.
+# No toca nada del código de desktop — es código añadido al final.
+# ---------------------------------------------------------------------------
+if _is_mobile and _db_ok and is_authenticated() and st.session_state.get("_mob_show_bottom_nav"):
+    from src.mobile_app import _bottom_nav as _mob_bottom_nav, _prev_next as _mob_prev_next
+    st.session_state.pop("_mob_show_bottom_nav", None)
+    # Botones ← → específicos según la página actual
+    _mob_nav_maps = {
+        "t_config":   (None,        "t_pairs",    "Siguiente: Parejas →"),
+        "t_pairs":    ("t_config",  "t_generate", "Siguiente: Estructura →"),
+        "t_generate": ("t_pairs",   "t_schedule", "Siguiente: Horarios →"),
+        "t_schedule": ("t_generate","t_results",  "Siguiente: Resultados →"),
+        "t_results":  ("t_schedule","t_export",   "Siguiente: Exportar →"),
+        "t_export":   ("t_results", None,         ""),
+        "config":     (None,        "import",     "Siguiente: Importar datos →"),
+        "import":     ("config",    "generate",   "Siguiente: Generar →"),
+        "generate":   ("import",    "export",     "Siguiente: Exportar →"),
+        "export":     ("generate",  "review",     "Siguiente: Revisión →"),
+        "review":     ("export",    None,         ""),
+        "club_config":(None,        None,         ""),
+    }
+    if page in _mob_nav_maps:
+        _prev_p, _next_p, _next_lbl = _mob_nav_maps[page]
+        _mob_prev_next(_prev_p, _next_p, _next_lbl if _next_lbl else "Siguiente →")
+    _mob_bottom_nav(page)
