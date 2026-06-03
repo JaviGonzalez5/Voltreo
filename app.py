@@ -1265,23 +1265,6 @@ header[data-testid="stHeader"] * {
    RESPONSIVE — MÓVIL (< 640px)
    ══════════════════════════════════════════════════════════════════ */
 @media (max-width: 640px) {
-    /* Sidebar funciona como overlay nativo de Streamlit.
-       El botón hamburguesa (>) abre el panel completo igual que desktop.
-       Solo ajustamos el ancho para que se vea bien en pantallas pequeñas. */
-    [data-testid="stSidebar"] {
-        min-width: min(88vw, 300px) !important;
-        max-width: min(88vw, 300px) !important;
-    }
-    [data-testid="collapsedControl"] {
-        display: flex !important;
-        visibility: visible !important;
-    }
-    /* Contenido sin margen de sidebar cuando está cerrado */
-    .main .block-container {
-        padding-left: .75rem !important;
-        padding-right: .75rem !important;
-        padding-bottom: 1.5rem !important;
-    }
     /* Más espacio respirable en pantalla pequeña */
     .main .block-container {
         padding-left: .7rem !important;
@@ -1334,7 +1317,17 @@ header[data-testid="stHeader"] * {
     /* Métricas en 2 columnas */
     [data-testid="stMetricValue"] { font-size: 1.6rem !important; }
 
-    /* Hero más compacto en móvil */
+    /* Sidebar: ancho completo en móvil */
+    [data-testid="stSidebar"] {
+        min-width: 88vw !important;
+        max-width: 88vw !important;
+    }
+
+    /* Ocultar sidebar colapsado para no ocupar espacio */
+    [data-testid="collapsedControl"] {
+        display: flex !important;
+        visibility: visible !important;
+    }
 
     /* Hero más compacto */
     .pp-hero { padding: 1rem !important; border-radius: 12px !important; }
@@ -1342,9 +1335,36 @@ header[data-testid="stHeader"] * {
     .pp-hero p  { font-size: .88rem !important; }
 }
 
-/* Espacio extra al fondo en móvil para que el contenido no quede oculto */
+/* ══════════════════════════════════════════════════════════════════
+   BARRA DE NAVEGACIÓN INFERIOR (solo móvil < 640px)
+   Muestra los accesos rápidos para no tener que abrir el sidebar.
+   ══════════════════════════════════════════════════════════════════ */
+.mob-nav {
+    display: none;
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 9999;
+    background: #07111d;
+    border-top: 1px solid rgba(255,255,255,.10);
+    padding: .45rem .3rem env(safe-area-inset-bottom, 0px);
+    justify-content: space-around; align-items: center;
+    box-shadow: 0 -4px 20px rgba(0,0,0,.35);
+}
+.mob-nav-btn {
+    display: flex; flex-direction: column; align-items: center; gap: .15rem;
+    background: none; border: none; cursor: pointer;
+    color: #4a7aa0; font-size: .6rem; font-weight: 700;
+    letter-spacing: .04em; text-transform: uppercase;
+    padding: .3rem .5rem; border-radius: 8px;
+    min-width: 52px; text-align: center;
+    transition: color .15s, background .15s;
+    text-decoration: none;
+}
+.mob-nav-btn .mob-nav-icon { font-size: 1.3rem; line-height: 1; }
+.mob-nav-btn:hover, .mob-nav-btn.active {
+    color: #7fffc0 !important;
+    background: rgba(0,200,83,.12);
+}
 @media (max-width: 640px) {
-    .main .block-container { padding-bottom: 2rem !important; }
+    .mob-nav { display: flex !important; }
 }
 </style>
 """
@@ -1465,40 +1485,56 @@ def _nav_to(target: str) -> None:
     st.rerun()
 
 
-def _render_mobile_topnav(current_page: str) -> None:
+def _render_mobile_nav(current_page: str) -> None:
     """
-    Barra de navegación compacta que se muestra en la parte superior del
-    contenido SOLO en móvil (el CSS .mob-topnav es display:none en desktop).
-    Reemplaza el sidebar en dispositivos pequeños.
+    Barra de navegación inferior para móvil (< 640px).
+    Usa 4 st.button() en columnas estrechas superpuestos al HTML fijo.
+    Los botones son visualmente transparentes en desktop (ocultos por CSS)
+    y aparecen como la barra inferior en móvil.
     """
-    _ranking_pages  = {"config", "import", "generate", "export", "review",
-                       "results", "standings", "syltek"}
+    _ranking_pages = {"config", "import", "generate", "export", "review",
+                      "results", "standings", "syltek"}
     _tournament_pages = {"t_config", "t_pairs", "t_generate", "t_schedule",
                          "t_results", "t_export"}
 
-    # Determinar sección activa para resaltar
-    _in_ranking  = current_page in _ranking_pages
-    _in_torneos  = current_page in _tournament_pages
-    _in_home     = current_page == "home"
-    _in_club     = current_page == "club_config"
+    def _active(pages):
+        return "active" if current_page in pages else ""
 
-    st.markdown('<div class="mob-topnav">', unsafe_allow_html=True)
-    _c1, _c2, _c3, _c4 = st.columns(4)
-    with _c1:
-        _lbl = "**🏠**\nInicio" if _in_home else "🏠\nInicio"
-        if st.button(_lbl, key="mob_n_home", use_container_width=True):
+    # Barra visual HTML (solo visible en móvil via CSS)
+    st.markdown(
+        f'<div class="mob-nav" id="mob-nav-bar">'
+        f'<span class="mob-nav-btn {_active({"home"})}"><span class="mob-nav-icon">🏠</span>Inicio</span>'
+        f'<span class="mob-nav-btn {_active(_ranking_pages)}"><span class="mob-nav-icon">📊</span>Ranking</span>'
+        f'<span class="mob-nav-btn {_active(_tournament_pages)}"><span class="mob-nav-icon">🏆</span>Torneos</span>'
+        f'<span class="mob-nav-btn {_active({"club_config"})}"><span class="mob-nav-icon">⚙️</span>Club</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    # Botones reales de Streamlit posicionados encima de la barra (invisible en desktop)
+    st.markdown(
+        '<style>'
+        '.mob-nav-real{display:none;position:fixed;bottom:0;left:0;right:0;z-index:10000;'
+        'height:62px;background:transparent;pointer-events:none}'
+        '.mob-nav-real .stButton>button{'
+        'height:62px!important;background:transparent!important;border:none!important;'
+        'color:transparent!important;font-size:0!important;pointer-events:all}'
+        '@media(max-width:640px){.mob-nav-real{display:flex!important}}'
+        '</style>'
+        '<div class="mob-nav-real">',
+        unsafe_allow_html=True,
+    )
+    _mn1, _mn2, _mn3, _mn4 = st.columns(4)
+    with _mn1:
+        if st.button("🏠 Inicio", key="mob_home", use_container_width=True):
             _nav_to("home")
-    with _c2:
-        _lbl = "**📊**\nRanking" if _in_ranking else "📊\nRanking"
-        if st.button(_lbl, key="mob_n_ranking", use_container_width=True):
-            _nav_to("config" if not _in_ranking else current_page)
-    with _c3:
-        _lbl = "**🏆**\nTorneos" if _in_torneos else "🏆\nTorneos"
-        if st.button(_lbl, key="mob_n_torneos", use_container_width=True):
-            _nav_to("t_config" if not _in_torneos else current_page)
-    with _c4:
-        _lbl = "**⚙️**\nClub" if _in_club else "⚙️\nClub"
-        if st.button(_lbl, key="mob_n_club", use_container_width=True):
+    with _mn2:
+        if st.button("📊 Ranking", key="mob_ranking", use_container_width=True):
+            _nav_to("config" if current_page not in _ranking_pages else current_page)
+    with _mn3:
+        if st.button("🏆 Torneos", key="mob_torneos", use_container_width=True):
+            _nav_to("t_config" if current_page not in _tournament_pages else current_page)
+    with _mn4:
+        if st.button("⚙️ Club", key="mob_club", use_container_width=True):
             _nav_to("club_config")
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -2384,7 +2420,7 @@ st.set_page_config(
     page_title=f"{BRAND_NAME} · {BRAND_SUFFIX}",
     page_icon="🎾",
     layout="wide",
-    initial_sidebar_state="collapsed",  # empieza cerrado en móvil y desktop
+    initial_sidebar_state="auto",
 )
 
 # ---------------------------------------------------------------------------
@@ -2715,6 +2751,9 @@ st.sidebar.markdown(
     unsafe_allow_html=True,
 )
 
+# ── Barra de navegación inferior (móvil) ─────────────────────────────────────
+if _db_ok and is_authenticated():
+    _render_mobile_nav(page)
 
 # ---------------------------------------------------------------------------
 # TORNEOS — helpers (deben definirse antes del routing)
@@ -2994,7 +3033,6 @@ if page == "tournaments":
 
     st.divider()
     st.caption(f"Total: {len(_all_t_rows)} torneo(s) guardado(s) en este club.")
-
 
 
 # ---------------------------------------------------------------------------
