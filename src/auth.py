@@ -900,13 +900,4 @@ def render_login_screen(db) -> None:
                     clear_remember_cookie()
                 st.rerun()
 
-    # ── Banner de activación de vista móvil ──────────────────────────────────
-    st.markdown(
-        '<div style="margin-top:1.5rem;text-align:center">'
-        '<a href="?_mob=1" style="font-size:.8rem;color:#94b8d8;text-decoration:none">'
-        '📱 ¿Usas el móvil? Toca aquí para activar la vista adaptada</a>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-
     st.stop()

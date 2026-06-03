@@ -555,7 +555,6 @@ hr { border-color: #edf2fa !important; }
 .pp-chip.green  { background:#e8faf0; border-color:#a8e6c0; color:#005a29; }
 .pp-chip.red    { background:#fef0f0; border-color:#f5c0c0; color:#8b0000; }
 .pp-chip.orange { background:#fff5e8; border-color:#f5d9a8; color:#7a4000; }
-.pp-mobile-hint { display: none; }
 
 /* ── CÓDIGO / FORMATO CSV ───────────────────────────────────────── */
 [data-testid="stCode"] {
@@ -1238,121 +1237,25 @@ header[data-testid="stHeader"] * {
    RESPONSIVE — TABLET (< 900px)
    ══════════════════════════════════════════════════════════════════ */
 @media (max-width: 900px) {
-    html, body {
-        overflow-x: hidden !important;
-        -webkit-text-size-adjust: 100%;
-    }
     .main .block-container {
         padding-left: 1rem !important;
         padding-right: 1rem !important;
-        padding-top: 5.25rem !important;
-        padding-bottom: 5rem !important;
-        max-width: 100vw !important;
+        padding-top: 1.2rem !important;
     }
-    .pp-kpi-grid, .pp-two-grid {
-        grid-template-columns: 1fr !important;
-        gap: .9rem !important;
-    }
-    .pp-hero h1 { font-size: clamp(1.45rem, 8vw, 1.9rem); }
+    .pp-kpi-grid, .pp-two-grid { grid-template-columns: 1fr 1fr; }
+    .pp-hero h1 { font-size: 1.5rem; }
     [data-testid="stSidebar"] {
-        min-width: min(86vw, 318px) !important;
-        max-width: min(86vw, 318px) !important;
-        box-shadow: 16px 0 40px rgba(7,17,29,.18) !important;
+        min-width: min(82vw, 306px) !important;
+        max-width: min(82vw, 306px) !important;
     }
     [data-testid="collapsedControl"] {
         display: flex !important;
         visibility: visible !important;
-        position: fixed !important;
-        top: .85rem !important;
-        left: .85rem !important;
-        z-index: 100000 !important;
     }
-    header[data-testid="stHeader"] {
-        display: block !important;
-        visibility: visible !important;
-        height: 0 !important;
-        background: transparent !important;
-    }
-    header[data-testid="stHeader"] [data-testid="stToolbar"],
-    header[data-testid="stHeader"] .stDeployButton,
-    header[data-testid="stHeader"] [data-testid="stMainMenuButton"] {
-        display: none !important;
-        visibility: hidden !important;
-    }
-    header[data-testid="stHeader"] [data-testid="stExpandSidebarButton"],
-    header[data-testid="stHeader"] button[data-testid="stExpandSidebarButton"],
-    [data-testid="stExpandSidebarButton"],
     [data-testid="stSidebar"] button[kind="headerNoPadding"],
     [data-testid="stSidebar"] [data-testid="stBaseButton-headerNoPadding"] {
         display: flex !important;
         visibility: visible !important;
-        position: fixed !important;
-        top: .85rem !important;
-        left: .85rem !important;
-        z-index: 100000 !important;
-        width: 46px !important;
-        min-width: 46px !important;
-        height: 46px !important;
-        min-height: 46px !important;
-        align-items: center !important;
-        justify-content: center !important;
-        border-radius: 14px !important;
-        color: #07111d !important;
-        background: rgba(255,255,255,.94) !important;
-        border: 1px solid rgba(125,150,175,.24) !important;
-        box-shadow: 0 10px 28px rgba(15,23,42,.16) !important;
-        backdrop-filter: blur(14px);
-    }
-    header[data-testid="stHeader"] [data-testid="stExpandSidebarButton"],
-    header[data-testid="stHeader"] button[data-testid="stExpandSidebarButton"],
-    [data-testid="stExpandSidebarButton"] {
-        display: flex !important;
-        visibility: visible !important;
-        left: .85rem !important;
-        color: #07111d !important;
-    }
-    [data-testid="stSidebar"] [data-testid="stSidebarHeader"] {
-        min-height: 3.75rem !important;
-    }
-    [data-testid="stSidebar"] [data-testid="stButton"] button,
-    .stButton > button,
-    [data-testid="stDownloadButton"] button,
-    [data-testid="stFormSubmitButton"] button {
-        min-height: 44px !important;
-        height: auto !important;
-        border-radius: 12px !important;
-        padding: .72rem 1rem !important;
-        white-space: normal !important;
-        line-height: 1.2 !important;
-    }
-    [data-testid="stSidebar"] [data-key^="nav_r_"]:not([data-key$="workflow_toggle"]) button,
-    [data-testid="stSidebar"] [data-key^="nav_t_"]:not([data-key$="workflow_toggle"]) button {
-        min-height: 42px !important;
-        margin-left: .2rem !important;
-    }
-    [data-testid="stSidebar"] [data-key="nav_r_workflow_toggle"] button,
-    [data-testid="stSidebar"] [data-key="nav_t_workflow_toggle"] button {
-        min-height: 46px !important;
-    }
-    [data-testid="stHorizontalBlock"] {
-        flex-wrap: wrap !important;
-        gap: .75rem !important;
-    }
-    [data-testid="column"] {
-        min-width: min(100%, 20rem) !important;
-        flex: 1 1 100% !important;
-    }
-    input, textarea, select,
-    [data-baseweb="input"] input,
-    [data-baseweb="select"] {
-        font-size: 16px !important;
-    }
-    [data-testid="stDataFrame"],
-    [data-testid="stTable"],
-    [data-testid="stDataEditor"] {
-        max-width: calc(100vw - 2rem) !important;
-        overflow-x: auto !important;
-        border-radius: 14px !important;
     }
     .pp-brand { padding-top: 1rem; }
     .pp-hero  { padding: 1.35rem 1.25rem 1.25rem !important; }
@@ -1362,123 +1265,74 @@ header[data-testid="stHeader"] * {
    RESPONSIVE — MÓVIL (< 640px)
    ══════════════════════════════════════════════════════════════════ */
 @media (max-width: 640px) {
+    /* Más espacio respirable en pantalla pequeña */
     .main .block-container {
         padding-left: .7rem !important;
         padding-right: .7rem !important;
         padding-top: .8rem !important;
-        padding-bottom: 5rem !important;
+        padding-bottom: 5rem !important;  /* espacio para la barra de navegación inferior */
     }
 
-    .pp-kpi-grid, .pp-two-grid, .pp-chips {
-        grid-template-columns: 1fr !important;
-    }
+    /* Grids → una columna */
+    .pp-kpi-grid, .pp-two-grid, .pp-chips { grid-template-columns: 1fr !important; }
 
-    .pp-hero {
-        padding: 1.45rem 1.25rem 1.3rem !important;
-        border-radius: 18px !important;
-        margin-bottom: 1rem !important;
-    }
-    .pp-hero h1 { font-size: clamp(1.4rem, 8vw, 1.85rem) !important; }
-    .pp-hero p  { font-size: .95rem !important; line-height: 1.55 !important; }
-
-    .pp-page-title {
-        align-items: flex-start !important;
-        gap: .75rem !important;
-        padding-bottom: 1rem !important;
-        margin-bottom: 1.1rem !important;
-    }
-    .pp-page-title .pp-icon {
-        width: 44px !important;
-        height: 44px !important;
-        border-radius: 12px !important;
-        font-size: 1.2rem !important;
-    }
-    .pp-page-title .pp-text h1 { font-size: clamp(1.3rem, 7vw, 1.7rem) !important; }
+    /* Página cabecera más compacta */
+    .pp-page-title { gap: .6rem; padding-bottom: .9rem; margin-bottom: 1.2rem; }
+    .pp-page-title .pp-icon { width: 40px !important; height: 40px !important; font-size: 1.2rem !important; }
+    .pp-page-title .pp-text h1 { font-size: 1.3rem !important; }
     .pp-page-title .pp-text p  { font-size: .8rem !important; }
 
-    .pp-section,
-    .pp-empty,
-    .pp-action-card,
-    .pp-onboarding-card,
-    .pp-kpi-card,
-    .pp-next-step {
-        border-radius: 16px !important;
-        padding: 1.1rem !important;
-    }
-    .pp-kpi-value { font-size: 2.2rem !important; }
+    /* Secciones sin padding lateral extra */
+    .pp-section { padding: 1rem 1rem .9rem; }
 
-    .stButton > button,
-    [data-testid="stDownloadButton"] button,
-    [data-testid="stFormSubmitButton"] button,
-    [data-testid="stTabs"] button[role="tab"],
-    [data-testid="stExpander"] summary {
+    /* Botones con altura mínima para toque fácil */
+    .stButton > button {
         min-height: 44px !important;
+        font-size: .9rem !important;
     }
-    .stButton > button { font-size: .9rem !important; }
+    [data-testid="stDownloadButton"] button { min-height: 44px !important; }
 
+    /* Inputs más grandes para dedos */
     [data-testid="stTextInput"] input,
     [data-testid="stNumberInput"] input,
-    [data-testid="stTextArea"] textarea,
-    input, textarea, select,
-    [data-baseweb="input"] input,
-    [data-baseweb="select"] {
-        font-size: 16px !important;
-    }
-    [data-testid="stTextInput"] input,
-    [data-testid="stNumberInput"] input,
-    [data-testid="stTextArea"] textarea,
-    [data-testid="stSelectbox"] > div > div {
+    [data-testid="stTextArea"] textarea {
+        font-size: 16px !important;  /* evita zoom automático en iOS */
         min-height: 44px !important;
     }
+    [data-testid="stSelectbox"] > div > div { min-height: 44px !important; }
 
+    /* Tabs: scrollables horizontalmente en lugar de cortarse */
     [data-testid="stTabs"] [role="tablist"] {
         overflow-x: auto !important;
         flex-wrap: nowrap !important;
         -webkit-overflow-scrolling: touch;
         scrollbar-width: none;
-        gap: .25rem !important;
-        padding-bottom: .15rem !important;
     }
     [data-testid="stTabs"] [role="tablist"]::-webkit-scrollbar { display: none; }
-    [data-testid="stTabs"] button[role="tab"] {
-        min-width: max-content !important;
-        white-space: nowrap !important;
-        padding: .65rem .95rem !important;
-        border-radius: 12px !important;
-    }
+    [data-testid="stTabs"] button[role="tab"] { white-space: nowrap !important; }
 
-    [data-testid="stDataFrame"],
-    [data-testid="stTable"],
-    [data-testid="stDataEditor"] {
-        max-width: calc(100vw - 1.4rem) !important;
-        overflow-x: auto !important;
-        border-radius: 14px !important;
-    }
+    /* DataFrames: scroll horizontal en lugar de overflow roto */
+    [data-testid="stDataFrame"] { overflow-x: auto !important; }
 
+    /* Métricas en 2 columnas */
+    [data-testid="stMetricValue"] { font-size: 1.6rem !important; }
+
+    /* Sidebar: ancho completo en móvil */
     [data-testid="stSidebar"] {
         min-width: 88vw !important;
         max-width: 88vw !important;
     }
+
+    /* Ocultar sidebar colapsado para no ocupar espacio */
     [data-testid="collapsedControl"] {
         display: flex !important;
         visibility: visible !important;
     }
 
-    .pp-chip {
-        padding: .38rem .7rem !important;
-        line-height: 1.15 !important;
-    }
-    .pp-mobile-hint {
-        display: block;
-        margin: .35rem 0 .75rem;
-        padding: .75rem .85rem;
-        border-radius: 14px;
-        border: 1px solid #cde7d7;
-        background: #effbf4;
-        color: #0d6840;
-        font-size: .86rem;
-        line-height: 1.35;
-    }
+    /* Hero más compacto */
+    .pp-hero { padding: 1rem !important; border-radius: 12px !important; }
+    .pp-hero h1 { font-size: 1.4rem !important; }
+    .pp-hero p  { font-size: .88rem !important; }
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -1628,10 +1482,6 @@ def _info_grid(cards: list[tuple[str, str]]) -> None:
 
 def _nav_to(target: str) -> None:
     st.session_state["_nav_page"] = target
-    try:
-        st.query_params["page"] = target
-    except Exception:
-        pass
     st.rerun()
 
 
@@ -1688,11 +1538,7 @@ def _render_mobile_nav(current_page: str) -> None:
             _nav_to("club_config")
     st.markdown('</div>', unsafe_allow_html=True)
 
-_VALID_NAV_PAGES = {
-    "home", "club_config", "tournaments", "admin",
-    "config", "import", "generate", "results", "standings", "export", "review", "syltek",
-    "t_config", "t_pairs", "t_generate", "t_schedule", "t_results", "t_export",
-}
+
 def _sidebar_button(label: str, target: str, current_page: str, key: str) -> None:
     if st.sidebar.button(
         label,
@@ -1899,8 +1745,7 @@ def _build_calendar_html(matches: list, week_start: "date") -> str:
 
     css = """
 <style>
-.ppcal-wrap{width:100%;overflow-x:auto;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.08);-webkit-overflow-scrolling:touch}
-.ppcal{border-collapse:collapse;width:100%;min-width:760px;font-family:'Inter','Segoe UI',sans-serif;font-size:12px;border-radius:12px;overflow:hidden}
+.ppcal{border-collapse:collapse;width:100%;font-family:'Inter','Segoe UI',sans-serif;font-size:12px;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08)}
 .ppcal th{background:linear-gradient(135deg,#0b1a2b,#132d4a);color:#dce8f5;padding:10px 6px;text-align:center;border:1px solid #1f3a58;white-space:nowrap}
 .ppcal td{padding:4px;border:1px solid #e8f0fa;vertical-align:top;background:#fafcff;min-width:110px}
 .ppcal .time-col{background:#f0f5ff;font-weight:700;text-align:center;color:#0b1a2b;font-size:13px;padding:8px;white-space:nowrap;width:52px;border-right:2px solid #e0eaf5}
@@ -1914,19 +1759,12 @@ def _build_calendar_html(matches: list, week_start: "date") -> str:
 .day-name{font-size:13px;font-weight:800;color:#fff}
 .day-date{font-size:10px;opacity:.7;margin-top:2px;color:#b0cce0}
 .today-hdr{background:linear-gradient(135deg,#006633,#00a854) !important}
-@media (max-width:900px){
-  .ppcal-wrap{margin:0 -1rem;padding:0 1rem;border-radius:0;box-shadow:none}
-  .ppcal{font-size:11px}
-  .ppcal th{position:sticky;top:0;z-index:2;padding:9px 5px}
-  .ppcal .time-col{position:sticky;left:0;z-index:1;box-shadow:2px 0 0 #e0eaf5}
-  .pp-cal-card{padding:7px 8px;border-radius:9px}
-}
 </style>"""
 
     today = date.today()
 
     # Cabecera
-    rows = [css, '<div class="ppcal-wrap"><table class="ppcal"><thead><tr>',
+    rows = [css, '<table class="ppcal"><thead><tr>',
             '<th style="width:52px">Hora</th>']
     for i, d in enumerate(week_dates):
         cnt = sum(len(cell[(d, t)]) for t in times)
@@ -1970,7 +1808,7 @@ def _build_calendar_html(matches: list, week_start: "date") -> str:
                 rows.append("<td></td>")
         rows.append("</tr>")
 
-    rows.append("</tbody></table></div>")
+    rows.append("</tbody></table>")
     return "\n".join(rows)
 
 
@@ -2631,24 +2469,6 @@ from src.auth import _cookie_manager as _init_cookie_mgr
 _init_cookie_mgr()   # registra el CookieManager en session_state de forma estable
 
 # ---------------------------------------------------------------------------
-# Detección de móvil — 100% Streamlit nativo, sin JavaScript
-# El usuario llega con ?_mob=1 (desde enlace guardado) o activa manualmente.
-# session_state recuerda la elección durante toda la sesión.
-# ---------------------------------------------------------------------------
-try:
-    _qp_mob = st.query_params.get("_mob")
-except Exception:
-    _qp_mob = None
-
-# Activar/desactivar móvil via query param o session state
-if _qp_mob == "1":
-    st.session_state["_force_mobile"] = True
-elif _qp_mob == "0":
-    st.session_state["_force_mobile"] = False
-
-_is_mobile = bool(st.session_state.get("_force_mobile", False))
-
-# ---------------------------------------------------------------------------
 # Base de datos y autenticación
 # ---------------------------------------------------------------------------
 
@@ -2762,13 +2582,6 @@ if _db_ok:
 
 _s = st.session_state
 page = _s.get("_nav_page", "home")
-try:
-    _qp_page = st.query_params.get("page")
-except Exception:
-    _qp_page = None
-if _qp_page in _VALID_NAV_PAGES and _qp_page != page:
-    _s["_nav_page"] = _qp_page
-    page = _qp_page
 
 st.sidebar.markdown(
     '<div class="pp-brand">'
@@ -2945,7 +2758,6 @@ if _db_ok and is_authenticated():
 # ---------------------------------------------------------------------------
 # TORNEOS — helpers (deben definirse antes del routing)
 # ---------------------------------------------------------------------------
-
 
 def _group_letter(idx: int) -> str:
     """0 -> 'Grupo A', 1 -> 'Grupo B', … (coherente con el generador)."""
@@ -3224,35 +3036,10 @@ if page == "tournaments":
 
 
 # ---------------------------------------------------------------------------
-# MÓVIL: si es dispositivo móvil y el usuario está autenticado,
-# activar la vista exclusiva de móvil.
-# Esta llamada está AISLADA: solo añade código nuevo, no toca nada de desktop.
-# En desktop (_is_mobile=False) se salta directamente al routing habitual.
-# ---------------------------------------------------------------------------
-if _is_mobile and _db_ok and is_authenticated():
-    from src.mobile_app import run as _mob_run
-    _mob_run(_db, _db_ok)
-    # Si _mob_run() no ha llamado st.stop() (páginas de desktop renderizadas
-    # con nav añadida), continuamos con el routing normal de desktop.
-    # La barra inferior se añade al final de cada página via la flag.
-
-# ---------------------------------------------------------------------------
 # PÁGINA: Inicio
 # ---------------------------------------------------------------------------
 
 if page == "home":
-    # Banner de activación móvil — solo si NO está en modo móvil ya
-    if not _is_mobile:
-        st.markdown(
-            '<div style="background:#07111d;border-radius:10px;padding:.55rem 1rem;'
-            'margin-bottom:.8rem;display:flex;align-items:center;justify-content:space-between">'
-            '<span style="color:#94b8d8;font-size:.8rem">📱 ¿Accedes desde el móvil?</span>'
-            '<a href="?_mob=1" style="color:#7fffc0;font-size:.8rem;font-weight:700;'
-            'text-decoration:none;background:rgba(0,200,83,.15);padding:.2rem .6rem;'
-            'border-radius:6px">Activar vista móvil →</a>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
     _home_club = _club_name_sidebar or current_club_name() if (_db_ok and is_authenticated()) else _s.get("club_name", "Club demo")
     _groups_home = list(_s.get("groups") or [])
     _pairs_home = sum(len(getattr(g, "pairs", []) or []) for g in _groups_home)
@@ -4562,11 +4349,6 @@ elif page == "generate":
             df_matches = pd.DataFrame(rows)
 
             st.info("✏️ Edita directamente Fecha, Hora, Pista, Estado u Observaciones. Pulsa **Guardar cambios** para confirmar.")
-            st.markdown(
-                '<div class="pp-mobile-hint">📱 Desliza la tabla en horizontal para ver todas las columnas. '
-                'Los cambios quedan pendientes hasta pulsar <strong>Guardar cambios</strong>.</div>',
-                unsafe_allow_html=True,
-            )
 
             edited_df = st.data_editor(
                 df_matches,
@@ -4723,11 +4505,6 @@ elif page == "generate":
 
                 selected_week_start = week_starts[sel_week_idx]
                 calendar_html = _build_calendar_html(scheduled_filtered, selected_week_start)
-                st.markdown(
-                    '<div class="pp-mobile-hint">📱 El calendario semanal se puede deslizar de izquierda a derecha '
-                    'para revisar todos los días y pistas.</div>',
-                    unsafe_allow_html=True,
-                )
                 st.markdown(calendar_html, unsafe_allow_html=True)
 
                 # Leyenda de colores por grupo
@@ -4807,10 +4584,6 @@ elif page == "results":
         _groups_order.setdefault(m.group_name or "Sin grupo", []).append(m)
 
     st.caption("Introduce los sets como **6-4**. Deja en blanco los no jugados. WO = walkover (victoria sin jugar).")
-    st.markdown(
-        '<div class="pp-mobile-hint">📱 Desliza cada tabla de resultados en horizontal para editar sets y WO con comodidad.</div>',
-        unsafe_allow_html=True,
-    )
 
     _edited_results = {}
     for _gname, _gmatches in _groups_order.items():
@@ -7567,15 +7340,3 @@ elif page == "admin":
                         st.error(f"Error al eliminar el usuario: {_ex}")
         else:
             st.info("No hay usuarios para eliminar.")
-
-
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-# MÓVIL: botones ← → al final de páginas de desktop cuando viene de móvil
-# ---------------------------------------------------------------------------
-if _is_mobile and _db_ok and is_authenticated():
-    _pn = st.session_state.pop("_mob_prevnext", None)
-    if _pn:
-        from src.mobile_app import _prevnext as _mob_pn
-        _prev_p, _next_p, _next_lbl = _pn
-        _mob_pn(_prev_p, _next_p, _next_lbl if _next_lbl else "Siguiente →")
