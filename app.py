@@ -1263,34 +1263,23 @@ header[data-testid="stHeader"] * {
 
 /* ══════════════════════════════════════════════════════════════════
    RESPONSIVE — MÓVIL (< 640px)
-   En móvil el sidebar de Streamlit es problemático en iOS.
-   Lo ocultamos permanentemente y añadimos navegación propia en el
-   contenido principal. Ver _render_mobile_topnav() en app.py.
    ══════════════════════════════════════════════════════════════════ */
 @media (max-width: 640px) {
-    /* ── Ocultar sidebar y todo lo relacionado definitivamente ── */
-    [data-testid="stSidebar"],
-    [data-testid="collapsedControl"],
-    [data-testid="stSidebarCollapsedControl"],
-    [data-testid="stSidebar"] ~ div > div > [data-testid="collapsedControl"] {
-        display: none !important;
-        visibility: hidden !important;
-        width: 0 !important;
-        min-width: 0 !important;
-        max-width: 0 !important;
-        pointer-events: none !important;
+    /* Sidebar funciona como overlay nativo de Streamlit.
+       El botón hamburguesa (>) abre el panel completo igual que desktop.
+       Solo ajustamos el ancho para que se vea bien en pantallas pequeñas. */
+    [data-testid="stSidebar"] {
+        min-width: min(88vw, 300px) !important;
+        max-width: min(88vw, 300px) !important;
     }
-    /* ── Contenido a ancho completo ── */
-    .main, section.main         { margin-left: 0 !important; }
-    [data-testid="stAppViewContainer"],
-    [data-testid="stMainBlockContainer"] { margin-left: 0 !important; padding-left: 0 !important; }
+    [data-testid="collapsedControl"] {
+        display: flex !important;
+        visibility: visible !important;
+    }
+    /* Contenido sin margen de sidebar cuando está cerrado */
     .main .block-container {
-        margin-left: 0 !important;
-        max-width: 100% !important;
-        width: 100% !important;
         padding-left: .75rem !important;
         padding-right: .75rem !important;
-        padding-top: .5rem !important;
         padding-bottom: 1.5rem !important;
     }
     /* Más espacio respirable en pantalla pequeña */
@@ -1345,30 +1334,7 @@ header[data-testid="stHeader"] * {
     /* Métricas en 2 columnas */
     [data-testid="stMetricValue"] { font-size: 1.6rem !important; }
 
-    /* ── Barra de nav móvil (renderizada por _render_mobile_topnav) ── */
-    .mob-topnav {
-        display: flex;
-        background: #07111d;
-        border-radius: 12px;
-        margin-bottom: .9rem;
-        overflow: hidden;
-        box-shadow: 0 2px 10px rgba(0,0,0,.18);
-    }
-    .mob-topnav .stButton > button {
-        background: transparent !important;
-        border: none !important;
-        border-radius: 0 !important;
-        color: #94b8d8 !important;
-        font-size: .7rem !important;
-        font-weight: 700 !important;
-        letter-spacing: .04em !important;
-        text-transform: uppercase !important;
-        padding: .6rem .2rem !important;
-        min-height: 48px !important;
-        box-shadow: none !important;
-        transform: none !important;
-    }
-    .mob-topnav .stButton > button:active { opacity: .65 !important; }
+    /* Hero más compacto en móvil */
 
     /* Hero más compacto */
     .pp-hero { padding: 1rem !important; border-radius: 12px !important; }
@@ -3030,9 +2996,6 @@ if page == "tournaments":
     st.caption(f"Total: {len(_all_t_rows)} torneo(s) guardado(s) en este club.")
 
 
-# ── Barra de navegación móvil (solo visible en < 640px via CSS) ───────────────
-if _db_ok and is_authenticated():
-    _render_mobile_topnav(page)
 
 # ---------------------------------------------------------------------------
 # PÁGINA: Inicio
