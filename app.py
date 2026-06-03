@@ -2477,16 +2477,16 @@ st.markdown("""
 (function(){
     var w = window.innerWidth || document.documentElement.clientWidth;
     var isMob = w < 768;
-    // Escribir en query param solo si cambia, para no causar reruns infinitos
     var params = new URLSearchParams(window.location.search);
     var cur = params.get('_mob');
     if (isMob && cur !== '1') {
+        // Use full page reload so Streamlit picks up the new query param.
+        // Guard: only reload if _mob is not already '1' (prevents infinite loop).
         params.set('_mob', '1');
-        window.history.replaceState({}, '', '?' + params.toString());
-        window.dispatchEvent(new Event('streamlit:componentValue'));
+        window.location.href = window.location.pathname + '?' + params.toString();
     } else if (!isMob && cur === '1') {
         params.delete('_mob');
-        window.history.replaceState({}, '', params.toString() ? '?' + params.toString() : window.location.pathname);
+        window.location.href = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
     }
 })();
 </script>

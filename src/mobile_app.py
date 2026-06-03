@@ -150,8 +150,46 @@ def _nav_to(target: str) -> None:
     st.rerun()
 
 
+_MOB_SIDEBAR_JS = """
+<script>
+(function(){
+    function hideSidebar(){
+        // Hide sidebar and its collapsed-control strip
+        var selectors = [
+            '[data-testid="stSidebar"]',
+            '[data-testid="collapsedControl"]',
+            '[data-testid="stSidebarCollapsedControl"]'
+        ];
+        selectors.forEach(function(sel){
+            document.querySelectorAll(sel).forEach(function(el){
+                el.style.setProperty('display', 'none', 'important');
+                el.style.setProperty('width', '0', 'important');
+                el.style.setProperty('min-width', '0', 'important');
+            });
+        });
+        // Remove left margin pushed by sidebar
+        document.querySelectorAll('.main, section.main').forEach(function(el){
+            el.style.setProperty('margin-left', '0', 'important');
+            el.style.setProperty('padding-left', '0', 'important');
+        });
+        document.querySelectorAll('[data-testid="stAppViewContainer"]').forEach(function(el){
+            el.style.setProperty('padding-left', '0', 'important');
+            el.style.setProperty('margin-left', '0', 'important');
+        });
+    }
+    // Run immediately
+    hideSidebar();
+    // Re-run on every DOM mutation so Streamlit re-renders don't undo it
+    var observer = new MutationObserver(hideSidebar);
+    observer.observe(document.body, {childList: true, subtree: true, attributes: true});
+})();
+</script>
+"""
+
+
 def _inject_styles() -> None:
     st.markdown(_MOB_CSS, unsafe_allow_html=True)
+    st.markdown(_MOB_SIDEBAR_JS, unsafe_allow_html=True)
 
 
 def _page_header(icon: str, title: str, subtitle: str = "") -> None:
