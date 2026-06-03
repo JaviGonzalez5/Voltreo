@@ -2469,33 +2469,22 @@ from src.auth import _cookie_manager as _init_cookie_mgr
 _init_cookie_mgr()   # registra el CookieManager en session_state de forma estable
 
 # ---------------------------------------------------------------------------
-# Detección de móvil (JavaScript → session_state)
-# La detección es pura: NO modifica ningún código de desktop.
+# Detección de móvil — 100% Streamlit nativo, sin JavaScript
+# El usuario llega con ?_mob=1 (desde enlace guardado) o activa manualmente.
+# session_state recuerda la elección durante toda la sesión.
 # ---------------------------------------------------------------------------
-st.markdown("""
-<script>
-(function(){
-    var w = window.innerWidth || document.documentElement.clientWidth;
-    var isMob = w < 768;
-    var params = new URLSearchParams(window.location.search);
-    var cur = params.get('_mob');
-    if (isMob && cur !== '1') {
-        // Use full page reload so Streamlit picks up the new query param.
-        // Guard: only reload if _mob is not already '1' (prevents infinite loop).
-        params.set('_mob', '1');
-        window.location.href = window.location.pathname + '?' + params.toString();
-    } else if (!isMob && cur === '1') {
-        params.delete('_mob');
-        window.location.href = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
-    }
-})();
-</script>
-""", unsafe_allow_html=True)
-
 try:
-    _is_mobile = st.query_params.get("_mob") == "1"
+    _qp_mob = st.query_params.get("_mob")
 except Exception:
-    _is_mobile = False
+    _qp_mob = None
+
+# Activar/desactivar móvil via query param o session state
+if _qp_mob == "1":
+    st.session_state["_force_mobile"] = True
+elif _qp_mob == "0":
+    st.session_state["_force_mobile"] = False
+
+_is_mobile = bool(st.session_state.get("_force_mobile", False))
 
 # ---------------------------------------------------------------------------
 # Base de datos y autenticación
@@ -3082,6 +3071,18 @@ if _is_mobile and _db_ok and is_authenticated():
 # ---------------------------------------------------------------------------
 
 if page == "home":
+    # Banner de activación móvil — solo si NO está en modo móvil ya
+    if not _is_mobile:
+        st.markdown(
+            '<div style="background:#07111d;border-radius:10px;padding:.55rem 1rem;'
+            'margin-bottom:.8rem;display:flex;align-items:center;justify-content:space-between">'
+            '<span style="color:#94b8d8;font-size:.8rem">📱 ¿Accedes desde el móvil?</span>'
+            '<a href="?_mob=1" style="color:#7fffc0;font-size:.8rem;font-weight:700;'
+            'text-decoration:none;background:rgba(0,200,83,.15);padding:.2rem .6rem;'
+            'border-radius:6px">Activar vista móvil →</a>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
     _home_club = _club_name_sidebar or current_club_name() if (_db_ok and is_authenticated()) else _s.get("club_name", "Club demo")
     _groups_home = list(_s.get("groups") or [])
     _pairs_home = sum(len(getattr(g, "pairs", []) or []) for g in _groups_home)
