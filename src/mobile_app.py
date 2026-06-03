@@ -21,21 +21,23 @@ import streamlit as st
 
 _MOB_CSS = """
 <style>
-/* ── Reset para que el sidebar no interfiera ─── */
-[data-testid="stSidebar"],
-[data-testid="collapsedControl"],
-[data-testid="stSidebarCollapsedControl"] {
-    display: none !important;
-}
-.main, section.main { margin-left: 0 !important; }
-[data-testid="stAppViewContainer"],
-[data-testid="stMainBlockContainer"] { margin-left: 0 !important; }
+/* ── Ocultar sidebar Y su franja colapsada por completo ─── */
+[data-testid="stSidebar"]                { display:none!important;width:0!important;min-width:0!important; }
+[data-testid="collapsedControl"]         { display:none!important;width:0!important;min-width:0!important; }
+[data-testid="stSidebarCollapsedControl"]{ display:none!important;width:0!important; }
+section[data-testid="stSidebar"]         { display:none!important;width:0!important; }
+/* Quitar TODO el espacio/margen que Streamlit reserva para el sidebar */
+.main, section.main                      { margin-left:0!important;padding-left:0!important; }
+[data-testid="stAppViewContainer"]       { padding-left:0!important;margin-left:0!important; }
+[data-testid="stMainBlockContainer"]     { margin-left:0!important; }
+.stApp > * > .main                       { margin-left:0!important; }
 
 /* ── Bloque principal ─── */
 .main .block-container {
     max-width: 100% !important;
-    padding: .5rem .75rem 5rem !important;
+    padding: .6rem .85rem 5.5rem !important;
     margin-left: 0 !important;
+    width: 100% !important;
 }
 
 /* ── Barra de navegación inferior fija ─── */
@@ -216,32 +218,64 @@ def _prev_next(prev_page: Optional[str] = None,
 # ---------------------------------------------------------------------------
 
 def _page_home(db, s) -> None:
-    from src.branding import BRAND_NAME
-    _page_header("🏠", "Inicio", "Panel del club")
+    from src.branding import BRAND_NAME, BRAND_GRADIENT
+    club = s.get("club_name") or "Mi Club"
 
-    club = s.get("club_name") or ""
-    if club:
+    # Hero compacto
+    st.markdown(
+        f'<div style="background:linear-gradient(135deg,#07111d,#0d2b37);'
+        f'border-radius:14px;padding:1.1rem 1.2rem;margin-bottom:1rem">'
+        f'<div style="font-size:.65rem;font-weight:800;letter-spacing:.12em;'
+        f'text-transform:uppercase;color:#00c853;margin-bottom:.35rem">✦ VOLTREO</div>'
+        f'<div style="color:#fff;font-size:1.15rem;font-weight:800;letter-spacing:-.01em">'
+        f'{escape(club)}</div>'
+        f'<div style="color:rgba(255,255,255,.55);font-size:.8rem;margin-top:.2rem">'
+        f'Panel de control</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    # Tarjetas de acceso rápido — diseño tipo app
+    st.markdown(
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:.8rem">',
+        unsafe_allow_html=True,
+    )
+    _cards = [
+        ("mob_torneos", "🏆", "Torneos",       "#0b1a2b", "#00c853", "Ver y gestionar torneos"),
+        ("mob_ranking",  "📊", "Ranking",       "#0b1a2b", "#1565c0", "Fases y clasificación"),
+        ("club_config",  "⚙️", "Club",          "#0b1a2b", "#6a1b9a", "Configuración del club"),
+        ("t_config",     "➕", "Nuevo torneo",  "#0b1a2b", "#00897b", "Crear un torneo nuevo"),
+    ]
+    for key, icon, label, bg, accent, desc in _cards:
         st.markdown(
-            f'<div class="mob-card">'
-            f'<div class="mob-card-title">🏢 {escape(club)}</div>'
-            f'<div class="mob-card-meta">Club activo</div>'
-            f'</div>', unsafe_allow_html=True)
+            f'<div style="background:{bg};border:1px solid rgba(255,255,255,.08);'
+            f'border-left:3px solid {accent};border-radius:12px;padding:.9rem .9rem .75rem;'
+            f'cursor:pointer">'
+            f'<div style="font-size:1.4rem;margin-bottom:.3rem">{icon}</div>'
+            f'<div style="color:#fff;font-weight:700;font-size:.88rem">{label}</div>'
+            f'<div style="color:rgba(255,255,255,.45);font-size:.72rem;margin-top:.1rem">{desc}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
-    st.markdown("### Accesos rápidos")
-    ra, rb = st.columns(2)
-    with ra:
-        if st.button("🏆 Mis Torneos", use_container_width=True, type="primary"):
-            _nav_to("mob_torneos")
-    with rb:
-        if st.button("📊 Ranking", use_container_width=True):
-            _nav_to("mob_ranking")
-    rc, rd = st.columns(2)
-    with rc:
-        if st.button("⚙️ Configurar club", use_container_width=True):
-            _nav_to("club_config")
-    with rd:
-        if st.button("➕ Nuevo torneo", use_container_width=True):
-            _nav_to("t_config")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # Botones reales superpuestos (invisibles visualmente, funcionales)
+    st.markdown(
+        '<style>.mob-grid-btns .stButton>button{background:transparent!important;'
+        'border:none!important;height:80px!important;color:transparent!important;'
+        'font-size:0!important;margin-top:-88px;opacity:0;position:relative;z-index:10}'
+        '</style><div class="mob-grid-btns">',
+        unsafe_allow_html=True,
+    )
+    _g1, _g2 = st.columns(2)
+    with _g1:
+        if st.button("Torneos",  key="mob_h_torn", use_container_width=True): _nav_to("mob_torneos")
+        if st.button("Club",     key="mob_h_club", use_container_width=True): _nav_to("club_config")
+    with _g2:
+        if st.button("Ranking",  key="mob_h_rank", use_container_width=True): _nav_to("mob_ranking")
+        if st.button("Nuevo",    key="mob_h_new",  use_container_width=True): _nav_to("t_config")
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _page_torneos(db, s, _db_ok) -> None:
