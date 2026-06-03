@@ -7570,29 +7570,12 @@ elif page == "admin":
 
 
 # ---------------------------------------------------------------------------
-# MÓVIL: barra de navegación inferior en páginas de desktop
-# Se añade al final de CUALQUIER página cuando el usuario viene de móvil.
-# No toca nada del código de desktop — es código añadido al final.
 # ---------------------------------------------------------------------------
-if _is_mobile and _db_ok and is_authenticated() and st.session_state.get("_mob_show_bottom_nav"):
-    from src.mobile_app import _bottom_nav as _mob_bottom_nav, _prev_next as _mob_prev_next
-    st.session_state.pop("_mob_show_bottom_nav", None)
-    # Botones ← → específicos según la página actual
-    _mob_nav_maps = {
-        "t_config":   (None,        "t_pairs",    "Siguiente: Parejas →"),
-        "t_pairs":    ("t_config",  "t_generate", "Siguiente: Estructura →"),
-        "t_generate": ("t_pairs",   "t_schedule", "Siguiente: Horarios →"),
-        "t_schedule": ("t_generate","t_results",  "Siguiente: Resultados →"),
-        "t_results":  ("t_schedule","t_export",   "Siguiente: Exportar →"),
-        "t_export":   ("t_results", None,         ""),
-        "config":     (None,        "import",     "Siguiente: Importar datos →"),
-        "import":     ("config",    "generate",   "Siguiente: Generar →"),
-        "generate":   ("import",    "export",     "Siguiente: Exportar →"),
-        "export":     ("generate",  "review",     "Siguiente: Revisión →"),
-        "review":     ("export",    None,         ""),
-        "club_config":(None,        None,         ""),
-    }
-    if page in _mob_nav_maps:
-        _prev_p, _next_p, _next_lbl = _mob_nav_maps[page]
-        _mob_prev_next(_prev_p, _next_p, _next_lbl if _next_lbl else "Siguiente →")
-    _mob_bottom_nav(page)
+# MÓVIL: botones ← → al final de páginas de desktop cuando viene de móvil
+# ---------------------------------------------------------------------------
+if _is_mobile and _db_ok and is_authenticated():
+    _pn = st.session_state.pop("_mob_prevnext", None)
+    if _pn:
+        from src.mobile_app import _prevnext as _mob_pn
+        _prev_p, _next_p, _next_lbl = _pn
+        _mob_pn(_prev_p, _next_p, _next_lbl if _next_lbl else "Siguiente →")
