@@ -5586,6 +5586,20 @@ elif page == "t_config":
                 st.session_state[f"divchk_{_k}"] = (_k in _cur_set0)
         st.session_state[_chk_init_id] = _div_source_id
 
+    # Aplicar flags "Todos / Ninguno" ANTES de renderizar los checkboxes.
+    # Los botones no pueden modificar directamente el state de un widget ya
+    # renderizado en el mismo ciclo — en su lugar guardan un flag y el siguiente
+    # render lo aplica aquí, antes de crear los widgets.
+    for _cval, _clabel, _ccat in _cat_rows:
+        _row_keys = [f"{_ccat.value}:{_sub.value}" for _sub in _t_subs]
+        _flag = st.session_state.pop(f"_divflag_{_cval}", None)
+        if _flag == "all":
+            for _k in _row_keys:
+                st.session_state[f"divchk_{_k}"] = True
+        elif _flag == "none":
+            for _k in _row_keys:
+                st.session_state[f"divchk_{_k}"] = False
+
     _n_subs = len(_t_subs)
     for _cval, _clabel, _ccat in _cat_rows:
         _row_keys = [f"{_ccat.value}:{_sub.value}" for _sub in _t_subs]
@@ -5598,13 +5612,11 @@ elif page == "t_config":
                 st.checkbox(_sub.label, key=f"divchk_{_ccat.value}:{_sub.value}")
         with _cols[1 + _n_subs]:
             if st.button("✓ Todos", key=f"rowall_{_cval}", use_container_width=True):
-                for _k in _row_keys:
-                    st.session_state[f"divchk_{_k}"] = True
+                st.session_state[f"_divflag_{_cval}"] = "all"
                 st.rerun()
         with _cols[2 + _n_subs]:
             if st.button("✗ Ninguno", key=f"rownone_{_cval}", use_container_width=True):
-                for _k in _row_keys:
-                    st.session_state[f"divchk_{_k}"] = False
+                st.session_state[f"_divflag_{_cval}"] = "none"
                 st.rerun()
 
     # La selección final = todas las casillas marcadas
@@ -5748,7 +5760,23 @@ elif page == "t_config":
             value=int(getattr(t, "final_duration_minutes", 0) or 0) if t else 0,
             help="Para finales al mejor de 3 sets a 15 puntos, suele tener sentido marcar 40-60 min.",
         )
-        t_rest = st.number_input("Descanso mínimo entre partidos (min)", min_value=0, max_value=120, step=5, value=t.rest_between_matches_min if t else 15)
+        # Para pádel con torneo de más de 1 día, el descanso mínimo entre
+        # partidos no tiene sentido como parámetro configurable: la restricción
+        # que aplica es que una pareja no puede jugar más de 1 partido por día.
+        _tc_sport = _club_sport()
+        _tc_days  = (t_end - t_start).days + 1
+        if _tc_sport == "padel" and _tc_days > 1:
+            t_rest = 0
+            st.caption(
+                f"📅 Torneo de **{_tc_days} días** — cada pareja jugará "
+                "**máximo 1 partido por día**. No se aplica descanso mínimo entre partidos."
+            )
+        else:
+            t_rest = st.number_input(
+                "Descanso mínimo entre partidos (min)",
+                min_value=0, max_value=120, step=5,
+                value=t.rest_between_matches_min if t else 15,
+            )
     with col_t2:
         t_day_start = st.time_input("Hora de inicio del día", value=t.day_start_time if t else _dt_mod.time(9, 0))
         t_day_end   = st.time_input("Hora de fin del día",    value=t.day_end_time   if t else _dt_mod.time(22, 0))

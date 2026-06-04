@@ -318,6 +318,9 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
         last_placed_div:       object            = None
         _gid_to_name = {g.id: g.name for g in config.groups}
         wave_group_end: Optional[datetime]      = None   # fin del último partido de GRUPOS
+        # Modo distribución: una pareja no puede jugar más de 1 partido por día.
+        # _player_day_busy[player_key] = {date, ...} días ya ocupados.
+        _player_day_busy: dict[str, set[date]] = defaultdict(set)
 
         while unscheduled_wave and _safety > 0:
             _safety -= 1
@@ -335,12 +338,18 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
                     _assigned_day = _day_target[m.id]
                     _day_dt = _dt(_assigned_day, day_start)
                     rnd_earliest = max(rnd_earliest, _day_dt) if rnd_earliest else _day_dt
+                # Modo distribución: días donde algún jugador ya tiene partido
+                # (máximo 1 partido por pareja por día).
+                _blocked_days: set[date] = set()
+                if _distribute:
+                    for _pk in _all_potential_player_keys(m, config.matches):
+                        _blocked_days.update(_player_day_busy.get(_pk, set()))
                 duration = _duration_for_match(config, match=m)
                 slot = _find_best_slot(
                     match=m, active_courts=active_courts, court_tls=court_tls,
                     player_tl=player_tl, duration=duration, all_days=all_days,
                     day_start=day_start, day_end=day_end, rnd_earliest=rnd_earliest,
-                    all_matches=config.matches,
+                    all_matches=config.matches, blocked_days=_blocked_days,
                 )
                 if slot is not None:
                     s_start, s_end, court = slot
@@ -392,6 +401,12 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
             player_tl.record(
                 _all_potential_player_keys(best_match, config.matches), s_end
             )
+            # Modo distribución: marcar el día del partido como ocupado
+            # para cada jugador (restricción 1 partido/día por pareja).
+            if _distribute:
+                _sched_day = best_match.match_date
+                for _pk in _match_player_keys(best_match):
+                    _player_day_busy[_pk].add(_sched_day)
 
             _dk = (best_match.division, best_match.round)
             completed_rounds[_dk] += 1
@@ -517,6 +532,7 @@ def _find_best_slot(
     day_end:       time,
     rnd_earliest:  Optional[datetime],
     all_matches:   "list[TournamentMatch] | None" = None,
+    blocked_days:  "set[date] | None" = None,
 ) -> Optional[tuple[datetime, datetime, TournamentCourt]]:
     """
     Devuelve (start, end, court) del hueco más temprano disponible
@@ -536,6 +552,10 @@ def _find_best_slot(
     )
 
     for d in all_days:
+        # Modo distribución: si algún jugador ya tiene partido este día, saltar.
+        if blocked_days and d in blocked_days:
+            continue
+
         day_start_dt = _dt(d, day_start)
         day_end_dt   = _day_end_dt(d, day_end, day_start)
 
