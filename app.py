@@ -6203,16 +6203,29 @@ elif page == "t_pairs":
             unsafe_allow_html=True,
         )
         for _reg in _pending_regs:
-            with st.expander(f"📩 **{escape(_reg.pair_name or 'Sin nombre')}** — {_reg.player1_name} / {_reg.player2_name}"):
+            # Nombre completo de cada jugador (nuevo modelo con apellidos separados)
+            def _full_name(reg, n: int) -> str:
+                _nm  = getattr(reg, f"player{n}_name", "") or ""
+                _s1  = getattr(reg, f"player{n}_surname1", "") or ""
+                _s2  = getattr(reg, f"player{n}_surname2", "") or ""
+                full = " ".join(p for p in [_nm, _s1, _s2] if p)
+                return full or getattr(reg, f"player{n}_name", "") or "—"
+            _p1_full = _full_name(_reg, 1)
+            _p2_full = _full_name(_reg, 2)
+            with st.expander(f"📩 **{escape(_reg.pair_name or 'Sin nombre')}** — {_p1_full} / {_p2_full}"):
                 _rc1, _rc2 = st.columns(2)
                 with _rc1:
-                    st.markdown(f"**Jugador 1:** {escape(_reg.player1_name)}")
-                    if _reg.player1_phone: st.caption(f"📱 {escape(_reg.player1_phone)}")
-                    if _reg.player1_email: st.caption(f"📧 {escape(_reg.player1_email)}")
+                    st.markdown(f"**Jugador 1:** {escape(_p1_full)}")
+                    _ph1 = getattr(_reg, "player1_phone", None) or getattr(_reg, "player1_phone", "")
+                    _em1 = getattr(_reg, "player1_email", None) or getattr(_reg, "player1_email", "")
+                    if _ph1: st.caption(f"📱 {escape(str(_ph1))}")
+                    if _em1: st.caption(f"📧 {escape(str(_em1))}")
                 with _rc2:
-                    st.markdown(f"**Jugador 2:** {escape(_reg.player2_name)}")
-                    if _reg.player2_phone: st.caption(f"📱 {escape(_reg.player2_phone)}")
-                    if _reg.player2_email: st.caption(f"📧 {escape(_reg.player2_email)}")
+                    st.markdown(f"**Jugador 2:** {escape(_p2_full)}")
+                    _ph2 = getattr(_reg, "player2_phone", None) or getattr(_reg, "player2_phone", "")
+                    _em2 = getattr(_reg, "player2_email", None) or getattr(_reg, "player2_email", "")
+                    if _ph2: st.caption(f"📱 {escape(str(_ph2))}")
+                    if _em2: st.caption(f"📧 {escape(str(_em2))}")
                 if _reg.division and _t_div_keys:
                     st.caption(f"Categoría solicitada: **{_div_label(_reg.division)}**")
                 if _reg.notes:

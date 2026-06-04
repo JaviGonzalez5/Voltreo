@@ -591,28 +591,38 @@ def render_public_registration(tournament_id: str) -> None:
                 unsafe_allow_html=True)
 
     with st.form("public_registration_form"):
-        st.markdown('<div class="pv-form-title">Datos de la pareja</div>',
-                    unsafe_allow_html=True)
-        pair_name = st.text_input("Nombre de la pareja", placeholder="García / López")
 
-        # Categoría ya fijada — solo mostrar si hay varias o ninguna
+        # Categoría fijada
         div_sel_key = _selected_cat if _selected_cat else None
         if _cat_label:
-            st.caption(f"🏷 Categoría: **{_cat_label}**")
+            st.markdown(
+                f'<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;'
+                f'padding:.55rem 1rem;margin-bottom:.8rem;font-weight:700;color:#065f46">'
+                f'🏷 {escape(_cat_label)}</div>',
+                unsafe_allow_html=True,
+            )
 
-        st.divider()
+        # ── Jugador 1 ────────────────────────────────────────────────────
         st.markdown('<div class="pv-form-title">Jugador 1</div>', unsafe_allow_html=True)
-        p1_name = st.text_input("Nombre completo", key="p1n", placeholder="Carlos García")
+        p1_name = st.text_input("Nombre *", key="p1n", placeholder="Carlos")
+        _p1s1, _p1s2 = st.columns(2)
+        with _p1s1: p1_surname1 = st.text_input("Primer apellido *", key="p1s1", placeholder="García")
+        with _p1s2: p1_surname2 = st.text_input("Segundo apellido *", key="p1s2", placeholder="Martínez")
         _p1c1, _p1c2 = st.columns(2)
-        with _p1c1: p1_phone = st.text_input("Teléfono", key="p1ph", placeholder="+34 600 000 000")
-        with _p1c2: p1_email = st.text_input("Email (opcional)", key="p1em", placeholder="carlos@email.com")
+        with _p1c1: p1_phone = st.text_input("Teléfono *", key="p1ph", placeholder="+34 600 000 000")
+        with _p1c2: p1_email = st.text_input("Email *", key="p1em", placeholder="carlos@email.com")
 
         st.divider()
+
+        # ── Jugador 2 ────────────────────────────────────────────────────
         st.markdown('<div class="pv-form-title">Jugador 2</div>', unsafe_allow_html=True)
-        p2_name = st.text_input("Nombre completo", key="p2n", placeholder="Marta López")
+        p2_name = st.text_input("Nombre *", key="p2n", placeholder="Marta")
+        _p2s1, _p2s2 = st.columns(2)
+        with _p2s1: p2_surname1 = st.text_input("Primer apellido *", key="p2s1", placeholder="López")
+        with _p2s2: p2_surname2 = st.text_input("Segundo apellido *", key="p2s2", placeholder="Fernández")
         _p2c1, _p2c2 = st.columns(2)
-        with _p2c1: p2_phone = st.text_input("Teléfono", key="p2ph", placeholder="+34 600 000 001")
-        with _p2c2: p2_email = st.text_input("Email (opcional)", key="p2em", placeholder="marta@email.com")
+        with _p2c1: p2_phone = st.text_input("Teléfono *", key="p2ph", placeholder="+34 600 000 001")
+        with _p2c2: p2_email = st.text_input("Email *", key="p2em", placeholder="marta@email.com")
 
         st.divider()
         notes = st.text_area("Nota para el organizador (opcional)",
@@ -678,22 +688,42 @@ def render_public_registration(tournament_id: str) -> None:
 
     if submitted:
         errors = []
-        if not pair_name.strip():  errors.append("Rellena el nombre de la pareja.")
-        if not p1_name.strip():    errors.append("Rellena el nombre del Jugador 1.")
-        if not p2_name.strip():    errors.append("Rellena el nombre del Jugador 2.")
+        # Jugador 1 — todos obligatorios
+        if not p1_name.strip():     errors.append("Jugador 1: falta el nombre.")
+        if not p1_surname1.strip(): errors.append("Jugador 1: falta el primer apellido.")
+        if not p1_surname2.strip(): errors.append("Jugador 1: falta el segundo apellido.")
+        if not p1_phone.strip():    errors.append("Jugador 1: falta el teléfono.")
+        if not p1_email.strip():    errors.append("Jugador 1: falta el email.")
+        # Jugador 2 — todos obligatorios
+        if not p2_name.strip():     errors.append("Jugador 2: falta el nombre.")
+        if not p2_surname1.strip(): errors.append("Jugador 2: falta el primer apellido.")
+        if not p2_surname2.strip(): errors.append("Jugador 2: falta el segundo apellido.")
+        if not p2_phone.strip():    errors.append("Jugador 2: falta el teléfono.")
+        if not p2_email.strip():    errors.append("Jugador 2: falta el email.")
         if div_sel_key and t.is_division_full(div_sel_key):
             errors.append("Esta categoría ya está completa. Vuelve y elige otra.")
         for e in errors:
             st.error(e)
         if not errors:
+            # Nombre de pareja generado automáticamente: "J. García – C. López"
+            def _short(name: str, surname: str) -> str:
+                n = name.strip(); s = surname.strip()
+                return f"{n[0].upper()}. {s.capitalize()}" if n and s else (s or n)
+            _auto_pair_name = (
+                f"{_short(p1_name, p1_surname1)} – {_short(p2_name, p2_surname1)}"
+            )
             reg = TournamentRegistration(
-                pair_name            = pair_name.strip(),
+                pair_name            = _auto_pair_name,
                 player1_name         = p1_name.strip(),
-                player1_phone        = p1_phone.strip() or None,
-                player1_email        = p1_email.strip() or None,
+                player1_surname1     = p1_surname1.strip(),
+                player1_surname2     = p1_surname2.strip(),
+                player1_phone        = p1_phone.strip(),
+                player1_email        = p1_email.strip(),
                 player2_name         = p2_name.strip(),
-                player2_phone        = p2_phone.strip() or None,
-                player2_email        = p2_email.strip() or None,
+                player2_surname1     = p2_surname1.strip(),
+                player2_surname2     = p2_surname2.strip(),
+                player2_phone        = p2_phone.strip(),
+                player2_email        = p2_email.strip(),
                 division             = div_sel_key or None,
                 notes                = notes.strip(),
                 unavailable_dates    = unavailable_selected,

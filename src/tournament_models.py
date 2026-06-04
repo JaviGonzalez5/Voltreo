@@ -293,13 +293,20 @@ class TournamentRegistration(BaseModel):
     El admin lo revisa y aprueba (→ pasa a TournamentConfig.pairs) o rechaza.
     """
     id:          str = Field(default_factory=lambda: str(uuid4()))
+    # pair_name se genera automáticamente: "J. Apellido1 – C. Apellido1"
     pair_name:   str = ""
-    player1_name: str = ""
-    player1_phone: Optional[str] = None
-    player1_email: Optional[str] = None
-    player2_name: str = ""
-    player2_phone: Optional[str] = None
-    player2_email: Optional[str] = None
+    # Jugador 1
+    player1_name:     str = ""
+    player1_surname1: str = ""
+    player1_surname2: str = ""
+    player1_phone:    str = ""
+    player1_email:    str = ""
+    # Jugador 2
+    player2_name:     str = ""
+    player2_surname1: str = ""
+    player2_surname2: str = ""
+    player2_phone:    str = ""
+    player2_email:    str = ""
     division:    Optional[str] = None    # categoría solicitada
     notes:       str = ""                # mensaje libre del jugador
     # Disponibilidad: lista de fechas en que NO puede jugar (ISO strings "YYYY-MM-DD")
