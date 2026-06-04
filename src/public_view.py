@@ -406,20 +406,14 @@ def render_public_registration(tournament_id: str) -> None:
                     _wkey = str(_wday)
                     _dname = _day_names_full[_wday]
 
-                    # Cabecera del día: div con fondo verde oscuro + texto blanco
-                    # → visible en cualquier tema sin depender de los estilos de Streamlit
-                    st.markdown(
-                        f'<div style="background:#1a6b3c;color:#ffffff;font-weight:700;'
-                        f'font-size:1rem;padding:7px 14px;border-radius:8px;'
-                        f'margin:14px 0 4px">📅 {_dname}</div>',
-                        unsafe_allow_html=True,
-                    )
+                    # Cabecera del día usando subheader nativo de Streamlit
+                    # (siempre visible en modo claro y oscuro, en móvil y escritorio)
+                    st.subheader(f"📅 {_dname}", divider="green")
 
                     _can_play = st.selectbox(
-                        "¿Puedes jugar?",
+                        f"¿Puedes jugar el {_dname}?",
                         ["✅ Puedo", "❌ No puedo"],
                         key=f"avail_st_{_wkey}",
-                        label_visibility="collapsed",
                     )
 
                     if _can_play == "❌ No puedo":
