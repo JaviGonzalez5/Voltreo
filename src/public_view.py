@@ -17,99 +17,271 @@ from .branding import BRAND_NAME, BRAND_MONOGRAM, BRAND_GRADIENT
 
 _PUBLIC_CSS = f"""
 <style>
+/* ── Ocultar chrome de Streamlit ── */
 #MainMenu, footer, [data-testid="stToolbar"], [data-testid="stDecoration"],
 [data-testid="stStatusWidget"], [data-testid="collapsedControl"], .stDeployButton,
 [data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"] {{
     display: none !important;
 }}
 header[data-testid="stHeader"] {{ display: none !important; }}
-.stApp {{ background: #0a1622 !important; }}
-.main .block-container {{ max-width: 1040px !important; padding-top: 2.5rem !important; }}
+
+/* ── Base ── */
+.stApp {{ background: #f4f6f9 !important; }}
+.main .block-container {{
+    max-width: 860px !important;
+    padding: 0 1.2rem 3rem !important;
+}}
+
+/* ── Top bar ── */
+.pv-topbar {{
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1rem 0 1.2rem; margin-bottom: .2rem;
+    border-bottom: 1px solid #e5e7eb;
+}}
+.pv-logo-wrap {{
+    display: flex; align-items: center; gap: .65rem;
+}}
+.pv-logo {{
+    width: 36px; height: 36px; border-radius: 10px;
+    background: {BRAND_GRADIENT};
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 900; font-size: 1.15rem;
+    box-shadow: 0 4px 14px rgba(0,200,83,.35);
+}}
+.pv-brand-name {{ color: #111827; font-weight: 800; font-size: 1rem; }}
+.pv-brand-sub  {{ color: #9ca3af; font-size: .7rem; display: block; }}
+
+/* ── Hero ── */
+.pv-hero {{
+    background: linear-gradient(135deg, #00c853 0%, #00897b 100%);
+    border-radius: 18px; padding: 2rem 2.2rem 1.8rem;
+    margin: 1.4rem 0 1.6rem; position: relative; overflow: hidden;
+}}
+.pv-hero::before {{
+    content: ''; position: absolute; right: -40px; top: -40px;
+    width: 200px; height: 200px; border-radius: 50%;
+    background: rgba(255,255,255,.07);
+}}
+.pv-hero h1 {{
+    color: #fff; font-size: 1.75rem; font-weight: 850;
+    margin: 0 0 .9rem; letter-spacing: -.02em;
+    text-shadow: 0 2px 8px rgba(0,0,0,.15);
+}}
+.pv-hero-chips {{ display: flex; flex-wrap: wrap; gap: .5rem; }}
+.pv-chip {{
+    background: rgba(255,255,255,.2); color: #fff; border-radius: 20px;
+    padding: .28rem .75rem; font-size: .82rem; font-weight: 600;
+    backdrop-filter: blur(4px);
+}}
+
+/* ── Info cards ── */
+.pv-info-grid {{
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: .9rem; margin-bottom: 1.8rem;
+}}
+.pv-info-card {{
+    background: #fff; border-radius: 14px; padding: .9rem 1.1rem;
+    border: 1px solid #e9ecef;
+    box-shadow: 0 1px 4px rgba(0,0,0,.05);
+}}
+.pv-info-label {{
+    font-size: .68rem; font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; color: #9ca3af; margin-bottom: .3rem;
+}}
+.pv-info-value {{ font-size: .95rem; font-weight: 700; color: #111827; }}
+.pv-info-value small {{ font-weight: 400; color: #6b7280; }}
+
+/* ── Section titles ── */
+.pv-section-title {{
+    font-size: .72rem; font-weight: 800; letter-spacing: .12em;
+    text-transform: uppercase; color: #00897b;
+    margin: 1.8rem 0 .8rem; padding-bottom: .4rem;
+    border-bottom: 2px solid #e5e7eb;
+}}
+
+/* ── Division heading ── */
+.pv-divh {{
+    background: linear-gradient(90deg, #f0fdf4, transparent);
+    border-left: 3px solid #00c853; border-radius: 0 8px 8px 0;
+    padding: .55rem 1rem; margin: 1.4rem 0 .7rem;
+    font-size: .8rem; font-weight: 800; letter-spacing: .08em;
+    text-transform: uppercase; color: #065f46;
+}}
+
+/* ── Champion ── */
+.pv-champ {{
+    background: linear-gradient(135deg, #fffbeb, #fef3c7);
+    border: 2px solid #f59e0b; border-radius: 14px;
+    padding: .85rem 1.2rem; margin: .5rem 0 1rem;
+    display: flex; align-items: center; gap: .8rem;
+}}
+.pv-champ .c1 {{
+    font-size: .68rem; font-weight: 800; letter-spacing: .1em;
+    text-transform: uppercase; color: #92400e;
+}}
+.pv-champ .c2 {{ font-size: 1.1rem; font-weight: 900; color: #111827; }}
+
+/* ── Rounds & matches ── */
+.pv-round {{
+    font-size: .72rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .08em; color: #6b7280; margin: 1rem 0 .35rem;
+}}
+.pv-match {{
+    background: #fff; border: 1px solid #e9ecef; border-radius: 10px;
+    padding: .65rem 1rem; margin-bottom: .4rem;
+    display: flex; align-items: center; justify-content: space-between; gap: .8rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+}}
+.pv-match .pair {{ color: #374151; font-size: .92rem; flex: 1; }}
+.pv-match .pair.win {{ color: #059669; font-weight: 700; }}
+.pv-match .sc  {{ color: #111827; font-size: .88rem; font-weight: 700; white-space: nowrap; }}
+.pv-match .vs  {{ color: #d1d5db; font-size: .78rem; padding: 0 .4rem; }}
+.pv-when {{ color: #9ca3af; font-size: .72rem; white-space: nowrap; }}
+
+/* ── Category cards (inscripción) ── */
+.pv-cat-grid {{
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem; margin: 1rem 0 1.6rem;
+}}
+.pv-cat-card {{
+    background: #fff; border: 1px solid #e9ecef; border-radius: 16px;
+    padding: 1.2rem 1.3rem; text-align: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,.06); transition: box-shadow .15s;
+}}
+.pv-cat-name  {{ font-size: 1rem; font-weight: 800; color: #111827; margin-bottom: .3rem; }}
+.pv-cat-count {{ font-size: .82rem; color: #6b7280; margin-bottom: .75rem; }}
+.pv-cat-full  {{ font-size: .78rem; color: #dc2626; font-weight: 700; margin-bottom: .75rem; }}
+.pv-btn {{
+    display: inline-block; background: linear-gradient(135deg, #00c853, #00897b);
+    color: #fff !important; border-radius: 30px; padding: .5rem 1.4rem;
+    font-size: .88rem; font-weight: 700; text-decoration: none;
+    box-shadow: 0 3px 10px rgba(0,200,83,.3); cursor: pointer;
+}}
+.pv-btn-full {{
+    display: inline-block; background: #f3f4f6; color: #9ca3af !important;
+    border-radius: 30px; padding: .5rem 1.4rem;
+    font-size: .88rem; font-weight: 700; cursor: default;
+}}
+
+/* ── Status badge ── */
+.pv-badge-open {{
+    display: inline-flex; align-items: center; gap: .4rem;
+    background: #d1fae5; color: #065f46; border-radius: 20px;
+    padding: .35rem 1rem; font-size: .82rem; font-weight: 700;
+    margin-bottom: 1.2rem;
+}}
+.pv-badge-closed {{
+    display: inline-flex; align-items: center; gap: .4rem;
+    background: #fee2e2; color: #991b1b; border-radius: 20px;
+    padding: .35rem 1rem; font-size: .82rem; font-weight: 700;
+    margin-bottom: 1.2rem;
+}}
+
+/* ── Form styles ── */
+.pv-form-section {{
+    background: #fff; border-radius: 16px; padding: 1.4rem 1.6rem;
+    border: 1px solid #e9ecef; margin-bottom: 1rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,.05);
+}}
+.pv-form-title {{
+    font-size: .72rem; font-weight: 800; letter-spacing: .1em;
+    text-transform: uppercase; color: #00897b; margin-bottom: .9rem;
+    padding-bottom: .5rem; border-bottom: 1px solid #f0fdf4;
+}}
+
+/* ── Streamlit widget overrides (form) ── */
+[data-testid="stForm"] {{
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+}}
+[data-testid="stForm"] label,
+[data-testid="stForm"] [data-testid="stWidgetLabel"] p {{
+    color: #374151 !important;
+    font-weight: 600 !important;
+    font-size: .88rem !important;
+}}
+[data-testid="stForm"] p,
+[data-testid="stForm"] div.stMarkdown p {{
+    color: #374151 !important;
+}}
+[data-testid="stForm"] [data-testid="stCaptionContainer"] p {{
+    color: #9ca3af !important;
+}}
+[data-testid="stTextInput"] input,
+[data-testid="stTextArea"] textarea {{
+    background: #f9fafb !important;
+    border: 1.5px solid #e5e7eb !important;
+    border-radius: 10px !important;
+    color: #111827 !important;
+}}
+[data-testid="stTextInput"] input:focus,
+[data-testid="stTextArea"] textarea:focus {{
+    border-color: #00c853 !important;
+    box-shadow: 0 0 0 3px rgba(0,200,83,.12) !important;
+}}
+[data-testid="stSelectbox"] > div > div {{
+    background: #f9fafb !important;
+    border: 1.5px solid #e5e7eb !important;
+    border-radius: 10px !important;
+    color: #111827 !important;
+}}
+div[data-testid="stFormSubmitButton"] > button {{
+    background: linear-gradient(135deg, #00c853, #00897b) !important;
+    color: #fff !important; border: none !important;
+    border-radius: 30px !important; font-weight: 700 !important;
+    font-size: 1rem !important; padding: .75rem 1.5rem !important;
+    box-shadow: 0 4px 14px rgba(0,200,83,.35) !important;
+}}
+hr {{ border-color: #f0f0f0 !important; margin: .8rem 0 !important; }}
+
+/* ── Disponibilidad day header ── */
+.pv-day-header {{
+    background: #f0fdf4; border-left: 4px solid #00c853;
+    border-radius: 0 10px 10px 0; padding: .55rem 1rem;
+    font-weight: 700; font-size: .95rem; color: #065f46;
+    margin: .8rem 0 .4rem;
+}}
+
+/* ── Footer ── */
+.pv-foot {{
+    text-align: center; color: #9ca3af; font-size: .78rem;
+    margin: 2.5rem 0 1rem; padding-top: 1.2rem;
+    border-top: 1px solid #e9ecef;
+}}
+.pv-foot a {{ color: #00897b; text-decoration: none; font-weight: 600; }}
 
 /* ── Móvil ── */
 @media (max-width: 640px) {{
     .main .block-container {{
-        padding-top: 1rem !important;
-        padding-left: .8rem !important;
-        padding-right: .8rem !important;
+        padding: 0 .7rem 2rem !important;
     }}
-    .pubv-hero {{ padding: 1.1rem 1.1rem !important; border-radius: 12px !important; }}
-    .pubv-hero h1 {{ font-size: 1.35rem !important; }}
-    .pubv-hero .meta {{ font-size: .82rem !important; }}
-    .pubv-divh {{ font-size: .68rem !important; }}
-    .pubv-match {{ flex-wrap: wrap; gap: .4rem !important; }}
-    /* Inputs grandes para dedos */
+    .pv-hero {{ padding: 1.4rem 1.3rem 1.2rem !important; border-radius: 14px !important; }}
+    .pv-hero h1 {{ font-size: 1.35rem !important; }}
+    .pv-info-grid {{ grid-template-columns: 1fr 1fr !important; }}
+    .pv-cat-grid  {{ grid-template-columns: 1fr 1fr !important; }}
+    .pv-form-section {{ padding: 1rem 1rem !important; }}
     [data-testid="stTextInput"] input,
     [data-testid="stSelectbox"] > div > div,
     [data-testid="stTextArea"] textarea {{
         font-size: 16px !important;
-        min-height: 44px !important;
+        min-height: 46px !important;
     }}
-    .stButton > button {{ min-height: 48px !important; font-size: .95rem !important; }}
-    .stForm [data-testid="stVerticalBlock"] > div {{ gap: .5rem !important; }}
-}}
-
-.pubv-brand {{ display:flex; align-items:center; gap:.7rem; margin-bottom:1.4rem; }}
-.pubv-logo {{
-    width:40px; height:40px; border-radius:12px; background:{BRAND_GRADIENT};
-    display:flex; align-items:center; justify-content:center; color:#fff; font-weight:900; font-size:1.3rem;
-    box-shadow:0 6px 22px rgba(0,200,83,.4);
-}}
-.pubv-brand b {{ color:#eaf6ff; font-size:1.05rem; letter-spacing:-.01em; }}
-.pubv-brand span {{ color:#4a7aa0; font-size:.68rem; letter-spacing:.16em; text-transform:uppercase; display:block; }}
-
-.pubv-hero {{
-    background:linear-gradient(135deg,#07121f,#0d2b37); border:1px solid rgba(255,255,255,.08);
-    border-radius:18px; padding:1.6rem 1.9rem; margin-bottom:1.6rem;
-}}
-.pubv-hero h1 {{ color:#fff; font-size:1.7rem; font-weight:850; margin:0; letter-spacing:-.02em; }}
-.pubv-hero .meta {{ color:#9ec0dc; font-size:.9rem; margin-top:.4rem; }}
-
-.pubv-divh {{
-    color:#7fffc0; font-size:.75rem; font-weight:800; letter-spacing:.12em; text-transform:uppercase;
-    margin:1.6rem 0 .6rem; padding-bottom:.4rem; border-bottom:1px solid rgba(255,255,255,.08);
-}}
-.pubv-champ {{
-    background:linear-gradient(135deg,#1a0533,#6a1b9a); border:2px solid #ffd700; border-radius:14px;
-    padding:.9rem 1.2rem; margin:.6rem 0 1rem; display:flex; align-items:center; gap:.8rem;
-}}
-.pubv-champ .c1 {{ color:#ffd700; font-size:.7rem; font-weight:800; letter-spacing:.1em; }}
-.pubv-champ .c2 {{ color:#fff; font-size:1.15rem; font-weight:900; }}
-
-.pubv-round {{ color:#9ec0dc; font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; margin:.9rem 0 .3rem; }}
-.pubv-match {{
-    background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07); border-radius:10px;
-    padding:.6rem .9rem; margin-bottom:.4rem; display:flex; align-items:center; justify-content:space-between; gap:.8rem;
-}}
-.pubv-match .pair {{ color:#cfe2f2; font-size:.92rem; flex:1; }}
-.pubv-match .pair.win {{ color:#7fffc0; font-weight:700; }}
-.pubv-match .sc {{ color:#9ec0dc; font-size:.85rem; font-weight:700; white-space:nowrap; }}
-.pubv-match .vs {{ color:#4a7aa0; font-size:.78rem; padding:0 .4rem; }}
-.pubv-when {{ color:#5a82a4; font-size:.72rem; white-space:nowrap; }}
-
-.pubv-foot {{ text-align:center; color:#3d6a90; font-size:.78rem; margin:2.5rem 0 1rem; }}
-.pubv-foot a {{ color:#7fffc0; text-decoration:none; }}
-
-/* ── Formulario de inscripción: texto visible sobre fondo oscuro ── */
-/* Streamlit en light-mode usa colores oscuros para labels/headings,
-   pero el fondo de esta página es #0a1622 → invisible sin esto.     */
-[data-testid="stForm"] p,
-[data-testid="stForm"] label,
-[data-testid="stForm"] h1,
-[data-testid="stForm"] h2,
-[data-testid="stForm"] h3,
-[data-testid="stForm"] h4,
-[data-testid="stForm"] span,
-[data-testid="stForm"] div.stMarkdown p,
-[data-testid="stForm"] [data-testid="stCaptionContainer"] p {{
-    color: #e8f4fd !important;
-}}
-[data-testid="stForm"] [data-testid="stWidgetLabel"] p {{
-    color: #a8cce4 !important;
-    font-weight: 600 !important;
+    .stButton > button {{ min-height: 48px !important; }}
 }}
 </style>
 """
+
+
+def _topbar(subtitle: str = "Resultados en directo") -> str:
+    return (
+        f'<div class="pv-topbar">'
+        f'<div class="pv-logo-wrap">'
+        f'<div class="pv-logo">{BRAND_MONOGRAM}</div>'
+        f'<div><span class="pv-brand-name">{escape(BRAND_NAME)}</span>'
+        f'<span class="pv-brand-sub">{subtitle}</span></div>'
+        f'</div></div>'
+    )
 
 
 def _fmt_when(m) -> str:
@@ -124,11 +296,7 @@ def _fmt_when(m) -> str:
 def render_public_tournament(tournament_id: str) -> None:
     """Renderiza la vista pública de un torneo y llama a st.stop()."""
     st.markdown(_PUBLIC_CSS, unsafe_allow_html=True)
-    st.markdown(
-        f'<div class="pubv-brand"><div class="pubv-logo">{BRAND_MONOGRAM}</div>'
-        f'<div><b>{escape(BRAND_NAME)}</b><span>Resultados en directo</span></div></div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown(_topbar("Resultados en directo"), unsafe_allow_html=True)
 
     if not is_db_configured():
         st.error("Servicio no disponible.")
@@ -141,8 +309,9 @@ def render_public_tournament(tournament_id: str) -> None:
 
     if not row:
         st.markdown(
-            '<div class="pubv-hero"><h1>Torneo no encontrado</h1>'
-            '<div class="meta">El enlace no es válido o el torneo ya no está disponible.</div></div>',
+            '<div class="pv-hero"><h1>Torneo no encontrado</h1>'
+            '<div style="color:rgba(255,255,255,.8);margin-top:.5rem">'
+            'El enlace no es válido o el torneo ya no está disponible.</div></div>',
             unsafe_allow_html=True,
         )
         st.stop()
@@ -153,29 +322,35 @@ def render_public_tournament(tournament_id: str) -> None:
         st.error("No se pudo cargar el torneo.")
         st.stop()
 
-    # Cabecera
+    # ── Hero ─────────────────────────────────────────────────────────────────
     _dates = t.start_date.strftime("%d/%m/%Y")
     if t.end_date and t.end_date != t.start_date:
         _dates += f" – {t.end_date.strftime('%d/%m/%Y')}"
-    _loc = f" · 📍 {escape(t.location)}" if getattr(t, "location", "") else ""
+    _chips = [f"📅 {_dates}"]
+    if getattr(t, "location", ""):
+        _chips.append(f"📍 {escape(t.location)}")
+    _chips_html = "".join(f'<span class="pv-chip">{c}</span>' for c in _chips)
+
     st.markdown(
-        f'<div class="pubv-hero"><h1>🏆 {escape(t.name)}</h1>'
-        f'<div class="meta">📅 {_dates}{_loc}</div></div>',
+        f'<div class="pv-hero">'
+        f'<h1>🏆 {escape(t.name)}</h1>'
+        f'<div class="pv-hero-chips">{_chips_html}</div>'
+        f'</div>',
         unsafe_allow_html=True,
     )
 
-    # Divisiones presentes (multi-categoría) o torneo único
+    # ── Resultados por división ───────────────────────────────────────────────
     div_keys = sorted({m.division for m in t.matches if m.division is not None})
     champs = champions_by_division(t)
 
     def _render_division(div_key, label):
         if label:
-            st.markdown(f'<div class="pubv-divh">{escape(label)}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="pv-divh">{escape(label)}</div>', unsafe_allow_html=True)
         champ = champs.get(div_key or "_")
         if champ:
             st.markdown(
-                f'<div class="pubv-champ"><span style="font-size:1.4rem">🏆</span>'
-                f'<div><div class="c1">CAMPEÓN</div><div class="c2">{escape(champ)}</div></div></div>',
+                f'<div class="pv-champ"><span style="font-size:1.5rem">🏆</span>'
+                f'<div><div class="c1">Campeón</div><div class="c2">{escape(champ)}</div></div></div>',
                 unsafe_allow_html=True,
             )
         dms = [m for m in t.matches if (div_key is None or m.division == div_key)]
@@ -186,16 +361,16 @@ def render_public_tournament(tournament_id: str) -> None:
             visible = [m for m in by_round[rnd] if m.pair_1 or m.pair_2]
             if not visible:
                 continue
-            st.markdown(f'<div class="pubv-round">{escape(rnd.display)}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="pv-round">{escape(rnd.display)}</div>', unsafe_allow_html=True)
             for m in sorted(visible, key=lambda x: x.match_number):
                 p1cls = "pair win" if (m.winner_id and m.pair_1 and m.winner_id == m.pair_1.id) else "pair"
                 p2cls = "pair win" if (m.winner_id and m.pair_2 and m.winner_id == m.pair_2.id) else "pair"
                 p1 = escape(m.p1_display); p2 = escape(m.p2_display)
                 sc = escape(m.score) if m.score else ("✓" if m.winner_id else "")
                 when = _fmt_when(m)
-                when_html = f'<span class="pubv-when">{escape(when)}</span>' if when else ""
+                when_html = f'<span class="pv-when">{escape(when)}</span>' if when else ""
                 st.markdown(
-                    f'<div class="pubv-match">'
+                    f'<div class="pv-match">'
                     f'<span class="{p1cls}">{p1}</span>'
                     f'<span class="vs">vs</span>'
                     f'<span class="{p2cls}" style="text-align:right">{p2}</span>'
@@ -204,21 +379,21 @@ def render_public_tournament(tournament_id: str) -> None:
                 )
 
     if div_keys:
-        # Etiquetas legibles de cada división
         from .tournament_models import TournamentCategory, TournamentSubcategory
         def _label(k):
             cat, _, sub = k.partition(":")
             c = next((x for x in TournamentCategory if x.value == cat), None)
             s = next((x for x in TournamentSubcategory if x.value == sub), None)
             return " ".join([p for p in [c.label if c else "", s.label if s else ""] if p]) or k
+        st.markdown('<div class="pv-section-title">Resultados</div>', unsafe_allow_html=True)
         for dk in div_keys:
             _render_division(dk, _label(dk))
     else:
         _render_division(None, "")
 
     st.markdown(
-        f'<div class="pubv-foot">Generado con <a href="https://{BRAND_NAME.lower()}.streamlit.app">{escape(BRAND_NAME)}</a>'
-        f' · Gestión de torneos y rankings deportivos</div>',
+        f'<div class="pv-foot">Organizado con <a href="https://{BRAND_NAME.lower()}.streamlit.app">'
+        f'{escape(BRAND_NAME)}</a> · Gestión de torneos y rankings deportivos</div>',
         unsafe_allow_html=True,
     )
     st.stop()
@@ -228,20 +403,12 @@ def render_public_registration(tournament_id: str) -> None:
     """
     Página pública de inscripción en un torneo.
     Accesible vía ?join=<tournament_id> sin login.
-    El jugador rellena sus datos y queda como inscripción PENDIENTE
-    hasta que el admin la apruebe.
     """
     from datetime import datetime as _dtt
     from .tournament_models import TournamentRegistration, RegistrationStatus
 
     st.markdown(_PUBLIC_CSS, unsafe_allow_html=True)
-
-    # Cabecera de marca
-    st.markdown(
-        f'<div class="pubv-brand"><div class="pubv-logo">{BRAND_MONOGRAM}</div>'
-        f'<div><b>{escape(BRAND_NAME)}</b><span>Inscripción en torneo</span></div></div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown(_topbar("Inscripción en torneo"), unsafe_allow_html=True)
 
     if not is_db_configured():
         st.error("Servicio no disponible.")
@@ -254,8 +421,9 @@ def render_public_registration(tournament_id: str) -> None:
 
     if not row:
         st.markdown(
-            '<div class="pubv-hero"><h1>Torneo no encontrado</h1>'
-            '<div class="meta">El enlace no es válido o el torneo ya no está disponible.</div></div>',
+            '<div class="pv-hero"><h1>Torneo no encontrado</h1>'
+            '<div style="color:rgba(255,255,255,.8);margin-top:.5rem">'
+            'El enlace no es válido o el torneo ya no está disponible.</div></div>',
             unsafe_allow_html=True,
         )
         st.stop()
@@ -267,134 +435,141 @@ def render_public_registration(tournament_id: str) -> None:
         st.error("No se pudo cargar el torneo.")
         st.stop()
 
-    # Info del torneo
+    # ── Hero ─────────────────────────────────────────────────────────────────
     _dates = t.start_date.strftime("%d/%m/%Y")
     if t.end_date and t.end_date != t.start_date:
         _dates += f" – {t.end_date.strftime('%d/%m/%Y')}"
-    _loc = f" · 📍 {escape(t.location)}" if getattr(t, "location", "") else ""
-
+    _chips = [f"📅 {_dates}"]
+    if getattr(t, "location", ""):
+        _chips.append(f"📍 {escape(t.location)}")
+    _chips_html = "".join(f'<span class="pv-chip">{c}</span>' for c in _chips)
     st.markdown(
-        f'<div class="pubv-hero">'
+        f'<div class="pv-hero">'
         f'<h1>🎾 {escape(t.name)}</h1>'
-        f'<div class="meta">📅 {_dates}{_loc}</div>'
+        f'<div class="pv-hero-chips">{_chips_html}</div>'
         f'</div>',
         unsafe_allow_html=True,
     )
 
-    # Comprobar si las inscripciones están abiertas
+    # ── Inscripciones cerradas ────────────────────────────────────────────────
     if not t.is_registration_active():
         st.markdown(
-            '<div style="text-align:center;padding:3rem 1.5rem;background:#f5f8fc;'
-            'border-radius:16px;border:2px dashed #d0e0f0;margin:1rem 0">'
-            '<div style="font-size:2.5rem;margin-bottom:.6rem">🔒</div>'
-            '<div style="font-size:1.1rem;font-weight:700;color:#1b3a58;margin-bottom:.4rem">'
-            'Las inscripciones están cerradas</div>'
-            '<div style="font-size:.9rem;color:#7f9ab5">'
-            'El club aún no ha abierto el registro para este torneo. '
-            'Contacta con los organizadores.</div>'
-            '</div>',
+            '<div class="pv-badge-closed">🔒 Inscripciones cerradas</div>',
             unsafe_allow_html=True,
         )
+        st.info("El club aún no ha abierto el registro para este torneo. Contacta con los organizadores.")
         st.stop()
 
-    # Mostrar categorías disponibles
+    # ── Datos de categorías ───────────────────────────────────────────────────
     _div_keys = list(getattr(t, "divisions", []) or [])
-    _, _div_labels = None, {}
+    _div_labels: dict = {}
     try:
         from .tournament_models import TournamentCategory, TournamentSubcategory
-        for cat_v, _, sub_v in [k.partition(":") for k in _div_keys]:
-            c = next((x for x in TournamentCategory if x.value == cat_v), None)
+        for k in _div_keys:
+            cat_v, _, sub_v = k.partition(":")
+            c = next((x for x in TournamentCategory  if x.value == cat_v), None)
             s = next((x for x in TournamentSubcategory if x.value == sub_v), None)
-            _div_labels[f"{cat_v}:{sub_v}"] = " ".join([p for p in [c.label if c else "", s.label if s else ""] if p]) or f"{cat_v}:{sub_v}"
+            _div_labels[k] = " ".join([p for p in [c.label if c else "", s.label if s else ""] if p]) or k
     except Exception:
         pass
 
-    # Contadores por división para mostrar plazas
     _max_pairs = getattr(t, "registration_max_pairs", {}) or {}
-    _confirmed_total = t.confirmed_count()
-    _pending_total   = len([r for r in getattr(t, "registrations", [])
-                             if r.status == RegistrationStatus.PENDING])
 
-    # Resumen de plazas
-    _slots_parts = []
+    # ── Categorías en cards ───────────────────────────────────────────────────
     if _div_keys:
-        for _dk in _div_keys:
-            _mx = _max_pairs.get(_dk, 0)
-            _cn = t.confirmed_count(_dk)
-            _lbl = _div_labels.get(_dk, _dk)
-            if _mx:
-                _slots_parts.append(f"{_lbl}: {_cn}/{_mx}")
+        st.markdown('<div class="pv-section-title">Categorías</div>', unsafe_allow_html=True)
+        cards_html = '<div class="pv-cat-grid">'
+        for dk in _div_keys:
+            mx  = _max_pairs.get(dk, 0)
+            cnt = t.confirmed_count(dk)
+            lbl = _div_labels.get(dk, dk)
+            full = bool(mx and cnt >= mx)
+            count_txt = f"{cnt}/{mx} inscritas" if mx else f"{cnt} inscritas"
+            if full:
+                cards_html += (
+                    f'<div class="pv-cat-card">'
+                    f'<div class="pv-cat-name">{escape(lbl)}</div>'
+                    f'<div class="pv-cat-full">🔴 Completo · {count_txt}</div>'
+                    f'<span class="pv-btn-full">Sin plazas</span>'
+                    f'</div>'
+                )
             else:
-                _slots_parts.append(f"{_lbl}: {_cn} inscritas")
-    _slots_str = " · ".join(_slots_parts) if _slots_parts else f"{_confirmed_total} parejas confirmadas"
+                cards_html += (
+                    f'<div class="pv-cat-card">'
+                    f'<div class="pv-cat-name">{escape(lbl)}</div>'
+                    f'<div class="pv-cat-count">👥 {count_txt}</div>'
+                    f'<span class="pv-btn">Inscribirse</span>'
+                    f'</div>'
+                )
+        cards_html += '</div>'
+        st.markdown(cards_html, unsafe_allow_html=True)
+        st.markdown(
+            '<div class="pv-badge-open">✅ Inscripciones abiertas — rellena el formulario</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        _cnt = t.confirmed_count()
+        st.markdown(
+            f'<div class="pv-badge-open">✅ Inscripciones abiertas · {_cnt} parejas inscritas</div>',
+            unsafe_allow_html=True,
+        )
 
-    st.markdown(
-        f'<div style="background:rgba(0,200,83,.07);border:1px solid rgba(0,200,83,.25);'
-        f'border-radius:12px;padding:.9rem 1.2rem;margin:1rem 0;font-size:.9rem;color:#005a29;font-weight:600">'
-        f'✅ Inscripciones abiertas · {_slots_str}'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-
-    # Guardar "inscrito con éxito" en session_state para no mostrar el form de nuevo
+    # ── Ya inscrito ───────────────────────────────────────────────────────────
     if st.session_state.get(f"_reg_done_{tournament_id}"):
-        st.success("✅ ¡Inscripción enviada! El club revisará tu solicitud y te confirmará.")
-        st.caption("Puedes cerrar esta ventana o compartir el enlace con otro jugador.")
+        st.success("✅ ¡Inscripción enviada correctamente! El club revisará tu solicitud y te confirmará.")
+        st.caption("Puedes cerrar esta ventana o compartirla con tu pareja.")
         st.stop()
 
-    st.markdown(
-        '<div style="font-size:.7rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;'
-        'color:#00843d;margin:1.4rem 0 .5rem">FORMULARIO DE INSCRIPCIÓN</div>',
-        unsafe_allow_html=True,
-    )
+    # ── Formulario ───────────────────────────────────────────────────────────
+    st.markdown('<div class="pv-section-title">Formulario de inscripción</div>', unsafe_allow_html=True)
 
     with st.form("public_registration_form"):
-        st.markdown("**Datos de la pareja**")
-        pair_name = st.text_input("Nombre de la pareja (ej. García / López)", placeholder="García / López")
+
+        # — Nombre de pareja + categoría —
+        st.markdown('<div class="pv-form-title">Datos de la pareja</div>', unsafe_allow_html=True)
+        pair_name = st.text_input("Nombre de la pareja", placeholder="García / López")
 
         if _div_keys:
-            # Construir opciones filtrando categorías llenas
             def _div_opt_label(k):
-                mx = _max_pairs.get(k, 0)
-                cn = t.confirmed_count(k)
+                mx  = _max_pairs.get(k, 0)
+                cnt = t.confirmed_count(k)
                 lbl = _div_labels.get(k, k)
-                if mx and cn >= mx:
-                    return f"{lbl} — COMPLETO ({cn}/{mx})"
-                if mx:
-                    return f"{lbl} ({cn}/{mx} plazas)"
-                return lbl
+                if mx and cnt >= mx:
+                    return f"{lbl} — COMPLETO ({cnt}/{mx})"
+                return f"{lbl} ({cnt}/{mx} plazas)" if mx else lbl
 
-            div_opts  = ["— Elige tu categoría —"] + [_div_opt_label(k) for k in _div_keys]
+            div_opts = ["— Elige tu categoría —"] + [_div_opt_label(k) for k in _div_keys]
             div_sel_display = st.selectbox("Categoría", options=div_opts)
-            # Recuperar la clave original a partir del display seleccionado
-            div_sel_key = None
-            for k in _div_keys:
-                if _div_opt_label(k) == div_sel_display:
-                    div_sel_key = k
-                    break
+            div_sel_key = next((k for k in _div_keys if _div_opt_label(k) == div_sel_display), None)
         else:
             div_sel_key = None
 
         st.divider()
-        # Jugador 1 — columnas que colapsan a una en móvil
-        st.markdown("**Jugador 1**")
-        p1_name  = st.text_input("Nombre del jugador 1", key="p1n", placeholder="Carlos García")
-        _p1col1, _p1col2 = st.columns(2)
-        with _p1col1: p1_phone = st.text_input("Teléfono J1", key="p1ph", placeholder="+34 600 000 000")
-        with _p1col2: p1_email = st.text_input("Email J1 (opcional)", key="p1em", placeholder="carlos@email.com")
 
-        st.markdown("**Jugador 2**")
-        p2_name  = st.text_input("Nombre del jugador 2", key="p2n", placeholder="Marta López")
-        _p2col1, _p2col2 = st.columns(2)
-        with _p2col1: p2_phone = st.text_input("Teléfono J2", key="p2ph", placeholder="+34 600 000 001")
-        with _p2col2: p2_email = st.text_input("Email J2 (opcional)", key="p2em", placeholder="marta@email.com")
+        # — Jugadores —
+        st.markdown('<div class="pv-form-title">Jugador 1</div>', unsafe_allow_html=True)
+        p1_name = st.text_input("Nombre completo", key="p1n", placeholder="Carlos García")
+        _p1c1, _p1c2 = st.columns(2)
+        with _p1c1: p1_phone = st.text_input("Teléfono", key="p1ph", placeholder="+34 600 000 000")
+        with _p1c2: p1_email = st.text_input("Email (opcional)", key="p1em", placeholder="carlos@email.com")
 
-        notes = st.text_area("Nota para el organizador (opcional)", placeholder="Cualquier información adicional…", height=70)
+        st.divider()
 
-        # ── Disponibilidad por días (solo si el admin lo ha activado) ──────
+        st.markdown('<div class="pv-form-title">Jugador 2</div>', unsafe_allow_html=True)
+        p2_name = st.text_input("Nombre completo", key="p2n", placeholder="Marta López")
+        _p2c1, _p2c2 = st.columns(2)
+        with _p2c1: p2_phone = st.text_input("Teléfono", key="p2ph", placeholder="+34 600 000 001")
+        with _p2c2: p2_email = st.text_input("Email (opcional)", key="p2em", placeholder="marta@email.com")
+
+        st.divider()
+        notes = st.text_area("Nota para el organizador (opcional)",
+                             placeholder="Cualquier información adicional…", height=70)
+
+        # ── Disponibilidad (si el admin la activó) ──────────────────────────
         _ask_avail = getattr(t, "registration_ask_availability", False)
         unavailable_selected: list[str] = []
-        availability_windows: dict = {}
+        availability_windows: dict      = {}
+
         if _ask_avail:
             from datetime import timedelta as _td
             _days_range = []
@@ -404,32 +579,37 @@ def render_public_registration(tournament_id: str) -> None:
                 _d = _d + _td(days=1)
 
             if _days_range:
-                st.markdown("**📅 ¿Cuándo puedes jugar?**")
-                st.caption("Indica tu disponibilidad. Si puedes todo el día, deja los valores por defecto.")
+                st.divider()
+                st.markdown('<div class="pv-form-title">¿Cuándo puedes jugar?</div>',
+                            unsafe_allow_html=True)
+                st.caption("Indica tu disponibilidad por día. Si puedes todo el día, deja los valores por defecto.")
 
-                # Días únicos de la semana presentes en el torneo (en orden de aparición)
+                # Días únicos de la semana presentes en el rango del torneo
                 _seen_wdays: list[int] = []
                 for _dd in _days_range:
                     if _dd.weekday() not in _seen_wdays:
                         _seen_wdays.append(_dd.weekday())
 
-                # Opciones de hora cada 30 min: 07:00 → 23:30
                 _time_opts = [f"{h:02d}:{m:02d}" for h in range(7, 24) for m in (0, 30)]
                 _idx_9  = _time_opts.index("09:00") if "09:00" in _time_opts else 0
                 _idx_22 = _time_opts.index("22:00") if "22:00" in _time_opts else len(_time_opts) - 1
-
                 _day_names_full = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"]
-                _estado_opts = {_dname: [] for _dname in _day_names_full}
 
                 for _wday in _seen_wdays:
                     _wkey = str(_wday)
                     _dname = _day_names_full[_wday]
 
-                    st.divider()
+                    # Cabecera del día — div con fondo verde claro y borde izquierdo
+                    st.markdown(
+                        f'<div class="pv-day-header">📅 {_dname}</div>',
+                        unsafe_allow_html=True,
+                    )
+
                     _can_play = st.selectbox(
-                        f"📅 {_dname}",
+                        "Disponibilidad",
                         ["✅ Puedo jugar", "❌ No puedo jugar"],
                         key=f"avail_st_{_wkey}",
+                        label_visibility="collapsed",
                     )
 
                     if _can_play == "❌ No puedo jugar":
@@ -439,65 +619,57 @@ def render_public_registration(tournament_id: str) -> None:
                     else:
                         _fc1, _fc2 = st.columns(2)
                         with _fc1:
-                            _from = st.selectbox(
-                                "⏩ Desde", _time_opts, index=_idx_9,
-                                key=f"avail_from_{_wkey}",
-                            )
+                            _from = st.selectbox("⏩ Desde", _time_opts, index=_idx_9,
+                                                 key=f"avail_from_{_wkey}")
                         with _fc2:
-                            _to = st.selectbox(
-                                "⏹ Hasta", _time_opts, index=_idx_22,
-                                key=f"avail_to_{_wkey}",
-                            )
+                            _to = st.selectbox("⏹ Hasta", _time_opts, index=_idx_22,
+                                               key=f"avail_to_{_wkey}")
                         if _from != "07:00" or _to != "23:30":
                             for _dd2 in _days_range:
                                 if _dd2.weekday() == _wday:
                                     availability_windows[_dd2.isoformat()] = {"from": _from, "to": _to}
 
-        submitted = st.form_submit_button("📩 Enviar inscripción", type="primary", use_container_width=True)
+        submitted = st.form_submit_button("📩 Enviar inscripción", type="primary",
+                                          use_container_width=True)
 
+    # ── Validación y guardado ─────────────────────────────────────────────────
     if submitted:
         errors = []
-        if not pair_name.strip():
-            errors.append("Rellena el nombre de la pareja.")
-        if not p1_name.strip():
-            errors.append("Rellena el nombre del Jugador 1.")
-        if not p2_name.strip():
-            errors.append("Rellena el nombre del Jugador 2.")
-        if _div_keys and not div_sel_key:
-            errors.append("Selecciona una categoría.")
-        # Bloquear si la categoría elegida ya está llena
+        if not pair_name.strip():        errors.append("Rellena el nombre de la pareja.")
+        if not p1_name.strip():          errors.append("Rellena el nombre del Jugador 1.")
+        if not p2_name.strip():          errors.append("Rellena el nombre del Jugador 2.")
+        if _div_keys and not div_sel_key: errors.append("Selecciona una categoría.")
         if div_sel_key and t.is_division_full(div_sel_key):
-            errors.append(f"La categoría seleccionada ya está completa. Elige otra o contacta con el organizador.")
+            errors.append("La categoría seleccionada ya está completa. Elige otra o contacta con el organizador.")
         for e in errors:
             st.error(e)
         if not errors:
             reg = TournamentRegistration(
-                pair_name   = pair_name.strip(),
-                player1_name  = p1_name.strip(),
-                player1_phone = p1_phone.strip() or None,
-                player1_email = p1_email.strip() or None,
-                player2_name  = p2_name.strip(),
-                player2_phone = p2_phone.strip() or None,
-                player2_email = p2_email.strip() or None,
-                division      = div_sel_key,
-                notes         = notes.strip(),
-                unavailable_dates     = unavailable_selected,
-                availability_windows  = availability_windows,
-                status        = RegistrationStatus.PENDING,
-                submitted_at  = _dtt.utcnow().isoformat(),
+                pair_name         = pair_name.strip(),
+                player1_name      = p1_name.strip(),
+                player1_phone     = p1_phone.strip() or None,
+                player1_email     = p1_email.strip() or None,
+                player2_name      = p2_name.strip(),
+                player2_phone     = p2_phone.strip() or None,
+                player2_email     = p2_email.strip() or None,
+                division          = div_sel_key,
+                notes             = notes.strip(),
+                unavailable_dates = unavailable_selected,
+                availability_windows = availability_windows,
+                status            = RegistrationStatus.PENDING,
+                submitted_at      = _dtt.utcnow().isoformat(),
             )
-            # Guardar en BD
             try:
                 t.registrations.append(reg)
                 from .db_converters import tournament_to_db as _ttdb
                 payload = _ttdb(t, row.get("club_id", ""), t.id)
                 get_db().upsert_tournament(
-                    club_id=row.get("club_id", ""),
-                    name=payload["name"],
-                    start_date=payload["start_date"],
-                    end_date=payload["end_date"],
-                    tournament_data=payload["tournament_data"],
-                    tournament_id=t.id,
+                    club_id        = row.get("club_id", ""),
+                    name           = payload["name"],
+                    start_date     = payload["start_date"],
+                    end_date       = payload["end_date"],
+                    tournament_data= payload["tournament_data"],
+                    tournament_id  = t.id,
                 )
                 st.session_state[f"_reg_done_{tournament_id}"] = True
                 st.rerun()
@@ -505,7 +677,7 @@ def render_public_registration(tournament_id: str) -> None:
                 st.error(f"Error al guardar la inscripción: {_e}")
 
     st.markdown(
-        f'<div class="pubv-foot">Organizado con <a href="https://{BRAND_NAME.lower()}.streamlit.app">'
+        f'<div class="pv-foot">Organizado con <a href="https://{BRAND_NAME.lower()}.streamlit.app">'
         f'{escape(BRAND_NAME)}</a></div>',
         unsafe_allow_html=True,
     )
