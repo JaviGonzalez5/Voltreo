@@ -348,6 +348,10 @@ class TournamentConfig(BaseModel):
     rest_between_matches_min:  int  = 15   # Descanso mínimo para el mismo equipo
     day_start_time:            time = time(9, 0)
     day_end_time:              time = time(22, 0)
+    # Franja horaria de fin de semana (sáb/dom).
+    # None = usar la misma que entre semana.
+    weekend_start_time:        Optional[time] = None
+    weekend_end_time:          Optional[time] = None
 
     # Parámetros de grupos
     group_size:                int  = 4    # Parejas por grupo

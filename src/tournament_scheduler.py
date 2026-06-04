@@ -203,6 +203,14 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
     day_start = config.day_start_time
     day_end   = config.day_end_time
 
+    # Helper: franja horaria real del día (sáb/dom puede tener franja distinta)
+    def _day_hours(d: date) -> tuple[time, time]:
+        if d.weekday() >= 5:  # 5=sábado, 6=domingo
+            ws = getattr(config, "weekend_start_time", None)
+            we = getattr(config, "weekend_end_time", None)
+            return (ws or day_start), (we or day_end)
+        return day_start, day_end
+
     # ── Modo distribución: pre-asignar partidos a días ──────────────────────
     # Cuando schedule_distribute_over_days=True (torneos de pádel multidia),
     # repartimos los partidos uniformemente entre todos los días del torneo
@@ -336,7 +344,7 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
                 # no puede empezar antes de ese día.
                 if _distribute and m.id in _day_target:
                     _assigned_day = _day_target[m.id]
-                    _day_dt = _dt(_assigned_day, day_start)
+                    _day_dt = _dt(_assigned_day, _day_hours(_assigned_day)[0])
                     rnd_earliest = max(rnd_earliest, _day_dt) if rnd_earliest else _day_dt
                 # Modo distribución: días donde algún jugador ya tiene partido
                 # (máximo 1 partido por pareja por día).
@@ -350,6 +358,7 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
                     player_tl=player_tl, duration=duration, all_days=all_days,
                     day_start=day_start, day_end=day_end, rnd_earliest=rnd_earliest,
                     all_matches=config.matches, blocked_days=_blocked_days,
+                    day_hours_fn=_day_hours,
                 )
                 if slot is not None:
                     s_start, s_end, court = slot
@@ -387,7 +396,7 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
             s_start, s_end, court, best_match = candidates[0]
 
             _session_day = s_start.date()
-            if s_start.time() < day_start:
+            if s_start.time() < _day_hours(s_start.date())[0]:
                 _session_day = s_start.date() - timedelta(days=1)
             best_match.match_date = _session_day
             best_match.start_time = s_start.time()
@@ -533,6 +542,7 @@ def _find_best_slot(
     rnd_earliest:  Optional[datetime],
     all_matches:   "list[TournamentMatch] | None" = None,
     blocked_days:  "set[date] | None" = None,
+    day_hours_fn:  "callable | None" = None,
 ) -> Optional[tuple[datetime, datetime, TournamentCourt]]:
     """
     Devuelve (start, end, court) del hueco más temprano disponible
@@ -556,8 +566,9 @@ def _find_best_slot(
         if blocked_days and d in blocked_days:
             continue
 
-        day_start_dt = _dt(d, day_start)
-        day_end_dt   = _day_end_dt(d, day_end, day_start)
+        _d_start, _d_end = day_hours_fn(d) if day_hours_fn else (day_start, day_end)
+        day_start_dt = _dt(d, _d_start)
+        day_end_dt   = _day_end_dt(d, _d_end, _d_start)
 
         # Encontrar la pista que permita el inicio más temprano hoy
         best_start:  Optional[datetime]       = None

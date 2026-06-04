@@ -5740,6 +5740,8 @@ elif page == "t_config":
 
     st.divider()
     _section_start("⏱️", "Parámetros de tiempo")
+    t_weekend_start = None  # se sobreescribe si hay fin de semana en el rango
+    t_weekend_end   = None
     col_t1, col_t2 = st.columns(2)
     with col_t1:
         t_match_dur = st.number_input("Duración del partido (min)", min_value=10, max_value=180, step=5, value=t.match_duration_minutes if t else 60)
@@ -5778,12 +5780,31 @@ elif page == "t_config":
                 value=t.rest_between_matches_min if t else 15,
             )
     with col_t2:
-        t_day_start = st.time_input("Hora de inicio del día", value=t.day_start_time if t else _dt_mod.time(9, 0))
-        t_day_end   = st.time_input("Hora de fin del día",    value=t.day_end_time   if t else _dt_mod.time(22, 0))
+        _tc_days_hrs = (t_end - t_start).days + 1
+        _has_weekend = _tc_days_hrs > 1 and any(
+            (t_start + _dt_mod.timedelta(days=i)).weekday() >= 5
+            for i in range(_tc_days_hrs)
+        )
+        if _has_weekend:
+            st.markdown("**Entre semana** (L – V)")
+            _wk_start_def = t.day_start_time if t else _dt_mod.time(16, 0)
+            _wk_end_def   = t.day_end_time   if t else _dt_mod.time(22, 0)
+            t_day_start = st.time_input("Inicio (L–V)", value=_wk_start_def, key="t_wk_start")
+            t_day_end   = st.time_input("Fin (L–V)",   value=_wk_end_def,   key="t_wk_end")
+            st.markdown("**Fin de semana** (S – D)")
+            _we_start_def = getattr(t, "weekend_start_time", None) or _dt_mod.time(10, 0)
+            _we_end_def   = getattr(t, "weekend_end_time",   None) or _dt_mod.time(22, 0)
+            t_weekend_start = st.time_input("Inicio (S–D)", value=_we_start_def, key="t_we_start")
+            t_weekend_end   = st.time_input("Fin (S–D)",   value=_we_end_def,   key="t_we_end")
+        else:
+            t_day_start     = st.time_input("Hora de inicio del día", value=t.day_start_time if t else _dt_mod.time(9, 0))
+            t_day_end       = st.time_input("Hora de fin del día",    value=t.day_end_time   if t else _dt_mod.time(22, 0))
+            t_weekend_start = None
+            t_weekend_end   = None
     if t_day_end <= t_day_start:
         st.info(
-            "🌙 Sesión nocturna detectada: la hora de fin se interpretará como madrugada del día siguiente "
-            f"({t_day_start.strftime('%H:%M')} → {t_day_end.strftime('%H:%M')})."
+            "🌙 Sesión nocturna detectada: la hora de fin entre semana se interpretará "
+            f"como madrugada del día siguiente ({t_day_start.strftime('%H:%M')} → {t_day_end.strftime('%H:%M')})."
         )
 
     # Valores por defecto (la estructura real se decide en «Generar estructura»)
@@ -5884,6 +5905,7 @@ elif page == "t_config":
                 final_duration_minutes=t_final_dur,
                 rest_between_matches_min=t_rest,
                 day_start_time=t_day_start, day_end_time=t_day_end,
+                weekend_start_time=t_weekend_start, weekend_end_time=t_weekend_end,
                 group_size=t_group_size, bracket_size=t_bracket_size,
                 third_place_match=t_third_place, groups_qualifiers=t_qualifiers,
                 groups=[], matches=[],
