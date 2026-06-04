@@ -5576,16 +5576,13 @@ elif page == "t_config":
         ("mixto",     "🤝 Mixto",     TournamentCategory.MIXTO),
     ]
 
-    # ── Estado de casillas gestionado en diccionario PROPIO (no widget-owned) ──
-    # Usar key= en st.checkbox hace que Streamlit "posea" esa clave y lance
-    # StreamlitAPIException si intentamos modificarla externamente (ej. "Todos").
-    # Solución: guardamos el estado en "_divchk" (dict nuestro) y renderizamos
-    # los checkboxes con value= sin key=. El clic del usuario actualiza el dict
-    # inmediatamente en el mismo render.
+    # ── Rejilla de categorías con checkboxes ─────────────────────────────────
+    # Patrón correcto para "Todos/Ninguno" en Streamlit:
+    # - Los checkboxes usan key= único → Streamlit los gestiona normalmente.
+    # - Los botones usan on_click= callback. Los callbacks se ejecutan ANTES
+    #   de que el script renderice widgets, por lo que escribir session_state
+    #   de un widget en un callback es seguro (no lanza StreamlitAPIException).
     _chk_init_id = f"_t_chk_init::{_div_source_id}"
-    if "_divchk" not in st.session_state:
-        st.session_state["_divchk"] = {}
-    _divchk: dict = st.session_state["_divchk"]
 
     # Inicializar desde el torneo cargado (solo la primera vez o al cambiar torneo)
     if st.session_state.get(_chk_init_id) != _div_source_id:
@@ -5593,8 +5590,16 @@ elif page == "t_config":
         for _cval, _clabel, _ccat in _cat_rows:
             for _sub in _t_subs:
                 _k = f"{_ccat.value}:{_sub.value}"
-                _divchk[_k] = (_k in _cur_set0)
+                st.session_state[f"divchk_{_k}"] = (_k in _cur_set0)
         st.session_state[_chk_init_id] = _div_source_id
+
+    def _cb_todos(row_keys):
+        for _k in row_keys:
+            st.session_state[f"divchk_{_k}"] = True
+
+    def _cb_ninguno(row_keys):
+        for _k in row_keys:
+            st.session_state[f"divchk_{_k}"] = False
 
     _n_subs = len(_t_subs)
     for _cval, _clabel, _ccat in _cat_rows:
@@ -5605,28 +5610,24 @@ elif page == "t_config":
         for _li, _sub in enumerate(_t_subs):
             _k = f"{_ccat.value}:{_sub.value}"
             with _cols[1 + _li]:
-                # Sin key= → Streamlit no posee esta clave en session_state.
-                # El valor viene de _divchk (dict nuestro) y lo actualizamos
-                # con el retorno del widget en cada render.
-                _checked = st.checkbox(
-                    _sub.label,
-                    value=bool(_divchk.get(_k, False)),
-                )
-                _divchk[_k] = _checked
+                st.checkbox(_sub.label, key=f"divchk_{_k}")
         with _cols[1 + _n_subs]:
-            if st.button("✓ Todos", key=f"rowall_{_cval}", use_container_width=True):
-                for _k in _row_keys:
-                    _divchk[_k] = True   # solo nuestro dict, sin tocar widget keys
+            st.button("✓ Todos", key=f"rowall_{_cval}",
+                      on_click=_cb_todos, args=(_row_keys,),
+                      use_container_width=True)
         with _cols[2 + _n_subs]:
-            if st.button("✗ Ninguno", key=f"rownone_{_cval}", use_container_width=True):
-                for _k in _row_keys:
-                    _divchk[_k] = False
+            st.button("✗ Ninguno", key=f"rownone_{_cval}",
+                      on_click=_cb_ninguno, args=(_row_keys,),
+                      use_container_width=True)
 
-    # La selección final = todas las casillas marcadas en _divchk
+    # La selección final = todas las casillas marcadas
     t_divisions = [
-        _k for _k in _divchk
-        if _divchk[_k] and _k in _div_key_set
+        f"{_ccat.value}:{_sub.value}"
+        for _cval, _clabel, _ccat in _cat_rows
+        for _sub in _t_subs
+        if st.session_state.get(f"divchk_{_ccat.value}:{_sub.value}")
     ]
+    t_divisions = [k for k in t_divisions if k in _div_key_set]
     st.session_state["t_config_divisions"] = t_divisions
 
     if t_divisions:
