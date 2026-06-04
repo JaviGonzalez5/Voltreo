@@ -5787,6 +5787,7 @@ elif page == "t_config":
             for i in range(_tc_days_hrs)
         )
         if _has_weekend:
+            st.caption("⏰ Estos horarios determinan qué horas pueden seleccionar los jugadores en el formulario de disponibilidad.")
             st.markdown("**Entre semana** (L – V)")
             _wk_start_def = t.day_start_time if t else _dt_mod.time(16, 0)
             _wk_end_def   = t.day_end_time   if t else _dt_mod.time(22, 0)
@@ -5798,6 +5799,7 @@ elif page == "t_config":
             t_weekend_start = st.time_input("Inicio (S–D)", value=_we_start_def, key="t_we_start")
             t_weekend_end   = st.time_input("Fin (S–D)",   value=_we_end_def,   key="t_we_end")
         else:
+            st.caption("⏰ Estos horarios determinan qué horas pueden seleccionar los jugadores en el formulario de disponibilidad.")
             t_day_start     = st.time_input("Hora de inicio del día", value=t.day_start_time if t else _dt_mod.time(9, 0))
             t_day_end       = st.time_input("Hora de fin del día",    value=t.day_end_time   if t else _dt_mod.time(22, 0))
             t_weekend_start = None

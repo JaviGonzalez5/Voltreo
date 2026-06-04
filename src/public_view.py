@@ -654,10 +654,24 @@ def render_public_registration(tournament_id: str) -> None:
 
                 # Leer la configuración horaria del torneo
                 from datetime import time as _time_cls
-                _wk_start = t.day_start_time   if hasattr(t, "day_start_time")   else _time_cls(9, 0)
-                _wk_end   = t.day_end_time     if hasattr(t, "day_end_time")     else _time_cls(22, 0)
-                _we_start = getattr(t, "weekend_start_time", None) or _wk_start
-                _we_end   = getattr(t, "weekend_end_time",   None) or _wk_end
+                def _as_time(val, default):
+                    if isinstance(val, _time_cls):
+                        return val
+                    return default
+
+                _wk_start_raw = _as_time(getattr(t, "day_start_time",  None), _time_cls(9, 0))
+                _wk_end_raw   = _as_time(getattr(t, "day_end_time",    None), _time_cls(22, 0))
+                _we_start_raw = _as_time(getattr(t, "weekend_start_time", None), None)
+                _we_end_raw   = _as_time(getattr(t, "weekend_end_time",   None), None)
+
+                # Si el horario guardado es el valor por defecto antiguo (< 08:00),
+                # significa que el torneo no tiene horario configurado todavía.
+                # Usar 09:00 como fallback neutro para no confundir.
+                _wk_start = _wk_start_raw if _wk_start_raw.hour >= 8 else _time_cls(9, 0)
+                _wk_end   = _wk_end_raw
+                _we_start = (_we_start_raw if (_we_start_raw and _we_start_raw.hour >= 8)
+                             else _wk_start)
+                _we_end   = _we_end_raw or _wk_end
 
                 def _time_options(start: "_time_cls", end: "_time_cls") -> list[str]:
                     """Opciones cada 30 min entre start y end (inclusive)."""
