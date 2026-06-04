@@ -235,6 +235,30 @@ div[data-testid="stFormSubmitButton"] > button {{
 }}
 hr {{ border-color: #f0f0f0 !important; margin: .8rem 0 !important; }}
 
+/* ── Botón "Inscribirse" dentro de cada card de categoría ── */
+div[data-testid="stButton"] > button.pv-cat-btn {{
+    background: linear-gradient(135deg, #00c853, #00897b) !important;
+    color: #fff !important; border: none !important;
+    border-radius: 30px !important; font-weight: 700 !important;
+    font-size: .88rem !important; padding: .45rem 1.2rem !important;
+    box-shadow: 0 3px 10px rgba(0,200,83,.3) !important;
+    width: 100% !important;
+}}
+/* Botón "← Volver" */
+div[data-testid="stButton"] > button.pv-back-btn {{
+    background: #f3f4f6 !important; color: #374151 !important;
+    border: 1.5px solid #e5e7eb !important; border-radius: 30px !important;
+    font-weight: 600 !important; font-size: .88rem !important;
+}}
+/* Aplicar estilo verde a TODOS los st.button dentro del grid de categorías */
+.pv-cat-col div[data-testid="stButton"] > button {{
+    background: linear-gradient(135deg, #00c853, #00897b) !important;
+    color: #fff !important; border: none !important;
+    border-radius: 30px !important; font-weight: 700 !important;
+    box-shadow: 0 3px 10px rgba(0,200,83,.3) !important;
+    width: 100% !important;
+}}
+
 /* ── Disponibilidad day header ── */
 .pv-day-header {{
     background: #f0fdf4; border-left: 4px solid #00c853;
@@ -401,14 +425,14 @@ def render_public_tournament(tournament_id: str) -> None:
 
 def render_public_registration(tournament_id: str) -> None:
     """
-    Página pública de inscripción en un torneo.
-    Accesible vía ?join=<tournament_id> sin login.
+    Página pública de inscripción — flujo en 2 pasos:
+      Paso 1: info del torneo + grid de categorías
+      Paso 2: formulario para la categoría elegida
     """
     from datetime import datetime as _dtt
     from .tournament_models import TournamentRegistration, RegistrationStatus
 
     st.markdown(_PUBLIC_CSS, unsafe_allow_html=True)
-    st.markdown(_topbar("Inscripción en torneo"), unsafe_allow_html=True)
 
     if not is_db_configured():
         st.error("Servicio no disponible.")
@@ -420,6 +444,7 @@ def render_public_registration(tournament_id: str) -> None:
         row = None
 
     if not row:
+        st.markdown(_topbar("Inscripción en torneo"), unsafe_allow_html=True)
         st.markdown(
             '<div class="pv-hero"><h1>Torneo no encontrado</h1>'
             '<div style="color:rgba(255,255,255,.8);margin-top:.5rem">'
@@ -435,33 +460,8 @@ def render_public_registration(tournament_id: str) -> None:
         st.error("No se pudo cargar el torneo.")
         st.stop()
 
-    # ── Hero ─────────────────────────────────────────────────────────────────
-    _dates = t.start_date.strftime("%d/%m/%Y")
-    if t.end_date and t.end_date != t.start_date:
-        _dates += f" – {t.end_date.strftime('%d/%m/%Y')}"
-    _chips = [f"📅 {_dates}"]
-    if getattr(t, "location", ""):
-        _chips.append(f"📍 {escape(t.location)}")
-    _chips_html = "".join(f'<span class="pv-chip">{c}</span>' for c in _chips)
-    st.markdown(
-        f'<div class="pv-hero">'
-        f'<h1>🎾 {escape(t.name)}</h1>'
-        f'<div class="pv-hero-chips">{_chips_html}</div>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-
-    # ── Inscripciones cerradas ────────────────────────────────────────────────
-    if not t.is_registration_active():
-        st.markdown(
-            '<div class="pv-badge-closed">🔒 Inscripciones cerradas</div>',
-            unsafe_allow_html=True,
-        )
-        st.info("El club aún no ha abierto el registro para este torneo. Contacta con los organizadores.")
-        st.stop()
-
-    # ── Datos de categorías ───────────────────────────────────────────────────
-    _div_keys = list(getattr(t, "divisions", []) or [])
+    # ── Labels de categorías ──────────────────────────────────────────────────
+    _div_keys  = list(getattr(t, "divisions", []) or [])
     _div_labels: dict = {}
     try:
         from .tournament_models import TournamentCategory, TournamentSubcategory
@@ -472,81 +472,135 @@ def render_public_registration(tournament_id: str) -> None:
             _div_labels[k] = " ".join([p for p in [c.label if c else "", s.label if s else ""] if p]) or k
     except Exception:
         pass
-
     _max_pairs = getattr(t, "registration_max_pairs", {}) or {}
 
-    # ── Categorías en cards ───────────────────────────────────────────────────
-    if _div_keys:
-        st.markdown('<div class="pv-section-title">Categorías</div>', unsafe_allow_html=True)
-        cards_html = '<div class="pv-cat-grid">'
-        for dk in _div_keys:
-            mx  = _max_pairs.get(dk, 0)
-            cnt = t.confirmed_count(dk)
-            lbl = _div_labels.get(dk, dk)
-            full = bool(mx and cnt >= mx)
-            count_txt = f"{cnt}/{mx} inscritas" if mx else f"{cnt} inscritas"
-            if full:
-                cards_html += (
-                    f'<div class="pv-cat-card">'
-                    f'<div class="pv-cat-name">{escape(lbl)}</div>'
-                    f'<div class="pv-cat-full">🔴 Completo · {count_txt}</div>'
-                    f'<span class="pv-btn-full">Sin plazas</span>'
-                    f'</div>'
-                )
-            else:
-                cards_html += (
-                    f'<div class="pv-cat-card">'
-                    f'<div class="pv-cat-name">{escape(lbl)}</div>'
-                    f'<div class="pv-cat-count">👥 {count_txt}</div>'
-                    f'<span class="pv-btn">Inscribirse</span>'
-                    f'</div>'
-                )
-        cards_html += '</div>'
-        st.markdown(cards_html, unsafe_allow_html=True)
+    # ── Hero (común a ambos pasos) ────────────────────────────────────────────
+    _dates = t.start_date.strftime("%d/%m/%Y")
+    if t.end_date and t.end_date != t.start_date:
+        _dates += f" – {t.end_date.strftime('%d/%m/%Y')}"
+    _chips = [f"📅 {_dates}"]
+    if getattr(t, "location", ""):
+        _chips.append(f"📍 {escape(t.location)}")
+    _chips_html = "".join(f'<span class="pv-chip">{c}</span>' for c in _chips)
+
+    # ── Estado de navegación: categoría seleccionada ──────────────────────────
+    _sel_key = f"_reg_cat_{tournament_id}"
+    _selected_cat: str | None = st.session_state.get(_sel_key)
+
+    # ════════════════════════════════════════════════════════════════════════
+    # PASO 1 — Presentación del torneo + grid de categorías
+    # ════════════════════════════════════════════════════════════════════════
+    if _selected_cat is None:
+        st.markdown(_topbar("Inscripción en torneo"), unsafe_allow_html=True)
         st.markdown(
-            '<div class="pv-badge-open">✅ Inscripciones abiertas — rellena el formulario</div>',
-            unsafe_allow_html=True,
-        )
-    else:
-        _cnt = t.confirmed_count()
-        st.markdown(
-            f'<div class="pv-badge-open">✅ Inscripciones abiertas · {_cnt} parejas inscritas</div>',
+            f'<div class="pv-hero"><h1>🎾 {escape(t.name)}</h1>'
+            f'<div class="pv-hero-chips">{_chips_html}</div></div>',
             unsafe_allow_html=True,
         )
 
-    # ── Ya inscrito ───────────────────────────────────────────────────────────
-    if st.session_state.get(f"_reg_done_{tournament_id}"):
-        st.success("✅ ¡Inscripción enviada correctamente! El club revisará tu solicitud y te confirmará.")
-        st.caption("Puedes cerrar esta ventana o compartirla con tu pareja.")
-        st.stop()
+        if not t.is_registration_active():
+            st.markdown('<div class="pv-badge-closed">🔒 Inscripciones cerradas</div>',
+                        unsafe_allow_html=True)
+            st.info("El club aún no ha abierto el registro. Contacta con los organizadores.")
+            st.stop()
 
-    # ── Formulario ───────────────────────────────────────────────────────────
-    st.markdown('<div class="pv-section-title">Formulario de inscripción</div>', unsafe_allow_html=True)
-
-    with st.form("public_registration_form"):
-
-        # — Nombre de pareja + categoría —
-        st.markdown('<div class="pv-form-title">Datos de la pareja</div>', unsafe_allow_html=True)
-        pair_name = st.text_input("Nombre de la pareja", placeholder="García / López")
+        st.markdown('<div class="pv-badge-open">✅ Inscripciones abiertas</div>',
+                    unsafe_allow_html=True)
 
         if _div_keys:
-            def _div_opt_label(k):
-                mx  = _max_pairs.get(k, 0)
-                cnt = t.confirmed_count(k)
-                lbl = _div_labels.get(k, k)
-                if mx and cnt >= mx:
-                    return f"{lbl} — COMPLETO ({cnt}/{mx})"
-                return f"{lbl} ({cnt}/{mx} plazas)" if mx else lbl
-
-            div_opts = ["— Elige tu categoría —"] + [_div_opt_label(k) for k in _div_keys]
-            div_sel_display = st.selectbox("Categoría", options=div_opts)
-            div_sel_key = next((k for k in _div_keys if _div_opt_label(k) == div_sel_display), None)
+            st.markdown('<div class="pv-section-title">Categorías — elige la tuya</div>',
+                        unsafe_allow_html=True)
+            # Grid de cards: 4 columnas en escritorio, 2 en móvil via CSS
+            _cols_per_row = 4
+            for _row_start in range(0, len(_div_keys), _cols_per_row):
+                _row_keys = _div_keys[_row_start: _row_start + _cols_per_row]
+                _rcols = st.columns(len(_row_keys))
+                for _ci, _dk in enumerate(_row_keys):
+                    _mx   = _max_pairs.get(_dk, 0)
+                    _cnt  = t.confirmed_count(_dk)
+                    _lbl  = _div_labels.get(_dk, _dk)
+                    _full = bool(_mx and _cnt >= _mx)
+                    _count_txt = f"{_cnt}/{_mx}" if _mx else str(_cnt)
+                    with _rcols[_ci]:
+                        st.markdown(
+                            f'<div class="pv-cat-card" style="min-height:110px">'
+                            f'<div class="pv-cat-name">{escape(_lbl)}</div>'
+                            f'<div class="{"pv-cat-full" if _full else "pv-cat-count"}">'
+                            f'{"🔴 Completo" if _full else "👥"} {_count_txt} inscritas</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+                        if not _full:
+                            if st.button("Inscribirse", key=f"sel_cat_{_dk}",
+                                         use_container_width=True):
+                                st.session_state[_sel_key] = _dk
+                                st.rerun()
+                        else:
+                            st.button("Sin plazas", key=f"sel_cat_{_dk}",
+                                      disabled=True, use_container_width=True)
         else:
-            div_sel_key = None
+            # Sin categorías: ir directo al formulario sin selección
+            st.session_state[_sel_key] = ""
+            st.rerun()
+
+        st.markdown(
+            f'<div class="pv-foot">Organizado con '
+            f'<a href="https://{BRAND_NAME.lower()}.streamlit.app">{escape(BRAND_NAME)}</a></div>',
+            unsafe_allow_html=True,
+        )
+        st.stop()
+
+    # ════════════════════════════════════════════════════════════════════════
+    # PASO 2 — Formulario de inscripción para la categoría elegida
+    # ════════════════════════════════════════════════════════════════════════
+    _cat_label = _div_labels.get(_selected_cat, "") if _selected_cat else ""
+    _back_sub  = f"← {escape(_cat_label)}" if _cat_label else "← Volver"
+    st.markdown(_topbar(_back_sub), unsafe_allow_html=True)
+
+    # Botón volver
+    if st.button("← Volver a categorías", key="reg_back"):
+        st.session_state.pop(_sel_key, None)
+        st.rerun()
+
+    # Hero compacto
+    st.markdown(
+        f'<div class="pv-hero" style="padding:1.3rem 1.8rem 1.1rem">'
+        f'<h1 style="font-size:1.4rem">🎾 {escape(t.name)}</h1>'
+        f'<div class="pv-hero-chips">{_chips_html}'
+        + (f'<span class="pv-chip" style="background:rgba(255,255,255,.35);font-size:.9rem">'
+           f'🏷 {escape(_cat_label)}</span>' if _cat_label else "")
+        + f'</div></div>',
+        unsafe_allow_html=True,
+    )
+
+    if not t.is_registration_active():
+        st.markdown('<div class="pv-badge-closed">🔒 Inscripciones cerradas</div>',
+                    unsafe_allow_html=True)
+        st.stop()
+
+    if st.session_state.get(f"_reg_done_{tournament_id}"):
+        st.success("✅ ¡Inscripción enviada! El club revisará tu solicitud y te confirmará.")
+        st.caption("Puedes cerrar esta ventana o volver para inscribir otra pareja.")
+        if st.button("← Inscribir otra pareja", key="reg_another"):
+            st.session_state.pop(_sel_key, None)
+            st.session_state.pop(f"_reg_done_{tournament_id}", None)
+            st.rerun()
+        st.stop()
+
+    st.markdown('<div class="pv-section-title">Formulario de inscripción</div>',
+                unsafe_allow_html=True)
+
+    with st.form("public_registration_form"):
+        st.markdown('<div class="pv-form-title">Datos de la pareja</div>',
+                    unsafe_allow_html=True)
+        pair_name = st.text_input("Nombre de la pareja", placeholder="García / López")
+
+        # Categoría ya fijada — solo mostrar si hay varias o ninguna
+        div_sel_key = _selected_cat if _selected_cat else None
+        if _cat_label:
+            st.caption(f"🏷 Categoría: **{_cat_label}**")
 
         st.divider()
-
-        # — Jugadores —
         st.markdown('<div class="pv-form-title">Jugador 1</div>', unsafe_allow_html=True)
         p1_name = st.text_input("Nombre completo", key="p1n", placeholder="Carlos García")
         _p1c1, _p1c2 = st.columns(2)
@@ -554,7 +608,6 @@ def render_public_registration(tournament_id: str) -> None:
         with _p1c2: p1_email = st.text_input("Email (opcional)", key="p1em", placeholder="carlos@email.com")
 
         st.divider()
-
         st.markdown('<div class="pv-form-title">Jugador 2</div>', unsafe_allow_html=True)
         p2_name = st.text_input("Nombre completo", key="p2n", placeholder="Marta López")
         _p2c1, _p2c2 = st.columns(2)
@@ -565,7 +618,7 @@ def render_public_registration(tournament_id: str) -> None:
         notes = st.text_area("Nota para el organizador (opcional)",
                              placeholder="Cualquier información adicional…", height=70)
 
-        # ── Disponibilidad (si el admin la activó) ──────────────────────────
+        # ── Disponibilidad ────────────────────────────────────────────────
         _ask_avail = getattr(t, "registration_ask_availability", False)
         unavailable_selected: list[str] = []
         availability_windows: dict      = {}
@@ -582,9 +635,8 @@ def render_public_registration(tournament_id: str) -> None:
                 st.divider()
                 st.markdown('<div class="pv-form-title">¿Cuándo puedes jugar?</div>',
                             unsafe_allow_html=True)
-                st.caption("Indica tu disponibilidad por día. Si puedes todo el día, deja los valores por defecto.")
+                st.caption("Indica tu disponibilidad por día. Si puedes todo el día, no hace falta cambiar nada.")
 
-                # Días únicos de la semana presentes en el rango del torneo
                 _seen_wdays: list[int] = []
                 for _dd in _days_range:
                     if _dd.weekday() not in _seen_wdays:
@@ -596,22 +648,14 @@ def render_public_registration(tournament_id: str) -> None:
                 _day_names_full = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"]
 
                 for _wday in _seen_wdays:
-                    _wkey = str(_wday)
+                    _wkey  = str(_wday)
                     _dname = _day_names_full[_wday]
-
-                    # Cabecera del día — div con fondo verde claro y borde izquierdo
-                    st.markdown(
-                        f'<div class="pv-day-header">📅 {_dname}</div>',
-                        unsafe_allow_html=True,
-                    )
-
+                    st.markdown(f'<div class="pv-day-header">📅 {_dname}</div>',
+                                unsafe_allow_html=True)
                     _can_play = st.selectbox(
-                        "Disponibilidad",
-                        ["✅ Puedo jugar", "❌ No puedo jugar"],
-                        key=f"avail_st_{_wkey}",
-                        label_visibility="collapsed",
+                        "Disponibilidad", ["✅ Puedo jugar", "❌ No puedo jugar"],
+                        key=f"avail_st_{_wkey}", label_visibility="collapsed",
                     )
-
                     if _can_play == "❌ No puedo jugar":
                         for _dd2 in _days_range:
                             if _dd2.weekday() == _wday:
@@ -632,44 +676,42 @@ def render_public_registration(tournament_id: str) -> None:
         submitted = st.form_submit_button("📩 Enviar inscripción", type="primary",
                                           use_container_width=True)
 
-    # ── Validación y guardado ─────────────────────────────────────────────────
     if submitted:
         errors = []
-        if not pair_name.strip():        errors.append("Rellena el nombre de la pareja.")
-        if not p1_name.strip():          errors.append("Rellena el nombre del Jugador 1.")
-        if not p2_name.strip():          errors.append("Rellena el nombre del Jugador 2.")
-        if _div_keys and not div_sel_key: errors.append("Selecciona una categoría.")
+        if not pair_name.strip():  errors.append("Rellena el nombre de la pareja.")
+        if not p1_name.strip():    errors.append("Rellena el nombre del Jugador 1.")
+        if not p2_name.strip():    errors.append("Rellena el nombre del Jugador 2.")
         if div_sel_key and t.is_division_full(div_sel_key):
-            errors.append("La categoría seleccionada ya está completa. Elige otra o contacta con el organizador.")
+            errors.append("Esta categoría ya está completa. Vuelve y elige otra.")
         for e in errors:
             st.error(e)
         if not errors:
             reg = TournamentRegistration(
-                pair_name         = pair_name.strip(),
-                player1_name      = p1_name.strip(),
-                player1_phone     = p1_phone.strip() or None,
-                player1_email     = p1_email.strip() or None,
-                player2_name      = p2_name.strip(),
-                player2_phone     = p2_phone.strip() or None,
-                player2_email     = p2_email.strip() or None,
-                division          = div_sel_key,
-                notes             = notes.strip(),
-                unavailable_dates = unavailable_selected,
+                pair_name            = pair_name.strip(),
+                player1_name         = p1_name.strip(),
+                player1_phone        = p1_phone.strip() or None,
+                player1_email        = p1_email.strip() or None,
+                player2_name         = p2_name.strip(),
+                player2_phone        = p2_phone.strip() or None,
+                player2_email        = p2_email.strip() or None,
+                division             = div_sel_key or None,
+                notes                = notes.strip(),
+                unavailable_dates    = unavailable_selected,
                 availability_windows = availability_windows,
-                status            = RegistrationStatus.PENDING,
-                submitted_at      = _dtt.utcnow().isoformat(),
+                status               = RegistrationStatus.PENDING,
+                submitted_at         = _dtt.utcnow().isoformat(),
             )
             try:
                 t.registrations.append(reg)
                 from .db_converters import tournament_to_db as _ttdb
                 payload = _ttdb(t, row.get("club_id", ""), t.id)
                 get_db().upsert_tournament(
-                    club_id        = row.get("club_id", ""),
-                    name           = payload["name"],
-                    start_date     = payload["start_date"],
-                    end_date       = payload["end_date"],
-                    tournament_data= payload["tournament_data"],
-                    tournament_id  = t.id,
+                    club_id         = row.get("club_id", ""),
+                    name            = payload["name"],
+                    start_date      = payload["start_date"],
+                    end_date        = payload["end_date"],
+                    tournament_data = payload["tournament_data"],
+                    tournament_id   = t.id,
                 )
                 st.session_state[f"_reg_done_{tournament_id}"] = True
                 st.rerun()
@@ -677,8 +719,8 @@ def render_public_registration(tournament_id: str) -> None:
                 st.error(f"Error al guardar la inscripción: {_e}")
 
     st.markdown(
-        f'<div class="pv-foot">Organizado con <a href="https://{BRAND_NAME.lower()}.streamlit.app">'
-        f'{escape(BRAND_NAME)}</a></div>',
+        f'<div class="pv-foot">Organizado con '
+        f'<a href="https://{BRAND_NAME.lower()}.streamlit.app">{escape(BRAND_NAME)}</a></div>',
         unsafe_allow_html=True,
     )
     st.stop()
