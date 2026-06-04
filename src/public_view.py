@@ -404,14 +404,13 @@ def render_public_registration(tournament_id: str) -> None:
                     _wkey = str(_wday)   # clave del día: "0"=lunes … "6"=domingo
                     _dname = _day_names_full[_wday]
                     # Nombre del día a ancho completo (visible en móvil)
-                    st.markdown(f"**{_dname}**")
                     _sc1, _sc2, _sc3 = st.columns([1, 1, 1])
                     with _sc1:
+                        # El label del selectbox es el nombre del día → siempre visible
                         _can_play = st.selectbox(
-                            "Estado",
+                            _dname,
                             ["✅ Puedo", "❌ No puedo"],
                             key=f"avail_st_{_wkey}",
-                            label_visibility="collapsed",
                         )
                     if _can_play == "❌ No puedo":
                         # Marcar como no disponible todos los días de esa semana
@@ -423,13 +422,11 @@ def render_public_registration(tournament_id: str) -> None:
                             _from = st.selectbox(
                                 "Desde", _time_opts, index=_idx_9,
                                 key=f"avail_from_{_wkey}",
-                                label_visibility="collapsed",
                             )
                         with _sc3:
                             _to = st.selectbox(
                                 "Hasta", _time_opts, index=_idx_22,
                                 key=f"avail_to_{_wkey}",
-                                label_visibility="collapsed",
                             )
                         if _from != "07:00" or _to != "23:30":
                             for _dd2 in _days_range:
