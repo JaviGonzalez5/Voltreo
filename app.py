@@ -5672,27 +5672,59 @@ elif page == "t_config":
     st.divider()
     _section_start("🏟️", "Pistas del torneo")
     if "t_courts_list" not in st.session_state:
-        st.session_state["t_courts_list"] = [{"name": c.name} for c in t.courts] if t else [{"name": "Pista 1"}, {"name": "Pista 2"}]
+        st.session_state["t_courts_list"] = [{"name": c.name} for c in t.courts] if t else []
 
-    c_add, c_remove = st.columns([3, 1])
-    with c_add:
-        new_court_name = st.text_input("Nombre de la nueva pista", key="new_t_court_name", placeholder="Pista 3")
-    with c_remove:
+    # ── Generador rápido: elige cuántas pistas y con qué prefijo ─────────────
+    _gcc1, _gcc2, _gcc3 = st.columns([1, 2, 1])
+    with _gcc1:
+        _n_courts_gen = st.number_input("Número de pistas", min_value=1, max_value=20,
+                                        value=max(len(st.session_state["t_courts_list"]), 2),
+                                        step=1, key="t_courts_n")
+    with _gcc2:
+        _prefix_gen = st.selectbox(
+            "Nombre", key="t_courts_prefix",
+            options=["Pista", "Padel", "Pádel", "Court", "Cancha", "Pista interior", "Personalizado…"],
+        )
+        if _prefix_gen == "Personalizado…":
+            _prefix_gen = st.text_input("Prefijo personalizado", placeholder="Ej: Campo",
+                                        key="t_courts_custom_prefix") or "Pista"
+    with _gcc3:
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("➕ Añadir pista") and new_court_name.strip():
-            st.session_state["t_courts_list"].append({"name": new_court_name.strip()})
+        if st.button("✅ Aplicar", type="primary", use_container_width=True, key="t_courts_apply"):
+            st.session_state["t_courts_list"] = [
+                {"name": f"{_prefix_gen} {i}"} for i in range(1, int(_n_courts_gen) + 1)
+            ]
             st.rerun()
 
+    st.caption("Pulsa **✅ Aplicar** para generar las pistas automáticamente. Luego puedes renombrar o eliminar las que quieras.")
+
+    # ── Lista editable de pistas generadas ───────────────────────────────────
     _tc_list = st.session_state["t_courts_list"]
     if _tc_list:
-        _court_cols = st.columns(min(len(_tc_list), 4))
+        _tc_cols = st.columns(min(len(_tc_list), 4))
         for _ci, _ct in enumerate(_tc_list):
-            with _court_cols[_ci % 4]:
-                if st.button(f"🗑️ {_ct['name']}", key=f"del_court_{_ci}", help="Eliminar esta pista"):
+            with _tc_cols[_ci % 4]:
+                _new_name = st.text_input(
+                    f"Pista {_ci + 1}", value=_ct["name"],
+                    key=f"t_court_name_{_ci}",
+                    label_visibility="collapsed",
+                )
+                if _new_name != _ct["name"]:
+                    st.session_state["t_courts_list"][_ci]["name"] = _new_name
+                if st.button("🗑️", key=f"del_court_{_ci}", help="Eliminar esta pista",
+                             use_container_width=True):
                     st.session_state["t_courts_list"].pop(_ci)
                     st.rerun()
     else:
-        st.warning("⚠️ Añade al menos una pista.")
+        st.warning("⚠️ Pulsa **✅ Aplicar** para generar las pistas.")
+
+    # ── Añadir pista extra manualmente ───────────────────────────────────────
+    with st.expander("➕ Añadir pista extra manualmente", expanded=False):
+        _extra_name = st.text_input("Nombre", placeholder="Ej: Pista interior 1",
+                                    key="t_court_extra_name")
+        if st.button("Añadir", key="t_court_extra_add") and _extra_name.strip():
+            st.session_state["t_courts_list"].append({"name": _extra_name.strip()})
+            st.rerun()
 
     st.divider()
     _section_start("⏱️", "Parámetros de tiempo")
