@@ -487,6 +487,12 @@ def render_public_registration(tournament_id: str) -> None:
     _sel_key = f"_reg_cat_{tournament_id}"
     _selected_cat: str | None = st.session_state.get(_sel_key)
 
+    # Parejas confirmadas por categoría (disponible en ambos pasos)
+    _pairs_by_cat: dict = {}
+    for _pp in getattr(t, "pairs", []) or []:
+        _pk = getattr(_pp, "division", None) or "_"
+        _pairs_by_cat.setdefault(_pk, []).append(_pp)
+
     # ════════════════════════════════════════════════════════════════════════
     # PASO 1 — Presentación del torneo + grid de categorías
     # ════════════════════════════════════════════════════════════════════════
@@ -506,12 +512,6 @@ def render_public_registration(tournament_id: str) -> None:
 
         st.markdown('<div class="pv-badge-open">✅ Inscripciones abiertas</div>',
                     unsafe_allow_html=True)
-
-        # Pre-calcular parejas confirmadas por categoría
-        _pairs_by_cat: dict = {}
-        for _pp in getattr(t, "pairs", []) or []:
-            _pk = getattr(_pp, "division", None) or "_"
-            _pairs_by_cat.setdefault(_pk, []).append(_pp)
 
         if _div_keys:
             st.markdown('<div class="pv-section-title">Categorías — elige la tuya</div>',
@@ -535,26 +535,11 @@ def render_public_registration(tournament_id: str) -> None:
                             f'</div>',
                             unsafe_allow_html=True,
                         )
-                        if not _full:
-                            if st.button("Inscribirse", key=f"sel_cat_{_dk}",
-                                         use_container_width=True):
-                                st.session_state[_sel_key] = _dk
-                                st.rerun()
-                        else:
-                            st.button("Sin plazas", key=f"sel_cat_{_dk}",
-                                      disabled=True, use_container_width=True)
-
-                        # Parejas ya inscritas en esta categoría
-                        _cat_pairs = _pairs_by_cat.get(_dk, [])
-                        if _cat_pairs:
-                            with st.expander(f"Ver inscritas ({len(_cat_pairs)})", expanded=False):
-                                for _i, _cp in enumerate(_cat_pairs, 1):
-                                    st.markdown(
-                                        f'<div style="font-size:.82rem;padding:.25rem 0;'
-                                        f'border-bottom:1px solid #f0f0f0;color:#374151">'
-                                        f'<b>{_i}.</b> {escape(_cp.name or "—")}</div>',
-                                        unsafe_allow_html=True,
-                                    )
+                        # Siempre mostrar "Acceder" (completo o no)
+                        if st.button("Acceder", key=f"sel_cat_{_dk}",
+                                     use_container_width=True):
+                            st.session_state[_sel_key] = _dk
+                            st.rerun()
         else:
             # Sin categorías: ir directo al formulario sin selección
             st.session_state[_sel_key] = ""
@@ -604,13 +589,51 @@ def render_public_registration(tournament_id: str) -> None:
             st.rerun()
         st.stop()
 
-    st.markdown('<div class="pv-section-title">Formulario de inscripción</div>',
-                unsafe_allow_html=True)
+    # ── Dos pestañas: Inscribirse / Parejas Inscritas ─────────────────────────
+    _cat_pairs_step2 = _pairs_by_cat.get(_selected_cat or "_", []) if _selected_cat else []
+    _tab_form, _tab_list = st.tabs(["📝 Inscribirse", f"👥 Parejas Inscritas ({len(_cat_pairs_step2)})"])
 
-    with st.form("public_registration_form"):
+    with _tab_list:
+        if not _cat_pairs_step2:
+            st.info("Todavía no hay parejas inscritas en esta categoría. ¡Sé el primero!")
+        else:
+            st.markdown('<div class="pv-section-title">Parejas confirmadas</div>',
+                        unsafe_allow_html=True)
+            for _i, _cp in enumerate(_cat_pairs_step2, 1):
+                _p1 = getattr(_cp, "player_1", None)
+                _p2 = getattr(_cp, "player_2", None)
+                _p1_full = " ".join(filter(None, [
+                    getattr(_p1, "name", ""),
+                    getattr(_p1, "surname", ""),
+                ])) if _p1 else ""
+                _p2_full = " ".join(filter(None, [
+                    getattr(_p2, "name", ""),
+                    getattr(_p2, "surname", ""),
+                ])) if _p2 else ""
+                st.markdown(
+                    f'<div style="background:#fff;border:1px solid #e9ecef;border-radius:12px;'
+                    f'padding:.8rem 1.1rem;margin-bottom:.5rem">'
+                    f'<div style="font-weight:700;color:#111827;font-size:.95rem">'
+                    f'{_i}. {escape(_cp.name or "—")}</div>'
+                    f'<div style="color:#6b7280;font-size:.82rem;margin-top:.2rem">'
+                    f'👤 {escape(_p1_full or getattr(_p1,"name","") or "—")} &nbsp;·&nbsp; '
+                    f'👤 {escape(_p2_full or getattr(_p2,"name","") or "—")}'
+                    f'</div></div>',
+                    unsafe_allow_html=True,
+                )
 
-        # Categoría fijada
-        div_sel_key = _selected_cat if _selected_cat else None
+    with _tab_form:
+        if not t.is_registration_active():
+            st.markdown('<div class="pv-badge-closed">🔒 Inscripciones cerradas</div>',
+                        unsafe_allow_html=True)
+            st.stop()
+
+        st.markdown('<div class="pv-section-title">Formulario de inscripción</div>',
+                    unsafe_allow_html=True)
+
+        with st.form("public_registration_form"):
+            # Categoría fijada
+            div_sel_key = _selected_cat if _selected_cat else None
         if _cat_label:
             st.markdown(
                 f'<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;'
@@ -749,70 +772,71 @@ def render_public_registration(tournament_id: str) -> None:
                                 if _dd2.weekday() == _wday:
                                     availability_windows[_dd2.isoformat()] = {"from": _from, "to": _to}
 
-        submitted = st.form_submit_button("📩 Enviar inscripción", type="primary",
-                                          use_container_width=True)
+            submitted = st.form_submit_button("📩 Enviar inscripción", type="primary",
+                                              use_container_width=True)
 
-    if submitted:
-        errors = []
-        # Jugador 1 — todos obligatorios
-        if not p1_name.strip():     errors.append("Jugador 1: falta el nombre.")
-        if not p1_surname1.strip(): errors.append("Jugador 1: falta el primer apellido.")
-        if not p1_surname2.strip(): errors.append("Jugador 1: falta el segundo apellido.")
-        if not p1_phone.strip():    errors.append("Jugador 1: falta el teléfono.")
-        if not p1_email.strip():    errors.append("Jugador 1: falta el email.")
-        # Jugador 2 — todos obligatorios
-        if not p2_name.strip():     errors.append("Jugador 2: falta el nombre.")
-        if not p2_surname1.strip(): errors.append("Jugador 2: falta el primer apellido.")
-        if not p2_surname2.strip(): errors.append("Jugador 2: falta el segundo apellido.")
-        if not p2_phone.strip():    errors.append("Jugador 2: falta el teléfono.")
-        if not p2_email.strip():    errors.append("Jugador 2: falta el email.")
-        if div_sel_key and t.is_division_full(div_sel_key):
-            errors.append("Esta categoría ya está completa. Vuelve y elige otra.")
-        for e in errors:
-            st.error(e)
-        if not errors:
-            # Nombre de pareja generado automáticamente: "J. García – C. López"
-            def _short(name: str, surname: str) -> str:
-                n = name.strip(); s = surname.strip()
-                return f"{n[0].upper()}. {s.capitalize()}" if n and s else (s or n)
-            _auto_pair_name = (
-                f"{_short(p1_name, p1_surname1)} – {_short(p2_name, p2_surname1)}"
-            )
-            reg = TournamentRegistration(
-                pair_name            = _auto_pair_name,
-                player1_name         = p1_name.strip(),
-                player1_surname1     = p1_surname1.strip(),
-                player1_surname2     = p1_surname2.strip(),
-                player1_phone        = p1_phone.strip(),
-                player1_email        = p1_email.strip(),
-                player2_name         = p2_name.strip(),
-                player2_surname1     = p2_surname1.strip(),
-                player2_surname2     = p2_surname2.strip(),
-                player2_phone        = p2_phone.strip(),
-                player2_email        = p2_email.strip(),
-                division             = div_sel_key or None,
-                notes                = notes.strip(),
-                unavailable_dates    = unavailable_selected,
-                availability_windows = availability_windows,
-                status               = RegistrationStatus.PENDING,
-                submitted_at         = _dtt.utcnow().isoformat(),
-            )
-            try:
-                t.registrations.append(reg)
-                from .db_converters import tournament_to_db as _ttdb
-                payload = _ttdb(t, row.get("club_id", ""), t.id)
-                get_db().upsert_tournament(
-                    club_id         = row.get("club_id", ""),
-                    name            = payload["name"],
-                    start_date      = payload["start_date"],
-                    end_date        = payload["end_date"],
-                    tournament_data = payload["tournament_data"],
-                    tournament_id   = t.id,
+    with _tab_form:
+        if submitted:
+            errors = []
+            # Jugador 1 — todos obligatorios
+            if not p1_name.strip():     errors.append("Jugador 1: falta el nombre.")
+            if not p1_surname1.strip(): errors.append("Jugador 1: falta el primer apellido.")
+            if not p1_surname2.strip(): errors.append("Jugador 1: falta el segundo apellido.")
+            if not p1_phone.strip():    errors.append("Jugador 1: falta el teléfono.")
+            if not p1_email.strip():    errors.append("Jugador 1: falta el email.")
+            # Jugador 2 — todos obligatorios
+            if not p2_name.strip():     errors.append("Jugador 2: falta el nombre.")
+            if not p2_surname1.strip(): errors.append("Jugador 2: falta el primer apellido.")
+            if not p2_surname2.strip(): errors.append("Jugador 2: falta el segundo apellido.")
+            if not p2_phone.strip():    errors.append("Jugador 2: falta el teléfono.")
+            if not p2_email.strip():    errors.append("Jugador 2: falta el email.")
+            if div_sel_key and t.is_division_full(div_sel_key):
+                errors.append("Esta categoría ya está completa. Vuelve y elige otra.")
+            for e in errors:
+                st.error(e)
+            if not errors:
+                # Nombre de pareja generado automáticamente: "J. García – C. López"
+                def _short(name: str, surname: str) -> str:
+                    n = name.strip(); s = surname.strip()
+                    return f"{n[0].upper()}. {s.capitalize()}" if n and s else (s or n)
+                _auto_pair_name = (
+                    f"{_short(p1_name, p1_surname1)} – {_short(p2_name, p2_surname1)}"
                 )
-                st.session_state[f"_reg_done_{tournament_id}"] = True
-                st.rerun()
-            except Exception as _e:
-                st.error(f"Error al guardar la inscripción: {_e}")
+                reg = TournamentRegistration(
+                    pair_name            = _auto_pair_name,
+                    player1_name         = p1_name.strip(),
+                    player1_surname1     = p1_surname1.strip(),
+                    player1_surname2     = p1_surname2.strip(),
+                    player1_phone        = p1_phone.strip(),
+                    player1_email        = p1_email.strip(),
+                    player2_name         = p2_name.strip(),
+                    player2_surname1     = p2_surname1.strip(),
+                    player2_surname2     = p2_surname2.strip(),
+                    player2_phone        = p2_phone.strip(),
+                    player2_email        = p2_email.strip(),
+                    division             = div_sel_key or None,
+                    notes                = notes.strip(),
+                    unavailable_dates    = unavailable_selected,
+                    availability_windows = availability_windows,
+                    status               = RegistrationStatus.PENDING,
+                    submitted_at         = _dtt.utcnow().isoformat(),
+                )
+                try:
+                    t.registrations.append(reg)
+                    from .db_converters import tournament_to_db as _ttdb
+                    payload = _ttdb(t, row.get("club_id", ""), t.id)
+                    get_db().upsert_tournament(
+                        club_id         = row.get("club_id", ""),
+                        name            = payload["name"],
+                        start_date      = payload["start_date"],
+                        end_date        = payload["end_date"],
+                        tournament_data = payload["tournament_data"],
+                        tournament_id   = t.id,
+                    )
+                    st.session_state[f"_reg_done_{tournament_id}"] = True
+                    st.rerun()
+                except Exception as _e:
+                    st.error(f"Error al guardar la inscripción: {_e}")
 
     st.markdown(
         f'<div class="pv-foot">Organizado con '
