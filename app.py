@@ -6154,12 +6154,26 @@ elif page == "t_config":
 # ---------------------------------------------------------------------------
 
 elif page == "t_pairs":
-    _t_header(2, "Añadir parejas", "Registra las parejas participantes del torneo")
+    _t_header(2, "Parejas e Inscripciones", "Gestiona las parejas participantes del torneo")
     t = st.session_state.get("tournament")
     if not t:
         st.warning("⚠️ Primero configura el torneo.")
         if st.button("← Ir a Configuración"): st.session_state["_nav_page"] = "t_config"; st.rerun()
         st.stop()
+
+    # ── Recargar desde BD para ver inscripciones nuevas ───────────────────────
+    _tid_pairs = st.session_state.get("db_tournament_id")
+    if _db_ok and _db is not None and _tid_pairs:
+        _cid_pairs = current_club_id()
+        if _cid_pairs:
+            try:
+                from src.db_converters import tournament_from_db as _tfdb_p
+                _fresh = _db.get_tournament(_cid_pairs, _tid_pairs)
+                if _fresh:
+                    t = _tfdb_p(_fresh)
+                    st.session_state["tournament"] = t
+            except Exception:
+                pass  # si falla, usar el cacheado
 
     # Divisiones del torneo (claves "cat:sub")
     _t_div_keys = list(getattr(t, "divisions", []) or [])
@@ -6183,117 +6197,150 @@ elif page == "t_pairs":
                     )
                     st.session_state["db_tournament_id"] = _sv["id"]
                 except Exception:
-                    pass  # autosave silencioso; el usuario tiene el botón manual + CSV
+                    pass
 
-    if _t_multi:
-        st.info(f"💡 Torneo: **{t.name}** · {len(t.pairs)} parejas · "
-                f"**{len(_t_div_keys)} categorías** · asigna cada pareja a su categoría")
-    else:
-        st.info(f"💡 Torneo: **{t.name}** · {len(t.pairs)} parejas inscritas · Formato: **{t.format.value}**")
-
-    # ── Bandeja de inscripciones pendientes ───────────────────────────────────
     from src.tournament_models import RegistrationStatus as _RegSt
-    _pending_regs = [r for r in getattr(t, "registrations", []) if r.status == _RegSt.PENDING]
-    if _pending_regs:
-        st.markdown(
-            f'<div style="background:linear-gradient(135deg,#fff8e1,#fff3cd);'
-            f'border:1.5px solid #ffc107;border-radius:14px;padding:1rem 1.2rem;margin-bottom:1rem">'
-            f'<div style="font-weight:800;color:#856404;font-size:.95rem;margin-bottom:.5rem">'
-            f'📩 {len(_pending_regs)} inscripción(es) pendiente(s) de revisión</div>'
-            f'<div style="font-size:.82rem;color:#856404">Revísalas y aprueba o rechaza cada una.</div>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-        for _reg in _pending_regs:
-            # Nombre completo de cada jugador (nuevo modelo con apellidos separados)
-            def _full_name(reg, n: int) -> str:
-                _nm  = getattr(reg, f"player{n}_name", "") or ""
-                _s1  = getattr(reg, f"player{n}_surname1", "") or ""
-                _s2  = getattr(reg, f"player{n}_surname2", "") or ""
-                full = " ".join(p for p in [_nm, _s1, _s2] if p)
-                return full or getattr(reg, f"player{n}_name", "") or "—"
-            _p1_full = _full_name(_reg, 1)
-            _p2_full = _full_name(_reg, 2)
-            with st.expander(f"📩 **{escape(_reg.pair_name or 'Sin nombre')}** — {_p1_full} / {_p2_full}"):
-                _rc1, _rc2 = st.columns(2)
-                with _rc1:
-                    st.markdown(f"**Jugador 1:** {escape(_p1_full)}")
-                    _ph1 = getattr(_reg, "player1_phone", None) or getattr(_reg, "player1_phone", "")
-                    _em1 = getattr(_reg, "player1_email", None) or getattr(_reg, "player1_email", "")
-                    if _ph1: st.caption(f"📱 {escape(str(_ph1))}")
-                    if _em1: st.caption(f"📧 {escape(str(_em1))}")
-                with _rc2:
-                    st.markdown(f"**Jugador 2:** {escape(_p2_full)}")
-                    _ph2 = getattr(_reg, "player2_phone", None) or getattr(_reg, "player2_phone", "")
-                    _em2 = getattr(_reg, "player2_email", None) or getattr(_reg, "player2_email", "")
-                    if _ph2: st.caption(f"📱 {escape(str(_ph2))}")
-                    if _em2: st.caption(f"📧 {escape(str(_em2))}")
-                if _reg.division and _t_div_keys:
-                    st.caption(f"Categoría solicitada: **{_div_label(_reg.division)}**")
-                if _reg.notes:
-                    st.caption(f"💬 {escape(_reg.notes)}")
-                # ── Disponibilidad ────────────────────────────────────────
-                _unavail  = getattr(_reg, "unavailable_dates", []) or []
-                _windows  = getattr(_reg, "availability_windows", {}) or {}
-                _ask_av   = getattr(t, "registration_ask_availability", False)
-                if _unavail or _windows:
-                    from datetime import date as _date_cls
-                    _day_names_es = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"]
-                    _lines = []
-                    if _unavail:
-                        _fmt_u = []
-                        for _d_str in _unavail:
-                            try:
-                                _d = _date_cls.fromisoformat(_d_str)
-                                _fmt_u.append(f"{_day_names_es[_d.weekday()]} {_d.strftime('%d/%m')}")
-                            except Exception:
-                                _fmt_u.append(_d_str)
-                        _lines.append(f"❌ <strong>No puede:</strong> {', '.join(_fmt_u)}")
-                    for _d_str, _w in sorted(_windows.items()):
-                        try:
-                            _d = _date_cls.fromisoformat(_d_str)
-                            _lbl = f"{_day_names_es[_d.weekday()]} {_d.strftime('%d/%m')}"
-                        except Exception:
-                            _lbl = _d_str
-                        _lines.append(f"⏰ <strong>{_lbl}:</strong> {_w.get('from','?')} – {_w.get('to','?')}")
-                    st.markdown(
-                        f'<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;'
-                        f'padding:.4rem .7rem;margin:.3rem 0;font-size:.82rem;color:#856404">'
-                        + "<br>".join(_lines) +
-                        f'</div>', unsafe_allow_html=True)
-                elif _ask_av:
-                    st.caption("📅 Disponible todos los días del torneo")
-                _btn_a, _btn_r = st.columns(2)
-                with _btn_a:
-                    if st.button("✅ Aprobar", key=f"reg_approve_{_reg.id}", type="primary", use_container_width=True):
-                        # Aprobar → crear TournamentPair y moverlo a t.pairs
-                        new_pair = TournamentPair(
-                            name=_reg.pair_name or f"{_reg.player1_name} / {_reg.player2_name}",
-                            player_1=TournamentPlayer(name=_reg.player1_name,
-                                                      phone=_reg.player1_phone,
-                                                      email=_reg.player1_email),
-                            player_2=TournamentPlayer(name=_reg.player2_name,
-                                                      phone=_reg.player2_phone,
-                                                      email=_reg.player2_email),
-                            division=_reg.division,
-                        )
-                        t.pairs.append(new_pair)
-                        t.groups = []; t.matches = []; t.division_draws = []
-                        _reg.status = _RegSt.APPROVED
-                        st.session_state["tournament"] = t
-                        _autosave_tournament(t)
-                        st.success(f"✅ **{_reg.pair_name}** aprobada y añadida al torneo.")
-                        st.rerun()
-                with _btn_r:
-                    if st.button("❌ Rechazar", key=f"reg_reject_{_reg.id}", use_container_width=True):
-                        _reg.status = _RegSt.REJECTED
-                        st.session_state["tournament"] = t
-                        _autosave_tournament(t)
-                        st.rerun()
-        st.divider()
 
-    _section_start("👥", "Añadir parejas")
-    pair_tab_a, pair_tab_b = st.tabs(["📝 Añadir manualmente", "📂 Importar CSV"])
+    # ── Pestañas principales ──────────────────────────────────────────────────
+    _all_regs   = getattr(t, "registrations", []) or []
+    _pending_regs = [r for r in _all_regs if r.status == _RegSt.PENDING]
+    _pending_badge = f" ({len(_pending_regs)})" if _pending_regs else ""
+    _tab_reg, _tab_add = st.tabs([f"📩 Inscripciones{_pending_badge}", "➕ Añadir pareja"])
+
+    # ════════════════════════════════════════════════════════════════════════
+    # PESTAÑA — INSCRIPCIONES
+    # ════════════════════════════════════════════════════════════════════════
+    with _tab_reg:
+        def _full_name_reg(reg, n: int) -> str:
+            _nm  = getattr(reg, f"player{n}_name", "") or ""
+            _s1  = getattr(reg, f"player{n}_surname1", "") or ""
+            _s2  = getattr(reg, f"player{n}_surname2", "") or ""
+            full = " ".join(p for p in [_nm, _s1, _s2] if p)
+            return full or _nm or "—"
+
+        if not _all_regs:
+            st.info("Todavía no hay inscripciones online. El enlace de inscripción está en **⚙️ Config → Inscripciones públicas**.")
+        else:
+            # ── Resumen por categoría ─────────────────────────────────────
+            _reg_by_cat: dict = {}
+            for _r in _all_regs:
+                _cat_k = _r.division or "_sin_categoria"
+                _reg_by_cat.setdefault(_cat_k, []).append(_r)
+
+            # Mostrar primero las pendientes (aviso destacado)
+            if _pending_regs:
+                st.markdown(
+                    f'<div style="background:#fff8e1;border:1.5px solid #ffc107;'
+                    f'border-radius:12px;padding:.8rem 1.1rem;margin-bottom:1rem">'
+                    f'<span style="font-weight:800;color:#856404">📩 {len(_pending_regs)} solicitud(es) pendiente(s) de aprobación</span>'
+                    f'</div>', unsafe_allow_html=True)
+
+            # ── Por categoría ─────────────────────────────────────────────
+            for _cat_k, _cat_regs in _reg_by_cat.items():
+                _cat_lbl = _div_label(_cat_k) if _cat_k != "_sin_categoria" else "Sin categoría"
+                _pend_n  = sum(1 for r in _cat_regs if r.status == _RegSt.PENDING)
+                _appr_n  = sum(1 for r in _cat_regs if r.status == _RegSt.APPROVED)
+
+                _badge = f" · 🟡 {_pend_n} pendientes" if _pend_n else ""
+                with st.expander(f"**{_cat_lbl}** — {len(_cat_regs)} inscripciones{_badge}", expanded=bool(_pend_n)):
+                    # Sub-tabs: pendientes | aprobadas | rechazadas
+                    _st_pend = [r for r in _cat_regs if r.status == _RegSt.PENDING]
+                    _st_appr = [r for r in _cat_regs if r.status == _RegSt.APPROVED]
+                    _st_rej  = [r for r in _cat_regs if r.status == _RegSt.REJECTED]
+
+                    if _st_pend:
+                        st.markdown(f"**🟡 Pendientes ({len(_st_pend)})**")
+                    for _reg in _st_pend:
+                        _p1f = _full_name_reg(_reg, 1)
+                        _p2f = _full_name_reg(_reg, 2)
+                        with st.container(border=True):
+                            _rca, _rcb = st.columns([3, 1])
+                            with _rca:
+                                st.markdown(f"**{escape(_reg.pair_name or '—')}**")
+                                _rc1, _rc2 = st.columns(2)
+                                with _rc1:
+                                    st.markdown(f"👤 {escape(_p1f)}")
+                                    _ph1 = getattr(_reg, "player1_phone", "") or ""
+                                    _em1 = getattr(_reg, "player1_email", "") or ""
+                                    if _ph1: st.caption(f"📱 {escape(str(_ph1))}")
+                                    if _em1: st.caption(f"📧 {escape(str(_em1))}")
+                                with _rc2:
+                                    st.markdown(f"👤 {escape(_p2f)}")
+                                    _ph2 = getattr(_reg, "player2_phone", "") or ""
+                                    _em2 = getattr(_reg, "player2_email", "") or ""
+                                    if _ph2: st.caption(f"📱 {escape(str(_ph2))}")
+                                    if _em2: st.caption(f"📧 {escape(str(_em2))}")
+                                if _reg.notes:
+                                    st.caption(f"💬 {escape(_reg.notes)}")
+                                # Disponibilidad
+                                _unavail = getattr(_reg, "unavailable_dates", []) or []
+                                _windows = getattr(_reg, "availability_windows", {}) or {}
+                                if _unavail or _windows:
+                                    from datetime import date as _dc
+                                    _dn = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"]
+                                    _lines = []
+                                    if _unavail:
+                                        _fu = []
+                                        for _ds in _unavail:
+                                            try: _fu.append(f"{_dn[_dc.fromisoformat(_ds).weekday()]} {_dc.fromisoformat(_ds).strftime('%d/%m')}")
+                                            except: _fu.append(_ds)
+                                        _lines.append(f"❌ No puede: {', '.join(_fu)}")
+                                    for _ds, _w in sorted(_windows.items()):
+                                        try: _dl = f"{_dn[_dc.fromisoformat(_ds).weekday()]} {_dc.fromisoformat(_ds).strftime('%d/%m')}"
+                                        except: _dl = _ds
+                                        _lines.append(f"⏰ {_dl}: {_w.get('from','?')}–{_w.get('to','?')}")
+                                    st.caption(" · ".join(_lines))
+                            with _rcb:
+                                st.write("")
+                                if st.button("✅ Aprobar", key=f"ap_{_reg.id}", type="primary", use_container_width=True):
+                                    _p1_full_ap = _full_name_reg(_reg, 1)
+                                    _p2_full_ap = _full_name_reg(_reg, 2)
+                                    new_pair = TournamentPair(
+                                        name=_reg.pair_name or f"{_p1_full_ap} / {_p2_full_ap}",
+                                        player_1=TournamentPlayer(
+                                            name=_p1_full_ap,
+                                            phone=getattr(_reg,"player1_phone","") or None,
+                                            email=getattr(_reg,"player1_email","") or None),
+                                        player_2=TournamentPlayer(
+                                            name=_p2_full_ap,
+                                            phone=getattr(_reg,"player2_phone","") or None,
+                                            email=getattr(_reg,"player2_email","") or None),
+                                        division=_reg.division,
+                                    )
+                                    t.pairs.append(new_pair)
+                                    t.groups = []; t.matches = []; t.division_draws = []
+                                    _reg.status = _RegSt.APPROVED
+                                    st.session_state["tournament"] = t
+                                    _autosave_tournament(t)
+                                    st.rerun()
+                                if st.button("❌ Rechazar", key=f"rj_{_reg.id}", use_container_width=True):
+                                    _reg.status = _RegSt.REJECTED
+                                    st.session_state["tournament"] = t
+                                    _autosave_tournament(t)
+                                    st.rerun()
+
+                    if _st_appr:
+                        st.markdown(f"**✅ Aprobadas ({len(_st_appr)})**")
+                        for _r in _st_appr:
+                            st.caption(f"✅ {escape(_r.pair_name or '—')} · {escape(_full_name_reg(_r,1))} / {escape(_full_name_reg(_r,2))}")
+                    if _st_rej:
+                        st.markdown(f"**❌ Rechazadas ({len(_st_rej)})**")
+                        for _r in _st_rej:
+                            st.caption(f"❌ {escape(_r.pair_name or '—')} · {escape(_full_name_reg(_r,1))} / {escape(_full_name_reg(_r,2))}")
+
+    # ════════════════════════════════════════════════════════════════════════
+    # PESTAÑA — AÑADIR PAREJA
+    # ════════════════════════════════════════════════════════════════════════
+    with _tab_add:
+        if _t_multi:
+            st.info(f"💡 **{t.name}** · {len(t.pairs)} parejas · **{len(_t_div_keys)} categorías**")
+        else:
+            st.info(f"💡 **{t.name}** · {len(t.pairs)} parejas inscritas")
+
+    # ── Añadir pareja (dentro de _tab_add) ───────────────────────────────────
+    with _tab_add:
+        _section_start("👥", "Añadir parejas")
+        pair_tab_a, pair_tab_b = st.tabs(["📝 Añadir manualmente", "📂 Importar CSV"])
 
     with pair_tab_a:
         if _t_multi:
@@ -6332,7 +6379,7 @@ elif page == "t_pairs":
             else:
                 st.error("Rellena nombre de pareja y los dos jugadores.")
 
-    with pair_tab_b:
+    with pair_tab_b:  # still inside _tab_add
         if _t_multi:
             _csv_div = st.selectbox(
                 "Asignar las parejas del CSV a la categoría", options=["(usar columna 'division')"] + _t_div_keys,
