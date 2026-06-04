@@ -370,7 +370,29 @@ def render_public_registration(tournament_id: str) -> None:
         with _p2col1: p2_phone = st.text_input("Teléfono J2", key="p2ph", placeholder="+34 600 000 001")
         with _p2col2: p2_email = st.text_input("Email J2 (opcional)", key="p2em", placeholder="marta@email.com")
 
-        notes = st.text_area("Nota para el organizador (opcional)", placeholder="Cualquier información adicional…", height=80)
+        notes = st.text_area("Nota para el organizador (opcional)", placeholder="Cualquier información adicional…", height=70)
+
+        # ── Disponibilidad por días (solo si el admin lo ha activado) ──────
+        _ask_avail = getattr(t, "registration_ask_availability", False)
+        unavailable_selected: list[str] = []
+        if _ask_avail:
+            from datetime import timedelta as _td
+            _days_range = []
+            _d = t.start_date
+            while _d <= t.end_date:
+                _days_range.append(_d)
+                _d = _d + _td(days=1)
+
+            if _days_range:
+                st.markdown("**¿Hay algún día en el que NO puedas jugar?**")
+                st.caption("Marca los días en los que tienes algún impedimento. Déjalo sin marcar si puedes jugar todos los días.")
+                _cols_avail = st.columns(min(len(_days_range), 4))
+                _day_names = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"]
+                for _i, _day in enumerate(_days_range):
+                    with _cols_avail[_i % 4]:
+                        _lbl = f"{_day_names[_day.weekday()]} {_day.strftime('%d/%m')}"
+                        if st.checkbox(_lbl, key=f"avail_{_day.isoformat()}"):
+                            unavailable_selected.append(_day.isoformat())
 
         submitted = st.form_submit_button("📩 Enviar inscripción", type="primary", use_container_width=True)
 
@@ -400,6 +422,7 @@ def render_public_registration(tournament_id: str) -> None:
                 player2_email = p2_email.strip() or None,
                 division      = div_sel_key,
                 notes         = notes.strip(),
+                unavailable_dates = unavailable_selected,
                 status        = RegistrationStatus.PENDING,
                 submitted_at  = _dtt.utcnow().isoformat(),
             )

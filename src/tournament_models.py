@@ -302,6 +302,8 @@ class TournamentRegistration(BaseModel):
     player2_email: Optional[str] = None
     division:    Optional[str] = None    # categoría solicitada
     notes:       str = ""                # mensaje libre del jugador
+    # Disponibilidad: lista de fechas en que NO puede jugar (ISO strings "YYYY-MM-DD")
+    unavailable_dates: list[str] = Field(default_factory=list)
     status:      RegistrationStatus = RegistrationStatus.PENDING
     submitted_at: str = ""               # ISO timestamp
 
@@ -368,6 +370,7 @@ class TournamentConfig(BaseModel):
     registration_opens_date: Optional[date] = None    # apertura automática (fecha)
     registration_closes_date: Optional[date] = None   # cierre automático (fecha)
     registration_max_pairs: dict[str, int] = Field(default_factory=dict)  # {division_key: max} — 0 = sin límite
+    registration_ask_availability: bool = False        # pedir disponibilidad por días al inscribirse
     registrations: list["TournamentRegistration"] = Field(default_factory=list)
 
     # ---------------------------------------------------------------------------

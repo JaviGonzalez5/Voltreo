@@ -5835,6 +5835,7 @@ elif page == "t_config":
                 registration_opens_date=getattr(t, "registration_opens_date", None) if t else None,
                 registration_closes_date=t_reg_close,   # del campo del formulario
                 registration_max_pairs=getattr(t, "registration_max_pairs", {}) if t else {},
+                registration_ask_availability=getattr(t, "registration_ask_availability", False) if t else False,
                 registrations=list(getattr(t, "registrations", [])) if t else [],
             )
             try:
@@ -5978,6 +5979,34 @@ elif page == "t_config":
 
             st.divider()
 
+            # ── Pedir disponibilidad al inscribirse ───────────────────────
+            _cur_ask_avail = getattr(_cfg_t, "registration_ask_availability", False)
+            _new_ask_avail = st.checkbox(
+                "📅 Pedir disponibilidad por días al inscribirse",
+                value=_cur_ask_avail,
+                key="reg_ask_avail",
+                help=(
+                    "Si lo activas, el formulario de inscripción mostrará los días del torneo "
+                    "para que cada pareja indique en cuáles NO puede jugar. "
+                    "Lo verás en la bandeja de inscripciones pendientes."
+                ),
+            )
+            if _new_ask_avail != _cur_ask_avail:
+                _cfg_t.registration_ask_availability = _new_ask_avail
+                st.session_state["tournament"] = _cfg_t
+                if _db_ok and _db is not None:
+                    _rc_av = current_club_id()
+                    if _rc_av:
+                        try:
+                            _rp_av = tournament_to_db(_cfg_t, _rc_av, _cfg_tid)
+                            _db.upsert_tournament(club_id=_rc_av, name=_rp_av["name"],
+                                start_date=_rp_av["start_date"], end_date=_rp_av["end_date"],
+                                tournament_data=_rp_av["tournament_data"], tournament_id=_cfg_tid)
+                        except Exception:
+                            pass
+
+            st.divider()
+
             # ── Toggle manual + enlace ────────────────────────────────────
             _tm1, _tm2 = st.columns([1, 2])
             with _tm1:
@@ -6088,6 +6117,25 @@ elif page == "t_pairs":
                     st.caption(f"Categoría solicitada: **{_div_label(_reg.division)}**")
                 if _reg.notes:
                     st.caption(f"💬 {escape(_reg.notes)}")
+                # ── Disponibilidad ────────────────────────────────────────
+                _unavail = getattr(_reg, "unavailable_dates", []) or []
+                if _unavail:
+                    from datetime import date as _date_cls
+                    _day_names_es = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"]
+                    _formatted = []
+                    for _d_str in _unavail:
+                        try:
+                            _d = _date_cls.fromisoformat(_d_str)
+                            _formatted.append(f"{_day_names_es[_d.weekday()]} {_d.strftime('%d/%m')}")
+                        except Exception:
+                            _formatted.append(_d_str)
+                    st.markdown(
+                        f'<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;'
+                        f'padding:.4rem .7rem;margin:.3rem 0;font-size:.82rem;color:#856404">'
+                        f'📅 <strong>No disponible:</strong> {", ".join(_formatted)}'
+                        f'</div>', unsafe_allow_html=True)
+                elif getattr(t, "registration_ask_availability", False):
+                    st.caption("📅 Disponible todos los días del torneo")
                 _btn_a, _btn_r = st.columns(2)
                 with _btn_a:
                     if st.button("✅ Aprobar", key=f"reg_approve_{_reg.id}", type="primary", use_container_width=True):
