@@ -507,10 +507,15 @@ def render_public_registration(tournament_id: str) -> None:
         st.markdown('<div class="pv-badge-open">✅ Inscripciones abiertas</div>',
                     unsafe_allow_html=True)
 
+        # Pre-calcular parejas confirmadas por categoría
+        _pairs_by_cat: dict = {}
+        for _pp in getattr(t, "pairs", []) or []:
+            _pk = getattr(_pp, "division", None) or "_"
+            _pairs_by_cat.setdefault(_pk, []).append(_pp)
+
         if _div_keys:
             st.markdown('<div class="pv-section-title">Categorías — elige la tuya</div>',
                         unsafe_allow_html=True)
-            # Grid de cards: 4 columnas en escritorio, 2 en móvil via CSS
             _cols_per_row = 4
             for _row_start in range(0, len(_div_keys), _cols_per_row):
                 _row_keys = _div_keys[_row_start: _row_start + _cols_per_row]
@@ -538,6 +543,18 @@ def render_public_registration(tournament_id: str) -> None:
                         else:
                             st.button("Sin plazas", key=f"sel_cat_{_dk}",
                                       disabled=True, use_container_width=True)
+
+                        # Parejas ya inscritas en esta categoría
+                        _cat_pairs = _pairs_by_cat.get(_dk, [])
+                        if _cat_pairs:
+                            with st.expander(f"Ver inscritas ({len(_cat_pairs)})", expanded=False):
+                                for _i, _cp in enumerate(_cat_pairs, 1):
+                                    st.markdown(
+                                        f'<div style="font-size:.82rem;padding:.25rem 0;'
+                                        f'border-bottom:1px solid #f0f0f0;color:#374151">'
+                                        f'<b>{_i}.</b> {escape(_cp.name or "—")}</div>',
+                                        unsafe_allow_html=True,
+                                    )
         else:
             # Sin categorías: ir directo al formulario sin selección
             st.session_state[_sel_key] = ""
