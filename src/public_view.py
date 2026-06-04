@@ -89,6 +89,25 @@ header[data-testid="stHeader"] {{ display: none !important; }}
 
 .pubv-foot {{ text-align:center; color:#3d6a90; font-size:.78rem; margin:2.5rem 0 1rem; }}
 .pubv-foot a {{ color:#7fffc0; text-decoration:none; }}
+
+/* ── Formulario de inscripción: texto visible sobre fondo oscuro ── */
+/* Streamlit en light-mode usa colores oscuros para labels/headings,
+   pero el fondo de esta página es #0a1622 → invisible sin esto.     */
+[data-testid="stForm"] p,
+[data-testid="stForm"] label,
+[data-testid="stForm"] h1,
+[data-testid="stForm"] h2,
+[data-testid="stForm"] h3,
+[data-testid="stForm"] h4,
+[data-testid="stForm"] span,
+[data-testid="stForm"] div.stMarkdown p,
+[data-testid="stForm"] [data-testid="stCaptionContainer"] p {{
+    color: #e8f4fd !important;
+}}
+[data-testid="stForm"] [data-testid="stWidgetLabel"] p {{
+    color: #a8cce4 !important;
+    font-weight: 600 !important;
+}}
 </style>
 """
 
@@ -406,17 +425,14 @@ def render_public_registration(tournament_id: str) -> None:
                     _wkey = str(_wday)
                     _dname = _day_names_full[_wday]
 
-                    # Cabecera del día usando subheader nativo de Streamlit
-                    # (siempre visible en modo claro y oscuro, en móvil y escritorio)
-                    st.subheader(f"📅 {_dname}", divider="green")
-
+                    st.divider()
                     _can_play = st.selectbox(
-                        f"¿Puedes jugar el {_dname}?",
-                        ["✅ Puedo", "❌ No puedo"],
+                        f"📅 {_dname}",
+                        ["✅ Puedo jugar", "❌ No puedo jugar"],
                         key=f"avail_st_{_wkey}",
                     )
 
-                    if _can_play == "❌ No puedo":
+                    if _can_play == "❌ No puedo jugar":
                         for _dd2 in _days_range:
                             if _dd2.weekday() == _wday:
                                 unavailable_selected.append(_dd2.isoformat())
