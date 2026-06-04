@@ -626,217 +626,182 @@ def render_public_registration(tournament_id: str) -> None:
         if not t.is_registration_active():
             st.markdown('<div class="pv-badge-closed">🔒 Inscripciones cerradas</div>',
                         unsafe_allow_html=True)
-            st.stop()
+            st.info("El club aún no ha abierto el registro. Contacta con los organizadores.")
+        else:
+            st.markdown('<div class="pv-section-title">Formulario de inscripción</div>',
+                        unsafe_allow_html=True)
 
-        st.markdown('<div class="pv-section-title">Formulario de inscripción</div>',
-                    unsafe_allow_html=True)
+            # — Variables de disponibilidad (se rellenan dentro del form) —
+            _ask_avail = getattr(t, "registration_ask_availability", False)
 
-        with st.form("public_registration_form"):
-            # Categoría fijada
-            div_sel_key = _selected_cat if _selected_cat else None
-        if _cat_label:
-            st.markdown(
-                f'<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;'
-                f'padding:.55rem 1rem;margin-bottom:.8rem;font-weight:700;color:#065f46">'
-                f'🏷 {escape(_cat_label)}</div>',
-                unsafe_allow_html=True,
-            )
+            with st.form("public_registration_form"):
+                div_sel_key = _selected_cat if _selected_cat else None
+                if _cat_label:
+                    st.markdown(
+                        f'<div style="background:#f0fdf4;border:1px solid #bbf7d0;'
+                        f'border-radius:10px;padding:.55rem 1rem;margin-bottom:.8rem;'
+                        f'font-weight:700;color:#065f46">🏷 {escape(_cat_label)}</div>',
+                        unsafe_allow_html=True,
+                    )
 
-        # ── Jugador 1 ────────────────────────────────────────────────────
-        st.markdown('<div class="pv-form-title">Jugador 1</div>', unsafe_allow_html=True)
-        p1_name = st.text_input("Nombre *", key="p1n", placeholder="Carlos")
-        _p1s1, _p1s2 = st.columns(2)
-        with _p1s1: p1_surname1 = st.text_input("Primer apellido *", key="p1s1", placeholder="García")
-        with _p1s2: p1_surname2 = st.text_input("Segundo apellido *", key="p1s2", placeholder="Martínez")
-        _p1c1, _p1c2 = st.columns(2)
-        with _p1c1: p1_phone = st.text_input("Teléfono *", key="p1ph", placeholder="+34 600 000 000")
-        with _p1c2: p1_email = st.text_input("Email *", key="p1em", placeholder="carlos@email.com")
+                # ── Jugador 1 ─────────────────────────────────────────────
+                st.markdown('<div class="pv-form-title">Jugador 1</div>', unsafe_allow_html=True)
+                p1_name = st.text_input("Nombre *", key="p1n", placeholder="Carlos")
+                _p1s1, _p1s2 = st.columns(2)
+                with _p1s1: p1_surname1 = st.text_input("Primer apellido *", key="p1s1", placeholder="García")
+                with _p1s2: p1_surname2 = st.text_input("Segundo apellido *", key="p1s2", placeholder="Martínez")
+                _p1c1, _p1c2 = st.columns(2)
+                with _p1c1: p1_phone = st.text_input("Teléfono *", key="p1ph", placeholder="+34 600 000 000")
+                with _p1c2: p1_email = st.text_input("Email *", key="p1em", placeholder="carlos@email.com")
 
-        st.divider()
-
-        # ── Jugador 2 ────────────────────────────────────────────────────
-        st.markdown('<div class="pv-form-title">Jugador 2</div>', unsafe_allow_html=True)
-        p2_name = st.text_input("Nombre *", key="p2n", placeholder="Marta")
-        _p2s1, _p2s2 = st.columns(2)
-        with _p2s1: p2_surname1 = st.text_input("Primer apellido *", key="p2s1", placeholder="López")
-        with _p2s2: p2_surname2 = st.text_input("Segundo apellido *", key="p2s2", placeholder="Fernández")
-        _p2c1, _p2c2 = st.columns(2)
-        with _p2c1: p2_phone = st.text_input("Teléfono *", key="p2ph", placeholder="+34 600 000 001")
-        with _p2c2: p2_email = st.text_input("Email *", key="p2em", placeholder="marta@email.com")
-
-        st.divider()
-        notes = st.text_area("Nota para el organizador (opcional)",
-                             placeholder="Cualquier información adicional…", height=70)
-
-        # ── Disponibilidad ────────────────────────────────────────────────
-        _ask_avail = getattr(t, "registration_ask_availability", False)
-        unavailable_selected: list[str] = []
-        availability_windows: dict      = {}
-
-        if _ask_avail:
-            from datetime import timedelta as _td
-            _days_range = []
-            _d = t.start_date
-            while _d <= t.end_date:
-                _days_range.append(_d)
-                _d = _d + _td(days=1)
-
-            if _days_range:
                 st.divider()
-                st.markdown('<div class="pv-form-title">¿Cuándo puedes jugar?</div>',
-                            unsafe_allow_html=True)
-                st.caption("Indica tu disponibilidad por día. Si puedes todo el día, no hace falta cambiar nada.")
 
-                _seen_wdays: list[int] = []
-                for _dd in _days_range:
-                    if _dd.weekday() not in _seen_wdays:
-                        _seen_wdays.append(_dd.weekday())
+                # ── Jugador 2 ─────────────────────────────────────────────
+                st.markdown('<div class="pv-form-title">Jugador 2</div>', unsafe_allow_html=True)
+                p2_name = st.text_input("Nombre *", key="p2n", placeholder="Marta")
+                _p2s1, _p2s2 = st.columns(2)
+                with _p2s1: p2_surname1 = st.text_input("Primer apellido *", key="p2s1", placeholder="López")
+                with _p2s2: p2_surname2 = st.text_input("Segundo apellido *", key="p2s2", placeholder="Fernández")
+                _p2c1, _p2c2 = st.columns(2)
+                with _p2c1: p2_phone = st.text_input("Teléfono *", key="p2ph", placeholder="+34 600 000 001")
+                with _p2c2: p2_email = st.text_input("Email *", key="p2em", placeholder="marta@email.com")
 
-                # Leer la configuración horaria del torneo
-                from datetime import time as _time_cls
-                def _as_time(val, default):
-                    if isinstance(val, _time_cls):
-                        return val
-                    return default
+                st.divider()
+                notes = st.text_area("Nota para el organizador (opcional)",
+                                     placeholder="Cualquier información adicional…", height=70)
 
-                _wk_start_raw = _as_time(getattr(t, "day_start_time",  None), _time_cls(9, 0))
-                _wk_end_raw   = _as_time(getattr(t, "day_end_time",    None), _time_cls(22, 0))
-                _we_start_raw = _as_time(getattr(t, "weekend_start_time", None), None)
-                _we_end_raw   = _as_time(getattr(t, "weekend_end_time",   None), None)
+                # ── Disponibilidad ────────────────────────────────────────
+                unavailable_selected: list[str] = []
+                availability_windows: dict      = {}
 
-                # Si el horario guardado es el valor por defecto antiguo (< 08:00),
-                # significa que el torneo no tiene horario configurado todavía.
-                # Usar 09:00 como fallback neutro para no confundir.
-                _wk_start = _wk_start_raw if _wk_start_raw.hour >= 8 else _time_cls(9, 0)
-                _wk_end   = _wk_end_raw
-                _we_start = (_we_start_raw if (_we_start_raw and _we_start_raw.hour >= 8)
-                             else _wk_start)
-                _we_end   = _we_end_raw or _wk_end
+                if _ask_avail:
+                    from datetime import timedelta as _td, time as _time_cls
+                    _days_range = []
+                    _d = t.start_date
+                    while _d <= t.end_date:
+                        _days_range.append(_d); _d = _d + _td(days=1)
 
-                def _time_options(start: "_time_cls", end: "_time_cls") -> list[str]:
-                    """Opciones cada 30 min entre start y end (inclusive)."""
-                    opts = []
-                    h, m = start.hour, start.minute
-                    # Normalizar minutos a múltiplo de 30
-                    m = 0 if m < 30 else 30
-                    while True:
-                        opts.append(f"{h:02d}:{m:02d}")
-                        if h == end.hour and m >= (0 if end.minute < 30 else 30):
-                            break
-                        m += 30
-                        if m >= 60:
-                            m = 0; h += 1
-                        if h > 23 or (h == end.hour and m > end.minute):
-                            break
-                    # Asegurarse de incluir la hora de fin exacta
-                    _end_str = f"{end.hour:02d}:{(0 if end.minute < 30 else 30):02d}"
-                    if _end_str not in opts:
-                        opts.append(_end_str)
-                    return opts
+                    if _days_range:
+                        st.divider()
+                        st.markdown('<div class="pv-form-title">¿Cuándo puedes jugar?</div>',
+                                    unsafe_allow_html=True)
+                        st.caption("Indica tu disponibilidad. Si puedes todo el día no hace falta cambiar nada.")
 
-                _day_names_full = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"]
+                        def _as_time(val, default):
+                            return val if isinstance(val, _time_cls) else default
 
-                for _wday in _seen_wdays:
-                    _wkey  = str(_wday)
-                    _dname = _day_names_full[_wday]
-                    _is_we = _wday >= 5  # sábado=5, domingo=6
-                    _d_start = _we_start if _is_we else _wk_start
-                    _d_end   = _we_end   if _is_we else _wk_end
-                    _topts   = _time_options(_d_start, _d_end)
-                    _start_str = f"{_d_start.hour:02d}:{_d_start.minute:02d}"
-                    _end_str   = f"{_d_end.hour:02d}:{_d_end.minute:02d}"
-                    _idx_s = _topts.index(_start_str) if _start_str in _topts else 0
-                    _idx_e = _topts.index(_end_str)   if _end_str   in _topts else len(_topts) - 1
+                        _wk_start = _as_time(getattr(t, "day_start_time", None), _time_cls(9, 0))
+                        _wk_end   = _as_time(getattr(t, "day_end_time",   None), _time_cls(22, 0))
+                        _we_start = _as_time(getattr(t, "weekend_start_time", None), None) or _wk_start
+                        _we_end   = _as_time(getattr(t, "weekend_end_time",   None), None) or _wk_end
+                        if _wk_start.hour < 8: _wk_start = _time_cls(9, 0)
+                        if _we_start.hour < 8: _we_start = _wk_start
 
-                    st.markdown(f'<div class="pv-day-header">📅 {_dname}</div>',
-                                unsafe_allow_html=True)
-                    _can_play = st.selectbox(
-                        "Disponibilidad", ["✅ Puedo jugar", "❌ No puedo jugar"],
-                        key=f"avail_st_{_wkey}", label_visibility="collapsed",
+                        def _topts(s, e):
+                            opts, h, m = [], s.hour, 0 if s.minute < 30 else 30
+                            while True:
+                                opts.append(f"{h:02d}:{m:02d}")
+                                if h == e.hour and m >= (0 if e.minute < 30 else 30): break
+                                m += 30
+                                if m >= 60: m, h = 0, h + 1
+                                if h > 23 or (h == e.hour and m > e.minute): break
+                            end_s = f"{e.hour:02d}:{(0 if e.minute < 30 else 30):02d}"
+                            if end_s not in opts: opts.append(end_s)
+                            return opts
+
+                        _day_names_full = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"]
+                        _seen_wdays: list[int] = []
+                        for _dd in _days_range:
+                            if _dd.weekday() not in _seen_wdays: _seen_wdays.append(_dd.weekday())
+
+                        for _wday in _seen_wdays:
+                            _wkey = str(_wday)
+                            _is_we = _wday >= 5
+                            _ds, _de = (_we_start, _we_end) if _is_we else (_wk_start, _wk_end)
+                            _opts = _topts(_ds, _de)
+                            _ss = f"{_ds.hour:02d}:{_ds.minute:02d}"
+                            _es = f"{_de.hour:02d}:{_de.minute:02d}"
+                            st.markdown(f'<div class="pv-day-header">📅 {_day_names_full[_wday]}</div>',
+                                        unsafe_allow_html=True)
+                            _cp = st.selectbox("Disponibilidad", ["✅ Puedo jugar", "❌ No puedo jugar"],
+                                               key=f"avail_st_{_wkey}", label_visibility="collapsed")
+                            if _cp == "❌ No puedo jugar":
+                                for _dd2 in _days_range:
+                                    if _dd2.weekday() == _wday: unavailable_selected.append(_dd2.isoformat())
+                            else:
+                                _fc1, _fc2 = st.columns(2)
+                                with _fc1:
+                                    _fr = st.selectbox("⏩ Desde", _opts,
+                                                       index=_opts.index(_ss) if _ss in _opts else 0,
+                                                       key=f"avail_from_{_wkey}")
+                                with _fc2:
+                                    _to = st.selectbox("⏹ Hasta", _opts,
+                                                       index=_opts.index(_es) if _es in _opts else len(_opts)-1,
+                                                       key=f"avail_to_{_wkey}")
+                                if _fr != _ss or _to != _es:
+                                    for _dd2 in _days_range:
+                                        if _dd2.weekday() == _wday:
+                                            availability_windows[_dd2.isoformat()] = {"from": _fr, "to": _to}
+
+                submitted = st.form_submit_button("📩 Enviar inscripción", type="primary",
+                                                  use_container_width=True)
+
+            # ── Validación y guardado (fuera del form, dentro del tab) ───
+            if submitted:
+                errors = []
+                if not p1_name.strip():     errors.append("Jugador 1: falta el nombre.")
+                if not p1_surname1.strip(): errors.append("Jugador 1: falta el primer apellido.")
+                if not p1_surname2.strip(): errors.append("Jugador 1: falta el segundo apellido.")
+                if not p1_phone.strip():    errors.append("Jugador 1: falta el teléfono.")
+                if not p1_email.strip():    errors.append("Jugador 1: falta el email.")
+                if not p2_name.strip():     errors.append("Jugador 2: falta el nombre.")
+                if not p2_surname1.strip(): errors.append("Jugador 2: falta el primer apellido.")
+                if not p2_surname2.strip(): errors.append("Jugador 2: falta el segundo apellido.")
+                if not p2_phone.strip():    errors.append("Jugador 2: falta el teléfono.")
+                if not p2_email.strip():    errors.append("Jugador 2: falta el email.")
+                if div_sel_key and t.is_division_full(div_sel_key):
+                    errors.append("Esta categoría ya está completa. Vuelve y elige otra.")
+                for e in errors:
+                    st.error(e)
+                if not errors:
+                    def _short(name: str, surname: str) -> str:
+                        n = name.strip(); s = surname.strip()
+                        return f"{n[0].upper()}. {s.capitalize()}" if n and s else (s or n)
+                    reg = TournamentRegistration(
+                        pair_name            = f"{_short(p1_name, p1_surname1)} – {_short(p2_name, p2_surname1)}",
+                        player1_name         = p1_name.strip(),
+                        player1_surname1     = p1_surname1.strip(),
+                        player1_surname2     = p1_surname2.strip(),
+                        player1_phone        = p1_phone.strip(),
+                        player1_email        = p1_email.strip(),
+                        player2_name         = p2_name.strip(),
+                        player2_surname1     = p2_surname1.strip(),
+                        player2_surname2     = p2_surname2.strip(),
+                        player2_phone        = p2_phone.strip(),
+                        player2_email        = p2_email.strip(),
+                        division             = div_sel_key or None,
+                        notes                = notes.strip(),
+                        unavailable_dates    = unavailable_selected,
+                        availability_windows = availability_windows,
+                        status               = RegistrationStatus.PENDING,
+                        submitted_at         = _dtt.utcnow().isoformat(),
                     )
-                    if _can_play == "❌ No puedo jugar":
-                        for _dd2 in _days_range:
-                            if _dd2.weekday() == _wday:
-                                unavailable_selected.append(_dd2.isoformat())
-                    else:
-                        _fc1, _fc2 = st.columns(2)
-                        with _fc1:
-                            _from = st.selectbox("⏩ Desde", _topts, index=_idx_s,
-                                                 key=f"avail_from_{_wkey}")
-                        with _fc2:
-                            _to = st.selectbox("⏹ Hasta", _topts, index=_idx_e,
-                                               key=f"avail_to_{_wkey}")
-                        # Guardar solo si restringe respecto al rango completo del día
-                        if _from != _start_str or _to != _end_str:
-                            for _dd2 in _days_range:
-                                if _dd2.weekday() == _wday:
-                                    availability_windows[_dd2.isoformat()] = {"from": _from, "to": _to}
-
-            submitted = st.form_submit_button("📩 Enviar inscripción", type="primary",
-                                              use_container_width=True)
-
-        # Validación y guardado (dentro del mismo with _tab_form, fuera del form)
-        if submitted:
-            errors = []
-            # Jugador 1 — todos obligatorios
-            if not p1_name.strip():     errors.append("Jugador 1: falta el nombre.")
-            if not p1_surname1.strip(): errors.append("Jugador 1: falta el primer apellido.")
-            if not p1_surname2.strip(): errors.append("Jugador 1: falta el segundo apellido.")
-            if not p1_phone.strip():    errors.append("Jugador 1: falta el teléfono.")
-            if not p1_email.strip():    errors.append("Jugador 1: falta el email.")
-            # Jugador 2 — todos obligatorios
-            if not p2_name.strip():     errors.append("Jugador 2: falta el nombre.")
-            if not p2_surname1.strip(): errors.append("Jugador 2: falta el primer apellido.")
-            if not p2_surname2.strip(): errors.append("Jugador 2: falta el segundo apellido.")
-            if not p2_phone.strip():    errors.append("Jugador 2: falta el teléfono.")
-            if not p2_email.strip():    errors.append("Jugador 2: falta el email.")
-            if div_sel_key and t.is_division_full(div_sel_key):
-                errors.append("Esta categoría ya está completa. Vuelve y elige otra.")
-            for e in errors:
-                st.error(e)
-            if not errors:
-                # Nombre de pareja generado automáticamente: "J. García – C. López"
-                def _short(name: str, surname: str) -> str:
-                    n = name.strip(); s = surname.strip()
-                    return f"{n[0].upper()}. {s.capitalize()}" if n and s else (s or n)
-                _auto_pair_name = (
-                    f"{_short(p1_name, p1_surname1)} – {_short(p2_name, p2_surname1)}"
-                )
-                reg = TournamentRegistration(
-                    pair_name            = _auto_pair_name,
-                    player1_name         = p1_name.strip(),
-                    player1_surname1     = p1_surname1.strip(),
-                    player1_surname2     = p1_surname2.strip(),
-                    player1_phone        = p1_phone.strip(),
-                    player1_email        = p1_email.strip(),
-                    player2_name         = p2_name.strip(),
-                    player2_surname1     = p2_surname1.strip(),
-                    player2_surname2     = p2_surname2.strip(),
-                    player2_phone        = p2_phone.strip(),
-                    player2_email        = p2_email.strip(),
-                    division             = div_sel_key or None,
-                    notes                = notes.strip(),
-                    unavailable_dates    = unavailable_selected,
-                    availability_windows = availability_windows,
-                    status               = RegistrationStatus.PENDING,
-                    submitted_at         = _dtt.utcnow().isoformat(),
-                )
-                try:
-                    t.registrations.append(reg)
-                    from .db_converters import tournament_to_db as _ttdb
-                    payload = _ttdb(t, row.get("club_id", ""), t.id)
-                    get_db().upsert_tournament(
-                        club_id         = row.get("club_id", ""),
-                        name            = payload["name"],
-                        start_date      = payload["start_date"],
-                        end_date        = payload["end_date"],
-                        tournament_data = payload["tournament_data"],
-                        tournament_id   = t.id,
-                    )
-                    st.session_state[f"_reg_done_{tournament_id}"] = True
-                    st.rerun()
-                except Exception as _e:
-                    st.error(f"Error al guardar la inscripción: {_e}")
+                    try:
+                        t.registrations.append(reg)
+                        from .db_converters import tournament_to_db as _ttdb
+                        payload = _ttdb(t, row.get("club_id", ""), t.id)
+                        get_db().upsert_tournament(
+                            club_id         = row.get("club_id", ""),
+                            name            = payload["name"],
+                            start_date      = payload["start_date"],
+                            end_date        = payload["end_date"],
+                            tournament_data = payload["tournament_data"],
+                            tournament_id   = t.id,
+                        )
+                        st.session_state[f"_reg_done_{tournament_id}"] = True
+                        st.rerun()
+                    except Exception as _e:
+                        st.error(f"Error al guardar la inscripción: {_e}")
 
     st.markdown(
         f'<div class="pv-foot">Organizado con '
