@@ -652,14 +652,48 @@ def render_public_registration(tournament_id: str) -> None:
                     if _dd.weekday() not in _seen_wdays:
                         _seen_wdays.append(_dd.weekday())
 
-                _time_opts = [f"{h:02d}:{m:02d}" for h in range(7, 24) for m in (0, 30)]
-                _idx_9  = _time_opts.index("09:00") if "09:00" in _time_opts else 0
-                _idx_22 = _time_opts.index("22:00") if "22:00" in _time_opts else len(_time_opts) - 1
+                # Leer la configuración horaria del torneo
+                from datetime import time as _time_cls
+                _wk_start = t.day_start_time   if hasattr(t, "day_start_time")   else _time_cls(9, 0)
+                _wk_end   = t.day_end_time     if hasattr(t, "day_end_time")     else _time_cls(22, 0)
+                _we_start = getattr(t, "weekend_start_time", None) or _wk_start
+                _we_end   = getattr(t, "weekend_end_time",   None) or _wk_end
+
+                def _time_options(start: "_time_cls", end: "_time_cls") -> list[str]:
+                    """Opciones cada 30 min entre start y end (inclusive)."""
+                    opts = []
+                    h, m = start.hour, start.minute
+                    # Normalizar minutos a múltiplo de 30
+                    m = 0 if m < 30 else 30
+                    while True:
+                        opts.append(f"{h:02d}:{m:02d}")
+                        if h == end.hour and m >= (0 if end.minute < 30 else 30):
+                            break
+                        m += 30
+                        if m >= 60:
+                            m = 0; h += 1
+                        if h > 23 or (h == end.hour and m > end.minute):
+                            break
+                    # Asegurarse de incluir la hora de fin exacta
+                    _end_str = f"{end.hour:02d}:{(0 if end.minute < 30 else 30):02d}"
+                    if _end_str not in opts:
+                        opts.append(_end_str)
+                    return opts
+
                 _day_names_full = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"]
 
                 for _wday in _seen_wdays:
                     _wkey  = str(_wday)
                     _dname = _day_names_full[_wday]
+                    _is_we = _wday >= 5  # sábado=5, domingo=6
+                    _d_start = _we_start if _is_we else _wk_start
+                    _d_end   = _we_end   if _is_we else _wk_end
+                    _topts   = _time_options(_d_start, _d_end)
+                    _start_str = f"{_d_start.hour:02d}:{_d_start.minute:02d}"
+                    _end_str   = f"{_d_end.hour:02d}:{_d_end.minute:02d}"
+                    _idx_s = _topts.index(_start_str) if _start_str in _topts else 0
+                    _idx_e = _topts.index(_end_str)   if _end_str   in _topts else len(_topts) - 1
+
                     st.markdown(f'<div class="pv-day-header">📅 {_dname}</div>',
                                 unsafe_allow_html=True)
                     _can_play = st.selectbox(
@@ -673,12 +707,13 @@ def render_public_registration(tournament_id: str) -> None:
                     else:
                         _fc1, _fc2 = st.columns(2)
                         with _fc1:
-                            _from = st.selectbox("⏩ Desde", _time_opts, index=_idx_9,
+                            _from = st.selectbox("⏩ Desde", _topts, index=_idx_s,
                                                  key=f"avail_from_{_wkey}")
                         with _fc2:
-                            _to = st.selectbox("⏹ Hasta", _time_opts, index=_idx_22,
+                            _to = st.selectbox("⏹ Hasta", _topts, index=_idx_e,
                                                key=f"avail_to_{_wkey}")
-                        if _from != "07:00" or _to != "23:30":
+                        # Guardar solo si restringe respecto al rango completo del día
+                        if _from != _start_str or _to != _end_str:
                             for _dd2 in _days_range:
                                 if _dd2.weekday() == _wday:
                                     availability_windows[_dd2.isoformat()] = {"from": _from, "to": _to}
