@@ -386,44 +386,55 @@ def render_public_registration(tournament_id: str) -> None:
 
             if _days_range:
                 st.markdown("**📅 ¿Cuándo puedes jugar?**")
-                st.caption("Para cada día indica si puedes jugar y en qué horario. Si puedes todo el día, deja el horario tal como está.")
+                st.caption("Indica tu disponibilidad para cada día. Si puedes todo el día, no hace falta cambiar nada.")
+
+                # Días únicos de la semana presentes en el torneo (en orden de aparición)
+                _seen_wdays: list[int] = []
+                for _dd in _days_range:
+                    if _dd.weekday() not in _seen_wdays:
+                        _seen_wdays.append(_dd.weekday())
 
                 # Opciones de hora cada 30 min: 07:00 → 23:30
-                _time_opts = [
-                    f"{h:02d}:{m:02d}"
-                    for h in range(7, 24) for m in (0, 30)
-                ]
+                _time_opts = [f"{h:02d}:{m:02d}" for h in range(7, 24) for m in (0, 30)]
+                _idx_9  = _time_opts.index("09:00") if "09:00" in _time_opts else 0
+                _idx_22 = _time_opts.index("22:00") if "22:00" in _time_opts else len(_time_opts) - 1
 
                 _day_names_full = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"]
-                for _day in _days_range:
-                    _iso = _day.isoformat()
-                    _label = f"{_day_names_full[_day.weekday()]} {_day.strftime('%d/%m')}"
-                    _dc1, _dc2, _dc3, _dc4 = st.columns([2, 1, 1, 1])
-                    with _dc1:
-                        st.markdown(f"**{_label}**")
-                    with _dc2:
+                for _wday in _seen_wdays:
+                    _wkey = str(_wday)   # clave del día: "0"=lunes … "6"=domingo
+                    _dname = _day_names_full[_wday]
+                    # Nombre del día a ancho completo (visible en móvil)
+                    st.markdown(f"**{_dname}**")
+                    _sc1, _sc2, _sc3 = st.columns([1, 1, 1])
+                    with _sc1:
                         _can_play = st.selectbox(
-                            "Estado", ["✅ Puedo", "❌ No puedo"],
-                            key=f"avail_st_{_iso}", label_visibility="collapsed",
+                            "Estado",
+                            ["✅ Puedo", "❌ No puedo"],
+                            key=f"avail_st_{_wkey}",
+                            label_visibility="collapsed",
                         )
                     if _can_play == "❌ No puedo":
-                        unavailable_selected.append(_iso)
+                        # Marcar como no disponible todos los días de esa semana
+                        for _dd2 in _days_range:
+                            if _dd2.weekday() == _wday:
+                                unavailable_selected.append(_dd2.isoformat())
                     else:
-                        with _dc3:
+                        with _sc2:
                             _from = st.selectbox(
-                                "Desde", _time_opts,
-                                index=_time_opts.index("09:00") if "09:00" in _time_opts else 0,
-                                key=f"avail_from_{_iso}", label_visibility="collapsed",
+                                "Desde", _time_opts, index=_idx_9,
+                                key=f"avail_from_{_wkey}",
+                                label_visibility="collapsed",
                             )
-                        with _dc4:
+                        with _sc3:
                             _to = st.selectbox(
-                                "Hasta", _time_opts,
-                                index=_time_opts.index("22:00") if "22:00" in _time_opts else len(_time_opts)-1,
-                                key=f"avail_to_{_iso}", label_visibility="collapsed",
+                                "Hasta", _time_opts, index=_idx_22,
+                                key=f"avail_to_{_wkey}",
+                                label_visibility="collapsed",
                             )
-                        # Solo guardar si no es la franja completa (07:00–23:30)
                         if _from != "07:00" or _to != "23:30":
-                            availability_windows[_iso] = {"from": _from, "to": _to}
+                            for _dd2 in _days_range:
+                                if _dd2.weekday() == _wday:
+                                    availability_windows[_dd2.isoformat()] = {"from": _from, "to": _to}
 
         submitted = st.form_submit_button("📩 Enviar inscripción", type="primary", use_container_width=True)
 
