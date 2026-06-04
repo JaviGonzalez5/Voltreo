@@ -5539,15 +5539,13 @@ elif page == "t_config":
         else:
             t_reg_close = None
 
-        t_format = st.selectbox(
-            "Formato",
-            options=[TournamentFormat.GROUPS, TournamentFormat.BRACKET, TournamentFormat.GROUPS_BRACKET],
-            format_func=lambda f: {
-                TournamentFormat.GROUPS:         "🔄 Solo grupos (round-robin)",
-                TournamentFormat.BRACKET:        "🪜 Solo cuadro eliminatorio",
-                TournamentFormat.GROUPS_BRACKET: "🔄🪜 Grupos + cuadro final",
-            }[f],
-            index=0 if t is None else [TournamentFormat.GROUPS, TournamentFormat.BRACKET, TournamentFormat.GROUPS_BRACKET].index(t.format),
+        # El formato se elige en "Generar estructura" (paso 3) una vez que
+        # sabes cuántas parejas hay por categoría. Aquí solo lo mantenemos
+        # con el valor guardado (o el por defecto) sin mostrarlo.
+        t_format = getattr(t, "format", TournamentFormat.GROUPS) if t else TournamentFormat.GROUPS
+        st.caption(
+            "💡 El formato (grupos, cuadro, grupos+cuadro) se elige en el paso "
+            "**Generar estructura**, una vez que ya sabes cuántas parejas hay inscritas."
         )
 
     st.divider()
@@ -6381,6 +6379,52 @@ elif page == "t_generate":
 
     from src.tournament_generator import recommend_structure as _recommend
     from src.tournament_models import TournamentDivision as _TDivG
+
+    # ── SELECTOR DE FORMATO — aquí es donde tiene sentido elegirlo ──────────
+    # El admin ya sabe cuántas parejas hay en cada categoría.
+    _section_start("🎯", "Elige el formato del torneo")
+    st.caption("Ahora que ya sabes cuántas parejas hay, elige el formato más adecuado.")
+
+    # Mostrar cuántas parejas hay por categoría como referencia
+    if _tg_multi:
+        from collections import Counter as _Cnt
+        _pc = _Cnt(p.division for p in t.pairs)
+        _chips_fmt = [(f"{_tg_div_labels.get(k,k)}: {_pc.get(k,0)} parejas", "green", "🎾") for k in _tg_div_keys]
+        _stat_chips(*_chips_fmt)
+    else:
+        st.caption(f"**{n_pairs} parejas inscritas**")
+
+    _fmt_options = [TournamentFormat.GROUPS, TournamentFormat.BRACKET, TournamentFormat.GROUPS_BRACKET]
+    _fmt_labels = {
+        TournamentFormat.GROUPS:         "🔄 Solo grupos (liga round-robin)",
+        TournamentFormat.BRACKET:        "🪜 Solo cuadro eliminatorio",
+        TournamentFormat.GROUPS_BRACKET: "🔄🪜 Grupos + cuadro final (clasificados pasan a eliminatoria)",
+    }
+    _fmt_hints = {
+        TournamentFormat.GROUPS:         "Todos juegan contra todos en su grupo. Recomendado cuando hay pocas parejas.",
+        TournamentFormat.BRACKET:        "Eliminación directa desde el primer partido.",
+        TournamentFormat.GROUPS_BRACKET: "Fase de grupos + semifinales/final. El formato más completo.",
+    }
+    _cur_fmt_idx = _fmt_options.index(t.format) if t.format in _fmt_options else 0
+    _sel_fmt = st.radio(
+        "Formato del torneo",
+        options=_fmt_options,
+        format_func=lambda f: _fmt_labels[f],
+        index=_cur_fmt_idx,
+        key="tg_format_select",
+        label_visibility="collapsed",
+        horizontal=False,
+    )
+    st.caption(_fmt_hints[_sel_fmt])
+
+    # Aplicar el formato seleccionado al torneo si cambió
+    if _sel_fmt != t.format:
+        t.format = _sel_fmt
+        t.groups = []; t.matches = []; t.division_draws = []
+        st.session_state["tournament"] = t
+        st.rerun()
+
+    st.divider()
 
     _is_groups_fmt = t.format in (TournamentFormat.GROUPS, TournamentFormat.GROUPS_BRACKET)
     _editor_divs_g = _tg_div_keys if _tg_div_keys else [None]
