@@ -304,6 +304,9 @@ class TournamentRegistration(BaseModel):
     notes:       str = ""                # mensaje libre del jugador
     # Disponibilidad: lista de fechas en que NO puede jugar (ISO strings "YYYY-MM-DD")
     unavailable_dates: list[str] = Field(default_factory=list)
+    # Ventanas horarias por día: {"YYYY-MM-DD": {"from": "HH:MM", "to": "HH:MM"}}
+    # Solo se almacenan los días con restricción horaria (ausencia = disponible todo el día)
+    availability_windows: dict = Field(default_factory=dict)
     status:      RegistrationStatus = RegistrationStatus.PENDING
     submitted_at: str = ""               # ISO timestamp
 

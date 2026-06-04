@@ -6218,23 +6218,35 @@ elif page == "t_pairs":
                 if _reg.notes:
                     st.caption(f"💬 {escape(_reg.notes)}")
                 # ── Disponibilidad ────────────────────────────────────────
-                _unavail = getattr(_reg, "unavailable_dates", []) or []
-                if _unavail:
+                _unavail  = getattr(_reg, "unavailable_dates", []) or []
+                _windows  = getattr(_reg, "availability_windows", {}) or {}
+                _ask_av   = getattr(t, "registration_ask_availability", False)
+                if _unavail or _windows:
                     from datetime import date as _date_cls
                     _day_names_es = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"]
-                    _formatted = []
-                    for _d_str in _unavail:
+                    _lines = []
+                    if _unavail:
+                        _fmt_u = []
+                        for _d_str in _unavail:
+                            try:
+                                _d = _date_cls.fromisoformat(_d_str)
+                                _fmt_u.append(f"{_day_names_es[_d.weekday()]} {_d.strftime('%d/%m')}")
+                            except Exception:
+                                _fmt_u.append(_d_str)
+                        _lines.append(f"❌ <strong>No puede:</strong> {', '.join(_fmt_u)}")
+                    for _d_str, _w in sorted(_windows.items()):
                         try:
                             _d = _date_cls.fromisoformat(_d_str)
-                            _formatted.append(f"{_day_names_es[_d.weekday()]} {_d.strftime('%d/%m')}")
+                            _lbl = f"{_day_names_es[_d.weekday()]} {_d.strftime('%d/%m')}"
                         except Exception:
-                            _formatted.append(_d_str)
+                            _lbl = _d_str
+                        _lines.append(f"⏰ <strong>{_lbl}:</strong> {_w.get('from','?')} – {_w.get('to','?')}")
                     st.markdown(
                         f'<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;'
                         f'padding:.4rem .7rem;margin:.3rem 0;font-size:.82rem;color:#856404">'
-                        f'📅 <strong>No disponible:</strong> {", ".join(_formatted)}'
+                        + "<br>".join(_lines) +
                         f'</div>', unsafe_allow_html=True)
-                elif getattr(t, "registration_ask_availability", False):
+                elif _ask_av:
                     st.caption("📅 Disponible todos los días del torneo")
                 _btn_a, _btn_r = st.columns(2)
                 with _btn_a:

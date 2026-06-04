@@ -375,6 +375,7 @@ def render_public_registration(tournament_id: str) -> None:
         # ── Disponibilidad por días (solo si el admin lo ha activado) ──────
         _ask_avail = getattr(t, "registration_ask_availability", False)
         unavailable_selected: list[str] = []
+        availability_windows: dict = {}
         if _ask_avail:
             from datetime import timedelta as _td
             _days_range = []
@@ -384,15 +385,45 @@ def render_public_registration(tournament_id: str) -> None:
                 _d = _d + _td(days=1)
 
             if _days_range:
-                st.markdown("**¿Hay algún día en el que NO puedas jugar?**")
-                st.caption("Marca los días en los que tienes algún impedimento. Déjalo sin marcar si puedes jugar todos los días.")
-                _cols_avail = st.columns(min(len(_days_range), 4))
-                _day_names = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"]
-                for _i, _day in enumerate(_days_range):
-                    with _cols_avail[_i % 4]:
-                        _lbl = f"{_day_names[_day.weekday()]} {_day.strftime('%d/%m')}"
-                        if st.checkbox(_lbl, key=f"avail_{_day.isoformat()}"):
-                            unavailable_selected.append(_day.isoformat())
+                st.markdown("**📅 ¿Cuándo puedes jugar?**")
+                st.caption("Para cada día indica si puedes jugar y en qué horario. Si puedes todo el día, deja el horario tal como está.")
+
+                # Opciones de hora cada 30 min: 07:00 → 23:30
+                _time_opts = [
+                    f"{h:02d}:{m:02d}"
+                    for h in range(7, 24) for m in (0, 30)
+                ]
+
+                _day_names_full = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"]
+                for _day in _days_range:
+                    _iso = _day.isoformat()
+                    _label = f"{_day_names_full[_day.weekday()]} {_day.strftime('%d/%m')}"
+                    _dc1, _dc2, _dc3, _dc4 = st.columns([2, 1, 1, 1])
+                    with _dc1:
+                        st.markdown(f"**{_label}**")
+                    with _dc2:
+                        _can_play = st.selectbox(
+                            "Estado", ["✅ Puedo", "❌ No puedo"],
+                            key=f"avail_st_{_iso}", label_visibility="collapsed",
+                        )
+                    if _can_play == "❌ No puedo":
+                        unavailable_selected.append(_iso)
+                    else:
+                        with _dc3:
+                            _from = st.selectbox(
+                                "Desde", _time_opts,
+                                index=_time_opts.index("09:00") if "09:00" in _time_opts else 0,
+                                key=f"avail_from_{_iso}", label_visibility="collapsed",
+                            )
+                        with _dc4:
+                            _to = st.selectbox(
+                                "Hasta", _time_opts,
+                                index=_time_opts.index("22:00") if "22:00" in _time_opts else len(_time_opts)-1,
+                                key=f"avail_to_{_iso}", label_visibility="collapsed",
+                            )
+                        # Solo guardar si no es la franja completa (07:00–23:30)
+                        if _from != "07:00" or _to != "23:30":
+                            availability_windows[_iso] = {"from": _from, "to": _to}
 
         submitted = st.form_submit_button("📩 Enviar inscripción", type="primary", use_container_width=True)
 
@@ -422,7 +453,8 @@ def render_public_registration(tournament_id: str) -> None:
                 player2_email = p2_email.strip() or None,
                 division      = div_sel_key,
                 notes         = notes.strip(),
-                unavailable_dates = unavailable_selected,
+                unavailable_dates     = unavailable_selected,
+                availability_windows  = availability_windows,
                 status        = RegistrationStatus.PENDING,
                 submitted_at  = _dtt.utcnow().isoformat(),
             )
