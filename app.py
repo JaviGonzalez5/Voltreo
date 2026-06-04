@@ -6025,6 +6025,25 @@ elif page == "t_config":
             _all_divs_cfg = list(getattr(_cfg_t, "divisions", []) or []) or [None]
             _, _dl_cfg = _division_option_maps()
             _max_changed = False
+
+            # Aplicar a todas a la vez
+            _ap_col1, _ap_col2 = st.columns([1, 3])
+            with _ap_col1:
+                _apply_all_val = st.number_input(
+                    "Aplicar a todas", min_value=0, max_value=200, step=1,
+                    value=0, key="reg_max_apply_all",
+                    help="Escribe un número y pulsa → para aplicarlo a todas las categorías de golpe.",
+                )
+            with _ap_col2:
+                st.write("")
+                st.write("")
+                def _cb_apply_all_max():
+                    _v = st.session_state.get("reg_max_apply_all", 0)
+                    for _dk in _all_divs_cfg:
+                        st.session_state[f"reg_max_{_dk}"] = _v
+                st.button("→ Aplicar a todas", key="reg_max_apply_btn",
+                          on_click=_cb_apply_all_max)
+
             _max_cols = st.columns(min(len(_all_divs_cfg), 4))
             for _mi, _dk_m in enumerate(_all_divs_cfg):
                 with _max_cols[_mi % 4]:
