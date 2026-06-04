@@ -409,12 +409,12 @@ class TournamentConfig(BaseModel):
         return len(self.matches)
 
     def confirmed_count(self, division: Optional[str] = None) -> int:
-        """Parejas ya confirmadas (aprobadas + importadas directamente) en una división."""
-        direct = sum(1 for p in self.pairs if division is None or p.division == division)
-        approved = sum(1 for r in self.registrations
-                       if r.status == "approved"
-                       and (division is None or r.division == division))
-        return direct + approved
+        """Parejas confirmadas en una división.
+        Solo cuenta t.pairs (incluye importadas manualmente + inscripciones aprobadas,
+        que se añaden a t.pairs al aprobarlas). No sumar registrations aprobadas
+        porque ya están en t.pairs y se contarían doble.
+        """
+        return sum(1 for p in self.pairs if division is None or p.division == division)
 
     def is_division_full(self, division: Optional[str] = None) -> bool:
         """True si la división ya alcanzó el máximo de parejas configurado."""

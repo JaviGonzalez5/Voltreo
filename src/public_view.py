@@ -775,7 +775,7 @@ def render_public_registration(tournament_id: str) -> None:
             submitted = st.form_submit_button("📩 Enviar inscripción", type="primary",
                                               use_container_width=True)
 
-    with _tab_form:
+        # Validación y guardado (dentro del mismo with _tab_form, fuera del form)
         if submitted:
             errors = []
             # Jugador 1 — todos obligatorios
