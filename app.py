@@ -6742,6 +6742,26 @@ elif page == "t_schedule":
         st.stop()
 
     _section_start("🗓️", "Planificación automática")
+
+    # ── Modo de distribución (solo para pádel, no pickleball) ────────────────
+    _sched_sport = _club_sport()
+    _tournament_days = (t.end_date - t.start_date).days + 1 if t else 1
+    if _sched_sport == "padel" and _tournament_days > 1:
+        _cur_distribute = getattr(t, "schedule_distribute_over_days", False)
+        _new_distribute = st.toggle(
+            f"📅 Distribuir partidos entre todos los días del torneo ({_tournament_days} días)",
+            value=_cur_distribute,
+            key="t_sched_distribute",
+            help=(
+                "Actívalo si el torneo dura varios días y quieres que los partidos queden "
+                "repartidos uniformemente a lo largo de todas las jornadas, en lugar de "
+                "agrupados al principio. Ideal para torneos de liga semanal."
+            ),
+        )
+        if _new_distribute != _cur_distribute:
+            t.schedule_distribute_over_days = _new_distribute
+            st.session_state["tournament"] = t
+
     col_btn, col_sum = st.columns([1, 2])
     with col_btn:
         if st.button("🕐 Asignar horarios automáticamente", type="primary", use_container_width=True):

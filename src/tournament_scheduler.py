@@ -203,6 +203,34 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
     day_start = config.day_start_time
     day_end   = config.day_end_time
 
+    # ── Modo distribución: pre-asignar partidos a días ──────────────────────
+    # Cuando schedule_distribute_over_days=True (torneos de pádel multidia),
+    # repartimos los partidos uniformemente entre todos los días del torneo
+    # en lugar de comprimirlos al inicio. Cada partido solo puede empezar
+    # en su día asignado o posterior, garantizando distribución uniforme.
+    _distribute = bool(getattr(config, "schedule_distribute_over_days", False))
+    _day_target: dict[str, date] = {}   # match_id → día mínimo asignado
+
+    if _distribute and len(all_days) > 1:
+        # Solo los partidos de grupos se distribuyen; cuadro/eliminatoria
+        # sigue la lógica normal (depende de resultados de grupos).
+        _group_matches = [m for m in config.matches if m.round == MatchRound.GROUP]
+        _n = len(_group_matches)
+        _nd = len(all_days)
+        if _n > 0:
+            # Cuántos partidos por día (distribución homogénea)
+            _per_day = max(1, -(-_n // _nd))  # ceil division
+            _day_idx = 0
+            _placed_on_day = 0
+            for _m in sorted(_group_matches, key=lambda m: (
+                str(m.division or ""), m.round.order, m.match_number
+            )):
+                _day_target[_m.id] = all_days[min(_day_idx, _nd - 1)]
+                _placed_on_day += 1
+                if _placed_on_day >= _per_day and _day_idx < _nd - 1:
+                    _day_idx += 1
+                    _placed_on_day = 0
+
     # ── Tandas de juego: agrupar divisiones por nº de tanda (1, 2, 3…)
     _waves_cfg = dict(getattr(config, "division_waves", {}) or {})
 
@@ -301,6 +329,12 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
             candidates: list[tuple] = []   # (s_start, s_end, court, match)
             for m in ready:
                 rnd_earliest = _earliest_for(m)
+                # Modo distribución: si el partido tiene día asignado,
+                # no puede empezar antes de ese día.
+                if _distribute and m.id in _day_target:
+                    _assigned_day = _day_target[m.id]
+                    _day_dt = _dt(_assigned_day, day_start)
+                    rnd_earliest = max(rnd_earliest, _day_dt) if rnd_earliest else _day_dt
                 duration = _duration_for_match(config, match=m)
                 slot = _find_best_slot(
                     match=m, active_courts=active_courts, court_tls=court_tls,

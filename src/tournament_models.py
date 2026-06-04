@@ -366,6 +366,11 @@ class TournamentConfig(BaseModel):
     division_draws: list[TournamentDivision] = Field(default_factory=list)
 
     # Inscripciones públicas: parejas que se registran desde el enlace público
+    # Modo de planificación: True = distribuir partidos entre todos los días del torneo
+    # (recomendado para torneos de pádel de varias semanas); False = comprimir al máximo
+    # (recomendado para torneos de pickleball de una noche).
+    schedule_distribute_over_days: bool = False
+
     registration_open: bool = False                    # el admin abre/cierra manualmente
     registration_opens_date: Optional[date] = None    # apertura automática (fecha)
     registration_closes_date: Optional[date] = None   # cierre automático (fecha)
