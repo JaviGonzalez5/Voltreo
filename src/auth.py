@@ -12,6 +12,8 @@ import hashlib
 import hmac
 import json
 import os
+import threading
+import time as _time_module
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Any
 
@@ -56,39 +58,47 @@ def verify_password(password: str, hashed: str) -> bool:
 _MAX_ATTEMPTS  = 5          # intentos máximos antes de bloquear
 _LOCKOUT_SECS  = 300        # 5 minutos de bloqueo
 
-def _login_attempts_key() -> str:
-    return "_login_attempts"
+# Almacenamiento a nivel de proceso: persiste entre reruns y pestañas del mismo usuario.
+# Clave: username normalizado. Valor: {attempts, locked_until}.
+_rate_limit_lock  = threading.Lock()
+_rate_limit_store: dict = {}
 
-def _login_lockout_key() -> str:
-    return "_login_locked_until"
 
-def check_rate_limit() -> tuple[bool, int]:
+def check_rate_limit(username: str = "") -> tuple[bool, int]:
     """
-    Comprueba si el usuario actual está bloqueado por demasiados intentos fallidos.
+    Comprueba si el username está bloqueado por demasiados intentos fallidos.
     Retorna (bloqueado: bool, segundos_restantes: int).
     """
-    import time as _time
-    locked_until = st.session_state.get(_login_lockout_key(), 0)
-    if locked_until and _time.time() < locked_until:
-        remaining = int(locked_until - _time.time())
-        return True, remaining
-    return False, 0
+    key = username.strip().lower()
+    if not key:
+        return False, 0
+    with _rate_limit_lock:
+        entry = _rate_limit_store.get(key, {})
+        locked_until = entry.get("locked_until", 0)
+        if locked_until and _time_module.time() < locked_until:
+            return True, int(locked_until - _time_module.time())
+        return False, 0
 
 
-def _record_failed_attempt() -> None:
+def _record_failed_attempt(username: str = "") -> None:
     """Registra un intento fallido y aplica bloqueo si se supera el límite."""
-    import time as _time
-    key = _login_attempts_key()
-    attempts = st.session_state.get(key, 0) + 1
-    st.session_state[key] = attempts
-    if attempts >= _MAX_ATTEMPTS:
-        st.session_state[_login_lockout_key()] = _time.time() + _LOCKOUT_SECS
-        st.session_state[key] = 0  # reset contador tras bloqueo
+    key = username.strip().lower()
+    if not key:
+        return
+    with _rate_limit_lock:
+        entry = _rate_limit_store.setdefault(key, {"attempts": 0, "locked_until": 0.0})
+        entry["attempts"] += 1
+        if entry["attempts"] >= _MAX_ATTEMPTS:
+            entry["locked_until"] = _time_module.time() + _LOCKOUT_SECS
+            entry["attempts"] = 0
 
 
-def _clear_login_attempts() -> None:
-    st.session_state.pop(_login_attempts_key(), None)
-    st.session_state.pop(_login_lockout_key(), None)
+def _clear_login_attempts(username: str = "") -> None:
+    key = username.strip().lower()
+    if not key:
+        return
+    with _rate_limit_lock:
+        _rate_limit_store.pop(key, None)
 
 
 def _safe_get_secret(name: str) -> Optional[str]:
@@ -312,22 +322,22 @@ def login(db, username: str, password: str) -> Optional[dict]:
     Retorna None si usuario no existe, inactivo, o contraseña incorrecta.
     Lanza RuntimeError si la sesión está bloqueada por demasiados intentos.
     """
-    blocked, secs = check_rate_limit()
+    blocked, secs = check_rate_limit(username)
     if blocked:
         raise RuntimeError(f"Demasiados intentos. Espera {secs}s.")
 
     user = db.get_user_by_username(username.strip().lower())
     if user is None:
-        _record_failed_attempt()
+        _record_failed_attempt(username)
         return None
     if not user.get("is_active", True):
-        _record_failed_attempt()
+        _record_failed_attempt(username)
         return None
     if not verify_password(password, user["password_hash"]):
-        _record_failed_attempt()
+        _record_failed_attempt(username)
         return None
 
-    _clear_login_attempts()  # login OK → resetear contador
+    _clear_login_attempts(username)  # login OK → resetear contador
     return user
 
 

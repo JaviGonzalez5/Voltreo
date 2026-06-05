@@ -1,6 +1,7 @@
 """
 Ranking Padel Automator — Interfaz Streamlit
 """
+import logging
 import re
 import sys
 import io
@@ -1319,14 +1320,31 @@ header[data-testid="stHeader"] * {
 
     /* Sidebar: ancho completo en móvil */
     [data-testid="stSidebar"] {
-        min-width: 88vw !important;
-        max-width: 88vw !important;
+        width: 0 !important;
+        min-width: 0 !important;
+        max-width: 0 !important;
+        flex: 0 0 0 !important;
+        transform: translateX(-120vw) !important;
+        overflow: hidden !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
+    }
+    [data-testid="stSidebar"] *,
+    [data-testid="stSidebarContent"] {
+        width: 0 !important;
+        min-width: 0 !important;
+        max-width: 0 !important;
+        overflow: hidden !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
     }
 
     /* Ocultar sidebar colapsado para no ocupar espacio */
     [data-testid="collapsedControl"] {
-        display: flex !important;
-        visibility: visible !important;
+        display: none !important;
+        visibility: hidden !important;
+        width: 0 !important;
+        min-width: 0 !important;
     }
 
     /* Hero más compacto */
@@ -1362,6 +1380,57 @@ header[data-testid="stHeader"] * {
 .mob-nav-btn:hover, .mob-nav-btn.active {
     color: #7fffc0 !important;
     background: rgba(0,200,83,.12);
+}
+.mob-bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 99999;
+    background: #07111d;
+    border-top: 1px solid rgba(255,255,255,.10);
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    padding: .4rem .2rem env(safe-area-inset-bottom,.4rem);
+    box-shadow: 0 -4px 20px rgba(0,0,0,.4);
+}
+.mob-bottom-nav .stButton > button,
+.mob-bottom-link {
+    background: transparent !important;
+    border: none !important;
+    color: #4a7aa0 !important;
+    font-size: .58rem !important;
+    font-weight: 800 !important;
+    letter-spacing: .04em !important;
+    text-transform: uppercase !important;
+    padding: .3rem .2rem !important;
+    min-height: 50px !important;
+    box-shadow: none !important;
+    transform: none !important;
+    border-radius: 10px !important;
+    flex: 1 1 0;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: .12rem;
+    text-align: center;
+    text-decoration: none !important;
+}
+.mob-bottom-icon {
+    font-size: 1.15rem;
+    line-height: 1;
+}
+.mob-bottom-nav .stButton > button:active,
+.mob-bottom-link:active {
+    opacity: .65 !important;
+    background: rgba(0,200,83,.12) !important;
+}
+.mob-bottom-nav .mob-btn-active > button,
+.mob-bottom-link.active {
+    color: #7fffc0 !important;
+    background: rgba(0,200,83,.14) !important;
 }
 @media (max-width: 640px) {
     .mob-nav { display: flex !important; }
@@ -2413,8 +2482,25 @@ def _tournament_schedule_excel_bytes(t_obj) -> bytes:
 
 
 # ---------------------------------------------------------------------------
-# Configuración de página
+# Configuración de página — debe ser el primer comando Streamlit
+# Health-check (?health=1) necesita config propia; se resuelve aquí antes que nada
 # ---------------------------------------------------------------------------
+
+try:
+    _early_health = st.query_params.get("health")
+except Exception:
+    _early_health = None
+
+if _early_health:
+    st.set_page_config(page_title="OK", page_icon="✅", layout="centered")
+    st.markdown(
+        '<div style="text-align:center;padding:2rem">'
+        '<div style="font-size:3rem">✅</div>'
+        '<div style="font-size:1.2rem;font-weight:700;color:#00843d">Voltreo está activo</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+    st.stop()
 
 st.set_page_config(
     page_title=f"{BRAND_NAME} · {BRAND_SUFFIX}",
@@ -2479,23 +2565,9 @@ _db = get_db() if _db_ok else None
 try:
     _qp_tid    = st.query_params.get("t")
     _qp_rid    = st.query_params.get("r")
-    _qp_health = st.query_params.get("health")
     _qp_join   = st.query_params.get("join")   # inscripción pública en torneo
 except Exception:
-    _qp_tid = _qp_rid = _qp_health = _qp_join = None
-
-# Health-check endpoint (?health=1) — usado por el keep-alive de GitHub Actions
-# y por herramientas de monitorización para saber si la app responde
-if _qp_health:
-    st.set_page_config(page_title="OK", page_icon="✅", layout="centered")
-    st.markdown(
-        '<div style="text-align:center;padding:2rem">'
-        '<div style="font-size:3rem">✅</div>'
-        '<div style="font-size:1.2rem;font-weight:700;color:#00843d">Voltreo está activo</div>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-    st.stop()
+    _qp_tid = _qp_rid = _qp_join = None
 if _qp_tid:
     from src.public_view import render_public_tournament
     render_public_tournament(_qp_tid)  # llama a st.stop() internamente
@@ -2561,7 +2633,8 @@ if _db_ok:
                         st.session_state.matches = _loaded_result.scheduled + _loaded_result.conflicts
                         st.session_state.matches_generated = True
             except Exception:
-                pass  # BD no disponible o fase inválida — ignorar silenciosamente
+                logging.exception("Error cargando fase activa desde BD (club=%s)", _cid_load)
+                st.warning("⚠️ No se pudo cargar la fase activa. Comprueba la conexión a la base de datos.")
         if _cid_load and _db is not None and st.session_state.get("tournament") is None and not st.session_state.get("_db_tournament_loaded"):
             st.session_state["_db_tournament_loaded"] = True
             try:
@@ -2574,7 +2647,8 @@ if _db_ok:
                     st.session_state.pop("t_config_divisions", None)
                     st.session_state["_t_config_divisions_source_id"] = None
             except Exception:
-                pass  # BD no disponible o torneo inválido — ignorar silenciosamente
+                logging.exception("Error cargando torneo desde BD (club=%s)", _cid_load)
+                st.warning("⚠️ No se pudo cargar el torneo. Comprueba la conexión a la base de datos.")
 
 # ---------------------------------------------------------------------------
 # Sidebar — navegación
@@ -2751,8 +2825,8 @@ st.sidebar.markdown(
     unsafe_allow_html=True,
 )
 
-# ── Barra de navegación inferior (móvil) ─────────────────────────────────────
-if _db_ok and is_authenticated():
+# Barra de navegacion inferior responsive; evita duplicar el modo movil dedicado.
+if not _is_mobile and _db_ok and is_authenticated():
     _render_mobile_nav(page)
 
 # ---------------------------------------------------------------------------
@@ -2819,6 +2893,11 @@ def _t_nav_buttons(current_step: int) -> None:
             if st.button("Siguiente →", type="primary", use_container_width=True, key=f"t_next_{current_step}"):
                 st.session_state["_nav_page"] = _keys[current_step]; st.rerun()
 
+def _mobile_footer_now(current_page: str) -> None:
+    if _is_mobile:
+        from src.mobile_app import _bottom_nav as _mob_bottom_nav
+        _mob_bottom_nav(current_page)
+
 
 # ---------------------------------------------------------------------------
 # PÁGINA: Mis Torneos
@@ -2832,12 +2911,14 @@ if page == "tournaments":
     if not _db_ok or _db is None:
         _empty_state("🔌", "Base de datos no conectada",
                      "Configura Supabase para guardar y listar torneos.")
+        _mobile_footer_now(page)
         st.stop()
 
     # El superadmin debe tener un club seleccionado para operar en él
     if not _tr_cid:
         _empty_state("🏢", "Selecciona un club",
                      "Elige un club activo en el menú lateral para ver y crear sus torneos.")
+        _mobile_footer_now(page)
         st.stop()
 
     # Banner del club activo (para que el superadmin sepa dónde está creando)
@@ -2873,6 +2954,7 @@ if page == "tournaments":
     if not _all_t_rows:
         _empty_state("🏆", "Aún no hay torneos",
                      "Crea tu primer torneo con el botón de arriba.")
+        _mobile_footer_now(page)
         st.stop()
 
     # ── Cargar detalles para clasificar cada torneo ──────────────────────────
