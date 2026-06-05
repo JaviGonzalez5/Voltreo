@@ -14,7 +14,7 @@
 |-----------|---------|----------|
 | Sin URL routing real | No se pueden compartir cuadros/rankings por enlace | Añadir capa Next.js pública |
 | Sidebar 306px fija en móvil | App inutilizable en teléfono para jugadores | Next.js mobile-first para vistas de jugador |
-| Sin rate limiting nativo | Brute force en login posible | ✅ Implementado (session-state, 5 intentos / 5 min) |
+| Sin rate limiting nativo | Brute force en login posible | ✅ Implementado (process-level por username, 5 intentos / 5 min) |
 | Sin tiempo real | No se pueden ver resultados en vivo | Supabase Realtime en Next.js (futuro) |
 | Max ~12 usuarios concurrentes | No escala para torneos grandes con muchos admins | Aceptable para v1 (1 admin/club) |
 
@@ -36,7 +36,8 @@ Streamlit (admin privado)  ←→  Supabase (DB)  ←→  Next.js (vistas públi
 
 | Item | Estado | Evidencia |
 |------|--------|-----------|
-| Rate limiting en login (5 intentos / 5 min lockout) | ✅ | 23 tests passing |
+| Rate limiting en login (5 intentos / 5 min lockout) | ✅ | test_auth_security.py |
+| Rate limiting mejorado a process-level con threading.Lock | ✅ | Persiste entre pestañas/reruns del mismo proceso |
 | Validación de contraseña robusta (8 chars, mayúscula, número) | ✅ | test_auth_security.py |
 | `create_user` valida rol en capa de datos | ✅ | `_VALID_ROLES` en db.py |
 | `upsert_phase` deactiva siblings en UPDATE también | ✅ | test: múltiples fases activas |
@@ -45,7 +46,13 @@ Streamlit (admin privado)  ←→  Supabase (DB)  ←→  Next.js (vistas públi
 | Torneos persistidos a Supabase (t_config + t_schedule) | ✅ | `upsert_tournament` llamado |
 | Time parse crash en editor de partidos | ✅ | try/except IndexError, ValueError |
 | `groups_qualifiers=0` y `bracket n=0` no crashean | ✅ | 19 tests passing |
-| Test suite completo: 79 tests | ✅ | 79/79 PASSED |
+| Health-check `?health=1` corregido (doble `set_page_config`) | ✅ | `_early_health` antes de `st.set_page_config` |
+| Excepciones silenciadas en carga de datos → `logging.exception` | ✅ | Fase y torneo muestran warning genérico al usuario |
+| Confirmación de inscripción por email (SMTP) | ✅ | `src/email_service.py` + tests |
+| Vista pública de torneo compartible por URL | ✅ | `src/public_view.py` → `?t=<id>` |
+| Vista pública de ranking compartible por URL | ✅ | `src/public_ranking.py` → `?r=<id>` |
+| Inscripción pública en torneo por URL | ✅ | `src/public_view.py` → `?join=<id>` |
+| Test suite: 204 tests | ✅ | 204/204 PASSED |
 
 ### Pendiente de ejecutar manualmente en Supabase
 
@@ -96,7 +103,7 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEF
 | Exportar Excel | ✅ Funciona | — |
 | **Registrar resultados partido a partido** | ❌ No existe | Formulario por match con score |
 | **Avance automático del cuadro** | ❌ No existe | Lógica: ganador pasa a siguiente ronda |
-| **Vista pública compartible** | ❌ No existe | URL pública (requiere Next.js) |
+| **Vista pública compartible** | ⚠️ Parcial | `src/public_view.py` implementado; integración en app pendiente |
 | **Filtros y búsqueda en listas** | ❌ No existe | st.multiselect por categoría/estado |
 
 #### Estimación P1-Torneos: 8 días de desarrollo
@@ -119,9 +126,10 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEF
 **Tiempo estimado:** 2 semanas para las 3 rutas básicas
 
 ### Notificaciones (email básico)
-- Resultado registrado → notificar pareja rival
-- Cuadro publicado → notificar participantes
-- **Stack:** Resend (100 emails/día gratis) + Supabase Edge Function
+- ✅ `send_registration_confirmation` implementado en `src/email_service.py` (SMTP con TLS)
+- Resultado registrado → notificar pareja rival (pendiente)
+- Cuadro publicado → notificar participantes (pendiente)
+- **Stack actual:** SMTP configurable vía `st.secrets["email"]`
 
 ---
 
@@ -164,7 +172,7 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEF
 - [ ] Registro de resultados de ranking
 - [ ] Clasificación automática
 - [ ] Registro de resultados de torneo + avance de cuadro
-- [ ] URL pública de torneo compartible
+- [x] URL pública de torneo compartible (`src/public_view.py`)
 
 ### UX mínima
 - [x] Login con mensajes de error claros
@@ -173,7 +181,7 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEF
 - [ ] Tiempo de aprendizaje < 10 min (video demo)
 
 ### Operación
-- [x] 79 tests automatizados
+- [x] 204 tests automatizados
 - [ ] Runbook de operaciones (cómo crear club, resetear contraseña, recuperar datos)
 - [ ] Política de backup verificada
 - [ ] Monitorización básica (Supabase logs activados)
@@ -189,7 +197,7 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEF
 | Pérdida de sesión en Streamlit (timeout 30min) | Alta | Medio | Mostrar aviso "sesión expirando" + guardar en DB en cada paso |
 | Contención de Playwright en Streamlit | Alta | Bajo | Mover Syltek connector a worker externo (Railway) en P2 |
 | Escalabilidad con >20 clubs simultáneos | Baja ahora | Alto | Arquitectura Next.js + API FastAPI resuelve este riesgo |
-| Brecha de datos entre clubs | Baja | Crítico | RLS en Supabase + tests de aislamiento regulares |
+| Brecha de datos entre clubs | Baja | Crítico | RLS en Supabase (pendiente ejecutar db_rls.sql) + tests de aislamiento regulares |
 
 ---
 
