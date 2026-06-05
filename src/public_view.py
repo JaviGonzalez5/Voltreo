@@ -799,13 +799,9 @@ def render_public_registration(tournament_id: str) -> None:
                             tournament_id   = t.id,
                         )
                         st.session_state[f"_reg_done_{tournament_id}"] = True
-                        # ── Enviar correo de confirmación ─────────────────
+                        # ── Enviar correo de confirmación (opcional) ──────
                         try:
-                            from .email_service import send_registration_confirmation
-                            _to_mails = [
-                                e for e in [reg.player1_email, reg.player2_email]
-                                if e and e.strip()
-                            ]
+                            from .email_sender import notify_registration_received
                             _p1_full = " ".join(filter(None, [
                                 reg.player1_name,
                                 reg.player1_surname1,
@@ -816,17 +812,16 @@ def render_public_registration(tournament_id: str) -> None:
                                 reg.player2_surname1,
                                 reg.player2_surname2,
                             ]))
-                            _cat_name = _div_labels.get(div_sel_key, "") if div_sel_key else ""
-                            send_registration_confirmation(
-                                to_emails      = _to_mails,
-                                tournament_name= t.name,
-                                pair_name      = reg.pair_name,
-                                category       = _cat_name,
-                                player1_full   = _p1_full,
-                                player2_full   = _p2_full,
+                            notify_registration_received(
+                                to_emails       = [reg.player1_email, reg.player2_email],
+                                tournament_name = t.name,
+                                pair_name       = reg.pair_name,
+                                category        = _div_labels.get(div_sel_key, "") if div_sel_key else "",
+                                player1_full    = _p1_full,
+                                player2_full    = _p2_full,
                             )
                         except Exception:
-                            pass  # El email es opcional; no interrumpir el flujo
+                            pass  # El email es opcional; la inscripción ya está guardada
                         st.rerun()
                     except Exception as _e:
                         st.error(f"Error al guardar la inscripción: {_e}")
