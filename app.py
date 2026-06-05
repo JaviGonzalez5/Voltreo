@@ -2796,6 +2796,11 @@ _R_STEPS = [
     ("syltek",    "Publicar en Syltek", "Reserva pistas automáticamente",       False),
 ]
 _IS_RANKING = page in {k for k, *_ in _R_STEPS}
+_R_STEPS_VIS = [
+    s for s in _R_STEPS
+    if not (s[0] == "review" and not _s.get("schedule_violations"))
+    and not (s[0] == "syltek" and not _s.get("syltek_url"))
+]
 
 _T_OBJ   = _s.get("tournament")
 _T_SCHED = getattr(_T_OBJ, "scheduled_count", 0) if _T_OBJ is not None else 0
@@ -2803,15 +2808,15 @@ _t_has_results = any(getattr(m, "is_played", False) for m in getattr(_T_OBJ, "ma
 _T_STEPS = [
     ("t_config",   "Configurar torneo",  "Nombre, categoría, formato y pistas",  _tournament_config_ready(_T_OBJ)),
     ("t_pairs",    "Añadir parejas",     "Registra las parejas participantes",    _tournament_config_ready(_T_OBJ) and len(getattr(_T_OBJ, "pairs",    [])) > 0),
-    ("t_generate", "Generar estructura", "Crea grupos y/o cuadro",                _tournament_config_ready(_T_OBJ) and len(getattr(_T_OBJ, "matches",  [])) > 0),
-    ("t_schedule", "Asignar horarios",   "Planificación automática",              _T_SCHED > 0),
+    ("t_generate", "Generar cuadro",      "Genera grupos y cuadro eliminatorio",   _tournament_config_ready(_T_OBJ) and len(getattr(_T_OBJ, "matches",  [])) > 0),
+    ("t_schedule", "Pistas y horarios",  "Asigna pistas y franjas horarias",      _T_SCHED > 0),
     ("t_results",  "Registrar resultados", "Marcadores y avance del cuadro",      _t_has_results),
     ("t_export",   "Exportar",           "Descarga el Excel del torneo",          _T_SCHED > 0),
 ]
 _IS_TOURNAMENT = page in {k for k, *_ in _T_STEPS}
 
 st.sidebar.markdown('<div class="pp-nav-section"><span>Herramientas</span><span class="pp-nav-badge">2</span></div>', unsafe_allow_html=True)
-_sidebar_workflow("📊  Ranking",  _R_STEPS, page, "nav_r", expanded=_IS_RANKING)
+_sidebar_workflow("📊  Ranking",  _R_STEPS_VIS, page, "nav_r", expanded=_IS_RANKING)
 _sidebar_workflow("🏆  Torneos",  _T_STEPS, page, "nav_t", expanded=_IS_TOURNAMENT)
 
 if _db_ok and is_superadmin():
