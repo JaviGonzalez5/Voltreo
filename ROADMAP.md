@@ -87,18 +87,20 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEF
 
 ## FASE P1 — Funcionalidad completa de Torneos (Semanas 2-4)
 
-| Feature | Estado actual | Trabajo necesario |
-|---------|--------------|-------------------|
-| Crear torneo con formato | ✅ Funciona | — |
-| Generar grupos y cuadro | ✅ Funciona | — |
-| Asignar horarios/pistas | ✅ Funciona | — |
-| Exportar Excel | ✅ Funciona | — |
-| **Registrar resultados partido a partido** | ❌ No existe | Formulario por match con score |
-| **Avance automático del cuadro** | ❌ No existe | Lógica: ganador pasa a siguiente ronda |
-| **Vista pública compartible** | ⚠️ Parcial | `src/public_view.py` implementado; integración en app pendiente |
-| **Filtros y búsqueda en listas** | ❌ No existe | st.multiselect por categoría/estado |
+### Módulo Torneos — estado real
 
-#### Estimación P1-Torneos: 8 días de desarrollo
+| Feature | Estado actual | Notas |
+|---------|--------------|-------|
+| Crear torneo con formato | ✅ Funciona | `page == "t_config"` |
+| Gestión de parejas e inscripciones | ✅ Funciona | `page == "t_pairs"` |
+| Generar grupos y cuadro | ✅ Funciona | `page == "t_generate"` |
+| Asignar horarios/pistas | ✅ Funciona | `page == "t_schedule"` |
+| Registrar resultados partido a partido | ✅ Funciona | `page == "t_results"` con selector de ganador |
+| Avance automático del cuadro | ✅ Funciona | `src/tournament_results.py` → `_propagate()` |
+| Vista pública compartible | ✅ Funciona | `src/public_view.py` → `?t=<id>` |
+| Inscripción pública por URL | ✅ Funciona | `src/public_view.py` → `?join=<id>` |
+| Exportar Excel | ✅ Funciona | `page == "t_export"` |
+| **Filtros y búsqueda en listas** | ❌ No existe | st.multiselect por categoría/estado (QoL) |
 
 ---
 
@@ -163,7 +165,7 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEF
 - [x] Fases de ranking persistidas a DB
 - [x] Registro de resultados de ranking
 - [x] Clasificación automática
-- [ ] Registro de resultados de torneo + avance de cuadro
+- [x] Registro de resultados de torneo + avance de cuadro
 - [x] URL pública de torneo compartible (`src/public_view.py`)
 
 ### UX mínima
@@ -199,7 +201,7 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEF
 |------|---------|--------------------------|
 | P0 (hecho) | 1 | ✅ Completado |
 | P1 Ranking (resultados + clasificación) | 1.5 | ✅ Completado |
-| P1 Torneos (resultados + avance cuadro) | 1.5 | 8 días |
+| P1 Torneos (resultados + avance cuadro) | 1.5 | ✅ Completado |
 | P2 Next.js vistas públicas | 2 | 2 semanas |
 | P2 Notificaciones email | 0.5 | 3 días |
 | P3 Go-live + tests + documentación | 1 | 5 días |
