@@ -7119,8 +7119,10 @@ elif page == "t_results":
                         tournament_id=_p["tournament_id"],
                     )
                     st.session_state["db_tournament_id"] = _sv["id"]
-                except Exception as _e:
-                    st.warning(f"⚠️ Guardado local OK, BD falló: {_e}")
+                except Exception:
+                    logging.exception("Error persistiendo torneo en BD (tournament=%s)",
+                                      st.session_state.get("db_tournament_id"))
+                    st.warning("⚠️ Guardado local OK, pero falló la conexión a la base de datos.")
 
     # Resumen de progreso global
     _summ = _tsumm(t)
