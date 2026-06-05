@@ -3154,34 +3154,61 @@ if page == "home":
                 _nav_to("admin")
     else:
         # ── Dashboard del club ────────────────────────────────────────────
-        _dashboard_hero(
-            f"{_home_club or 'Tu club'} — Panel de control",
-            "Gestiona rankings, torneos, pistas y calendarios desde un único lugar.",
-            f"✦  {BRAND_NAME}",
+        _home_eyebrow = (
+            f"Ranking activo · {_phase_home.name}" if _phase_home
+            else f"Torneo activo · {getattr(_tournament_home, 'name', '')}" if _tournament_home
+            else "Configura tu primera competición"
         )
+        _dashboard_hero(
+            f"{_home_club or 'Tu club'}",
+            "Gestiona rankings, torneos, pistas y calendarios desde un único lugar.",
+            _home_eyebrow,
+        )
+        _kpi_matches = _tournament_matches_home or _scheduled_home or len(_s.get("matches") or [])
         _kpi_grid([
-            ("Ranking",  len(_groups_home),                              "grupos en la fase activa"),
-            ("Parejas",  _pairs_home,                                     "parejas en ranking"),
-            ("Torneos",  1 if _tournament_home is not None else 0,         "torneo activo cargado"),
-            ("Partidos", _tournament_matches_home or (_scheduled_home or len(_s.get("matches") or [])), "torneo/ranking planificados"),
+            ("Ranking",
+             len(_groups_home),
+             f"grupos · {_phase_home.name}" if _groups_home else "Sin fase activa"),
+            ("Parejas",
+             _pairs_home,
+             "parejas en ranking" if _pairs_home else "Sin jugadores importados"),
+            ("Torneos",
+             1 if _tournament_home is not None else 0,
+             f"torneo · {getattr(_tournament_home, 'name', '')}" if _tournament_home else "Sin torneo activo"),
+            ("Partidos",
+             _kpi_matches,
+             ("partidos del torneo" if _tournament_matches_home else "partidos de ranking") if _kpi_matches else "Sin calendario generado"),
         ])
 
         if not _groups_home and _tournament_home is not None:
+            _t_banner_name = escape(getattr(_tournament_home, "name", "Torneo"))
+            _t_banner_text = (
+                f"{_tournament_pairs_home} parejas · {_tournament_matches_home} partidos programados. "
+                "Puedes registrar resultados o ver el cuadro."
+                if _tournament_matches_home
+                else f"{_tournament_pairs_home} parejas registradas. Genera el cuadro para continuar."
+            )
             st.markdown(
-                '<div class="pp-next-step">'
-                '<div class="pp-next-step-title">Ranking sin datos, torneo activo disponible</div>'
-                f'<div class="pp-next-step-text">Tienes un torneo con {escape(str(_tournament_pairs_home))} parejas y '
-                f'{escape(str(_tournament_matches_home))} partidos. El panel separa ahora el estado del ranking y del torneo '
-                'para evitar que parezca que todo el club est&aacute; vac&iacute;o.</div>'
-                '</div>',
+                f'<div class="pp-next-step">'
+                f'<div class="pp-next-step-title">🏆 Torneo activo: {_t_banner_name}</div>'
+                f'<div class="pp-next-step-text">{escape(_t_banner_text)}</div>'
+                f'</div>',
                 unsafe_allow_html=True,
             )
+            _tb1, _tb2 = st.columns([1, 1])
+            with _tb1:
+                if st.button("Ver resultados →", key="home_t_results", use_container_width=True, type="primary"):
+                    _nav_to("t_results" if _tournament_matches_home else "t_generate")
+            with _tb2:
+                if st.button("Ir al torneo", key="home_t_go", use_container_width=True):
+                    _nav_to("t_config")
         elif not _groups_home and _tournament_home is None:
             # ── Onboarding de 4 pasos para club_admin nuevo ────────────────
-            _ob_club_ok = bool(_home_club and _home_club != "Tu club")
-            _ob_phase_ok = _s.phase is not None
+            _ob_club_ok       = bool(_home_club and _home_club != "Tu club")
+            _ob_phase_ok      = _s.phase is not None
             _ob_tournament_ok = _tournament_home is not None
-            _ob_done = [_ob_club_ok, _ob_phase_ok or _ob_tournament_ok, False, False]
+            _ob_data_ok       = bool(_s.get("data_loaded"))
+            _ob_calendar_ok   = bool(_s.get("matches_generated"))
 
             def _ob_step(n, title, desc, done, active, nav_key):
                 _dot_bg  = "#00c853" if done else ("#07111d" if active else "#e2eaf4")
@@ -3220,9 +3247,9 @@ if page == "home":
                      _ob_phase_ok or _ob_tournament_ok,
                      _ob_club_ok and not (_ob_phase_ok or _ob_tournament_ok), "config")
             _ob_step(3, "Añade jugadores o parejas", "Importa desde CSV o añade manualmente",
-                     False, (_ob_phase_ok or _ob_tournament_ok), "import")
+                     _ob_data_ok, (_ob_phase_ok or _ob_tournament_ok) and not _ob_data_ok, "import")
             _ob_step(4, "Genera el calendario", "El sistema asigna pistas y horarios automáticamente",
-                     False, False, "generate")
+                     _ob_calendar_ok, _ob_data_ok and not _ob_calendar_ok, "generate")
             st.markdown('</div>', unsafe_allow_html=True)
 
             st.markdown(
@@ -3234,19 +3261,20 @@ if page == "home":
                 unsafe_allow_html=True,
             )
 
-        st.markdown(
-            '<div style="font-size:.7rem;font-weight:800;letter-spacing:.12em;'
-            'text-transform:uppercase;color:#7088a0;margin:0 0 .8rem">Módulos disponibles</div>',
-            unsafe_allow_html=True,
-        )
-        _info_grid([
-            ("📊  Ranking",        "Configura fases, importa grupos y parejas, genera el calendario y exporta comunicaciones a jugadores."),
-            ("🏆  Torneos",        "Crea torneos con grupos, cuadro eliminatorio o formato mixto. Asigna horarios y exporta en Excel."),
-            ("🗓️  Calendario",     "Revisa la distribución de partidos, detecta conflictos y ajusta reservas antes de publicar."),
-            ("🛠️  Administración", "Gestiona clubs, usuarios y permisos. Cada club accede solo a sus propios datos."),
-        ])
 
         # ── Selector de fase activa (si hay más de una en BD) ────────────────
+        _ES_MON = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"]
+
+        def _fmt_range_es(s: str, e: str) -> str:
+            try:
+                d1 = datetime.strptime(s, "%Y-%m-%d")
+                d2 = datetime.strptime(e, "%Y-%m-%d")
+                if d1.year == d2.year:
+                    return f"{d1.day} {_ES_MON[d1.month-1]} – {d2.day} {_ES_MON[d2.month-1]} {d2.year}"
+                return f"{d1.day} {_ES_MON[d1.month-1]} {d1.year} – {d2.day} {_ES_MON[d2.month-1]} {d2.year}"
+            except Exception:
+                return f"{s} → {e}"
+
         if _db_ok and _db is not None:
             _home_cid = current_club_id()
             if _home_cid:
@@ -3255,7 +3283,7 @@ if page == "home":
                     if len(_all_phases) > 1:
                         _section_start("📊", "Fase de ranking activa")
                         _phase_opts = {
-                            f"{r['name']} ({r['start_date']} → {r['end_date']})": r["id"]
+                            f"{r['name']} ({_fmt_range_es(r['start_date'], r['end_date'])})": r["id"]
                             for r in _all_phases
                         }
                         _current_pid = _s.get("db_phase_id")
@@ -3303,7 +3331,7 @@ if page == "home":
                     if len(_all_tournaments) > 1:
                         _section_start("🏆", "Torneo activo")
                         _t_opts = {
-                            f"{r['name']} ({r['start_date']} → {r['end_date']})": r["id"]
+                            f"{r['name']} ({_fmt_range_es(r['start_date'], r['end_date'])})": r["id"]
                             for r in _all_tournaments
                         }
                         _current_tid = _s.get("db_tournament_id")
@@ -3336,13 +3364,17 @@ if page == "home":
         st.markdown("")
         _qa1, _qa2, _qa3 = st.columns(3)
         with _qa1:
-            if st.button("📊  Gestionar ranking", type="primary", use_container_width=True):
-                _nav_to("config")
+            _ranking_label = "📊  Ver ranking" if _groups_home else "📊  Crear ranking"
+            _ranking_target = "standings" if _has_results else ("config" if not _phase_home else "import")
+            if st.button(_ranking_label, type="primary", use_container_width=True, key="home_qa_ranking"):
+                _nav_to(_ranking_target)
         with _qa2:
-            if st.button("🏆  Crear torneo", use_container_width=True):
-                _nav_to("t_config")
+            _torneo_label = "🏆  Ver torneo" if _tournament_home else "🏆  Crear torneo"
+            _torneo_target = "t_results" if _t_has_results else ("t_config" if not _tournament_home else "t_pairs")
+            if st.button(_torneo_label, use_container_width=True, key="home_qa_torneo"):
+                _nav_to(_torneo_target)
         with _qa3:
-            if st.button("⚙️  Config. del club", use_container_width=True):
+            if st.button("⚙️  Config. del club", use_container_width=True, key="home_qa_club"):
                 _nav_to("club_config")
 
 
