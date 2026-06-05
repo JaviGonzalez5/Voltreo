@@ -12,11 +12,14 @@ from unittest.mock import MagicMock, patch
 
 @pytest.fixture(autouse=True)
 def clean_session(monkeypatch):
-    """Limpia el session_state de Streamlit antes de cada test."""
+    """Limpia session_state de Streamlit y _rate_limit_store antes de cada test."""
     session = {}
     import streamlit as st
     monkeypatch.setattr(st, "session_state", session)
+    from src.auth import _rate_limit_store
+    _rate_limit_store.clear()
     yield session
+    _rate_limit_store.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -60,51 +63,54 @@ class TestPasswordStrength:
 
 class TestRateLimit:
 
+    _USER = "testuser"
+
     def test_no_block_on_first_attempts(self, clean_session):
         from src.auth import check_rate_limit
-        blocked, secs = check_rate_limit()
+        blocked, secs = check_rate_limit(self._USER)
         assert not blocked
         assert secs == 0
 
     def test_block_after_max_attempts(self, clean_session):
         from src.auth import _record_failed_attempt, check_rate_limit, _MAX_ATTEMPTS
         for _ in range(_MAX_ATTEMPTS):
-            _record_failed_attempt()
-        blocked, secs = check_rate_limit()
+            _record_failed_attempt(self._USER)
+        blocked, secs = check_rate_limit(self._USER)
         assert blocked
         assert secs > 0
 
     def test_lockout_seconds_approx_300(self, clean_session):
         from src.auth import _record_failed_attempt, check_rate_limit, _MAX_ATTEMPTS, _LOCKOUT_SECS
         for _ in range(_MAX_ATTEMPTS):
-            _record_failed_attempt()
-        _, secs = check_rate_limit()
+            _record_failed_attempt(self._USER)
+        _, secs = check_rate_limit(self._USER)
         assert abs(secs - _LOCKOUT_SECS) < 5  # ±5s tolerancia
 
     def test_counter_resets_after_lockout(self, clean_session):
         """El contador de intentos se resetea al aplicar el bloqueo."""
-        from src.auth import _record_failed_attempt, _login_attempts_key, _MAX_ATTEMPTS
+        from src.auth import _record_failed_attempt, _rate_limit_store, _MAX_ATTEMPTS
         for _ in range(_MAX_ATTEMPTS):
-            _record_failed_attempt()
-        assert clean_session.get(_login_attempts_key(), 0) == 0
+            _record_failed_attempt(self._USER)
+        # Tras bloqueo el contador de intentos vuelve a 0 (locked_until > 0 es el flag)
+        assert _rate_limit_store.get(self._USER, {}).get("attempts", 0) == 0
 
     def test_login_raises_when_blocked(self, clean_session):
         from src.auth import _record_failed_attempt, login, _MAX_ATTEMPTS
         for _ in range(_MAX_ATTEMPTS):
-            _record_failed_attempt()
+            _record_failed_attempt("user")
         db = MagicMock()
         with pytest.raises(RuntimeError, match="Demasiados intentos"):
             login(db, "user", "pass")
 
     def test_failed_login_increments_counter(self, clean_session):
-        from src.auth import login, _login_attempts_key
+        from src.auth import login, _rate_limit_store
         db = MagicMock()
         db.get_user_by_username.return_value = None  # usuario no existe
         login(db, "nonexistent", "pass")
-        assert clean_session.get(_login_attempts_key(), 0) == 1
+        assert _rate_limit_store.get("nonexistent", {}).get("attempts", 0) == 1
 
     def test_successful_login_clears_counter(self, clean_session):
-        from src.auth import login, _login_attempts_key, _record_failed_attempt
+        from src.auth import login, _record_failed_attempt, _rate_limit_store
         import bcrypt
         hashed = bcrypt.hashpw(b"Correct01", bcrypt.gensalt()).decode()
         db = MagicMock()
@@ -114,11 +120,11 @@ class TestRateLimit:
             "display_name": "Admin", "is_active": True,
         }
         # Simular 2 intentos fallidos previos
-        _record_failed_attempt()
-        _record_failed_attempt()
-        assert clean_session.get(_login_attempts_key(), 0) == 2
+        _record_failed_attempt("admin")
+        _record_failed_attempt("admin")
+        assert _rate_limit_store.get("admin", {}).get("attempts", 0) == 2
         login(db, "admin", "Correct01")
-        assert clean_session.get(_login_attempts_key(), 0) == 0
+        assert "admin" not in _rate_limit_store
 
 
 # ---------------------------------------------------------------------------
