@@ -3433,8 +3433,9 @@ elif page == "club_config":
                 # Guardar settings en la tabla clubs
                 _db._c.table("clubs").update({"name": _cc_name, "settings": _new_settings}).eq("id", _cid).execute()
                 st.success("✅ Configuración del club (incluido Syltek) guardada en la base de datos.")
-            except Exception as _e:
-                st.warning(f"⚠️ No se pudo guardar en BD: {_e}")
+            except Exception:
+                logging.exception("Error guardando configuración del club en BD (club=%s)", _cid)
+                st.warning("⚠️ No se pudo guardar en la base de datos. Comprueba la conexión.")
         else:
             st.success("✅ Configuración guardada en sesión.")
 
@@ -3658,8 +3659,9 @@ elif page == "config":
                     )
                     st.session_state["db_phase_id"] = _saved["id"]
                     st.success(f"✅ Fase **{_cfg_phase_name_clean}** guardada correctamente.")
-                except Exception as _e:
-                    st.warning(f"⚠️ No se pudo guardar en BD: {_e}")
+                except Exception:
+                    logging.exception("Error guardando fase en BD (club=%s)", _cid)
+                    st.warning("⚠️ No se pudo guardar en la base de datos. Comprueba la conexión.")
             else:
                 st.success(f"✅ Fase **{_cfg_phase_name_clean}** guardada en sesión.")
             st.rerun()
@@ -3823,8 +3825,9 @@ elif page == "import":
                         password=syl_imp_pass,
                     )
                     st.success("✅ Credenciales Syltek guardadas para este club.")
-                except Exception as _e_syl_save:
-                    st.warning(f"⚠️ No se pudieron guardar: {_e_syl_save}")
+                except Exception:
+                    logging.exception("Error guardando credenciales Syltek en BD")
+                    st.warning("⚠️ No se pudieron guardar las credenciales. Comprueba la conexión.")
             else:
                 st.info("ℹ️ Sin base de datos activa; no se pueden persistir credenciales.")
 
@@ -4297,8 +4300,9 @@ elif page == "generate":
                             schedule_result=schedule_result_to_db(result),
                             phase_id=_pid,
                         )
-                    except Exception as _e:
-                        st.warning(f"⚠️ No se pudo guardar el calendario en BD: {_e}")
+                    except Exception:
+                        logging.exception("Error guardando calendario en BD (phase=%s)", _pid)
+                        st.warning("⚠️ No se pudo guardar el calendario en la base de datos.")
 
             # Ejecutar validación automáticamente
             violations = validate_schedule(result, phase)
@@ -5342,8 +5346,9 @@ elif page == "syltek":
                     password=syl_pass,
                 )
                 st.success("✅ Credenciales guardadas para este club.")
-            except Exception as _e_syl2:
-                st.warning(f"⚠️ No se pudieron guardar: {_e_syl2}")
+            except Exception:
+                logging.exception("Error guardando credenciales Syltek en BD")
+                st.warning("⚠️ No se pudieron guardar las credenciales. Comprueba la conexión.")
         else:
             st.info("ℹ️ Sin base de datos activa; no se pueden persistir credenciales.")
 
@@ -6602,8 +6607,10 @@ elif page == "t_pairs":
                                 tournament_data=_p_sv["tournament_data"], tournament_id=_p_sv["tournament_id"])
                             st.session_state["db_tournament_id"] = _s_sv["id"]
                             st.success("✅ Guardado en la nube.")
-                        except Exception as _e_sv:
-                            st.error(f"No se pudo guardar: {_e_sv}")
+                        except Exception:
+                            logging.exception("Error guardando torneo en BD (tournament=%s)",
+                                              st.session_state.get("db_tournament_id"))
+                            st.error("No se pudo guardar. Comprueba la conexión a la base de datos.")
                     else:
                         st.warning("No hay club activo.")
         with _exp_c3:
