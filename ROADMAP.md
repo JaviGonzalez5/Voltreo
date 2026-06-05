@@ -53,16 +53,13 @@ Streamlit (admin privado)  ←→  Supabase (DB)  ←→  Next.js (vistas públi
 | Vista pública de ranking compartible por URL | ✅ | `src/public_ranking.py` → `?r=<id>` |
 | Inscripción pública en torneo por URL | ✅ | `src/public_view.py` → `?join=<id>` |
 | Test suite: 204 tests | ✅ | 204/204 PASSED |
+| RLS en Supabase (5 tablas, 9 policies) | ✅ | Ejecutado manualmente en Supabase |
+| Audit log: tabla + helper `log_audit_event` | ✅ | login\_blocked/failed/success + create/update\_phase |
 
-### Pendiente de ejecutar manualmente en Supabase
+### ✅ Ejecutado manualmente en Supabase
 
-```sql
--- 1. Añadir columna is_active si no existe
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
-
--- 2. Ejecutar src/db_rls.sql para RLS + tabla audit_log
--- (copiar y pegar en Supabase SQL Editor)
-```
+- `ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_active` — ejecutado
+- `src/db_rls.sql` completo ejecutado — RLS activo en 5 tablas, 9 policies, `audit_log` creado
 
 ---
 
@@ -81,7 +78,7 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEF
 | Reglas de puntuación configurables | ✅ Funciona | UI en `page == "config"` (pts victoria/empate/derrota/bonus) |
 | Exportar Excel con hoja de clasificación | ✅ Funciona | `src/excel_exporter.py` hoja "Clasificación" |
 | Clasificación pública compartible por URL | ✅ Funciona | `?r=<phase_id>` via `src/public_ranking.py` |
-| **Historial y trazabilidad (audit log)** | ❌ No existe | Requiere ejecutar `src/db_rls.sql` + tabla audit_log |
+| Historial y trazabilidad (audit log) | ✅ Parcial | Tabla + 5 eventos (login + fases); torneos y más pendiente |
 
 ---
 
@@ -155,8 +152,8 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEF
 - [x] Rate limiting login implementado
 - [x] Contraseñas robustas (8 chars, mayúscula, número)
 - [x] Roles validados en capa de datos
-- [ ] RLS activado en Supabase (ejecutar db_rls.sql)
-- [ ] Audit log operativo
+- [x] RLS activado en Supabase — 5 tablas, 9 policies
+- [x] Audit log operativo — `audit_log` en BD + `log_audit_event()` en `src/db.py`
 - [ ] Secrets rotados (no usar contraseña de ejemplo)
 
 ### Funcionalidad mínima vendible
@@ -191,7 +188,7 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEF
 | Pérdida de sesión en Streamlit (timeout 30min) | Alta | Medio | Mostrar aviso "sesión expirando" + guardar en DB en cada paso |
 | Contención de Playwright en Streamlit | Alta | Bajo | Mover Syltek connector a worker externo (Railway) en P2 |
 | Escalabilidad con >20 clubs simultáneos | Baja ahora | Alto | Arquitectura Next.js + API FastAPI resuelve este riesgo |
-| Brecha de datos entre clubs | Baja | Crítico | RLS en Supabase (pendiente ejecutar db_rls.sql) + tests de aislamiento regulares |
+| Brecha de datos entre clubs | Baja | Crítico | RLS activo en Supabase (5 tablas, 9 policies) + tests de aislamiento regulares |
 
 ---
 
