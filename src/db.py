@@ -12,6 +12,7 @@ Configuración necesaria (en .streamlit/secrets.toml o variables de entorno):
   SUPABASE_KEY = "eyJ..."   ← service role key (para operaciones server-side)
 """
 
+import logging
 import os
 from datetime import datetime
 from typing import Optional, Any
@@ -266,6 +267,14 @@ class SupabaseDB:
             "club_id", club_id
         ).neq("id", saved["id"]).execute()
 
+        _audit_action = "update_phase" if phase_id else "create_phase"
+        self.log_audit_event(
+            _audit_action,
+            club_id=club_id,
+            resource="phase",
+            resource_id=saved["id"],
+            details={"name": name},
+        )
         return saved
 
     def set_phase_active(self, phase_id: str, club_id: str) -> None:
@@ -373,3 +382,29 @@ class SupabaseDB:
 
     def delete_tournament(self, tournament_id: str, club_id: str) -> None:
         self._c.table("tournaments").delete().eq("id", tournament_id).eq("club_id", club_id).execute()
+
+    # ================================================================
+    # AUDIT LOG
+    # ================================================================
+
+    def log_audit_event(
+        self,
+        action: str,
+        club_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        resource: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        details: Optional[dict] = None,
+    ) -> None:
+        """Escribe un evento en audit_log. Nunca lanza — fallo silencioso con logging."""
+        try:
+            self._c.table("audit_log").insert({
+                "action":      action,
+                "club_id":     club_id,
+                "user_id":     user_id,
+                "resource":    resource,
+                "resource_id": resource_id,
+                "details":     details or {},
+            }).execute()
+        except Exception:
+            logging.exception("Error escribiendo en audit_log (action=%s)", action)

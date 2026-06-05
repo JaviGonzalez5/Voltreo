@@ -324,20 +324,40 @@ def login(db, username: str, password: str) -> Optional[dict]:
     """
     blocked, secs = check_rate_limit(username)
     if blocked:
+        db.log_audit_event("login_blocked", details={"username": username, "secs_remaining": secs})
         raise RuntimeError(f"Demasiados intentos. Espera {secs}s.")
 
     user = db.get_user_by_username(username.strip().lower())
     if user is None:
         _record_failed_attempt(username)
+        db.log_audit_event("login_failed", details={"username": username, "reason": "user_not_found"})
         return None
     if not user.get("is_active", True):
         _record_failed_attempt(username)
+        db.log_audit_event(
+            "login_failed",
+            club_id=user.get("club_id"),
+            user_id=user.get("id"),
+            details={"username": username, "reason": "inactive"},
+        )
         return None
     if not verify_password(password, user["password_hash"]):
         _record_failed_attempt(username)
+        db.log_audit_event(
+            "login_failed",
+            club_id=user.get("club_id"),
+            user_id=user.get("id"),
+            details={"username": username, "reason": "wrong_password"},
+        )
         return None
 
     _clear_login_attempts(username)  # login OK → resetear contador
+    db.log_audit_event(
+        "login_success",
+        club_id=user.get("club_id"),
+        user_id=user.get("id"),
+        details={"username": username},
+    )
     return user
 
 
