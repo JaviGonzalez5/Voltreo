@@ -69,27 +69,19 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEF
 ## FASE P1 — Funcionalidad completa de Ranking (Semanas 2-4)
 **Objetivo: que un club pueda gestionar una temporada entera desde la app.**
 
-### Módulo Ranking — gaps actuales
+### Módulo Ranking — estado real
 
-| Feature | Estado actual | Trabajo necesario |
-|---------|--------------|-------------------|
+| Feature | Estado actual | Notas |
+|---------|--------------|-------|
 | Crear temporadas/fases | ✅ Funciona | — |
 | Importar jugadores/parejas CSV | ✅ Funciona | — |
 | Generar calendario | ✅ Funciona | — |
-| **Registrar resultados de partido** | ❌ No existe | Formulario de resultado por partido |
-| **Clasificación automática** | ❌ No existe | Tabla de puntos con victorias/sets/juegos |
-| **Reglas de puntuación configurables** | ❌ No existe | UI para definir pts por victoria/derrota/posición |
-| **Historial y trazabilidad** | ❌ No existe | Usar tabla audit_log |
-| Exportar Excel completo | ✅ Parcial | Añadir hoja de clasificación |
-
-#### Estimación P1-Ranking: 10 días de desarrollo
-
-**Tareas concretas:**
-1. `src/ranking_scorer.py` — módulo de puntuación configurable
-2. Pantalla "Registrar resultado" (`page == "results"`) — formulario por partido
-3. Pantalla "Clasificación" (`page == "standings"`) — tabla rankeable
-4. Añadir `results` y `standings` a `ranking_phases` JSONB o tabla separada
-5. Test de cálculo de clasificación (al menos 10 casos)
+| Registrar resultados de partido | ✅ Funciona | `page == "results"` con data_editor, sets + WO |
+| Clasificación automática | ✅ Funciona | `page == "standings"` + `src/ranking_scorer.py` |
+| Reglas de puntuación configurables | ✅ Funciona | UI en `page == "config"` (pts victoria/empate/derrota/bonus) |
+| Exportar Excel con hoja de clasificación | ✅ Funciona | `src/excel_exporter.py` hoja "Clasificación" |
+| Clasificación pública compartible por URL | ✅ Funciona | `?r=<phase_id>` via `src/public_ranking.py` |
+| **Historial y trazabilidad (audit log)** | ❌ No existe | Requiere ejecutar `src/db_rls.sql` + tabla audit_log |
 
 ---
 
@@ -169,8 +161,8 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEF
 - [x] Multitenancy real (club_id en todas las operaciones)
 - [x] Torneos persistidos a DB
 - [x] Fases de ranking persistidas a DB
-- [ ] Registro de resultados de ranking
-- [ ] Clasificación automática
+- [x] Registro de resultados de ranking
+- [x] Clasificación automática
 - [ ] Registro de resultados de torneo + avance de cuadro
 - [x] URL pública de torneo compartible (`src/public_view.py`)
 
@@ -206,7 +198,7 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEF
 | Fase | Semanas | Coste estimado (dev solo) |
 |------|---------|--------------------------|
 | P0 (hecho) | 1 | ✅ Completado |
-| P1 Ranking (resultados + clasificación) | 1.5 | 10 días |
+| P1 Ranking (resultados + clasificación) | 1.5 | ✅ Completado |
 | P1 Torneos (resultados + avance cuadro) | 1.5 | 8 días |
 | P2 Next.js vistas públicas | 2 | 2 semanas |
 | P2 Notificaciones email | 0.5 | 3 días |
