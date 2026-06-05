@@ -2758,6 +2758,7 @@ if _db_ok and is_authenticated() and not is_superadmin() and page == "admin":
 st.sidebar.markdown('<div class="pp-nav-section"><span>Principal</span></div>', unsafe_allow_html=True)
 _sidebar_button("⌂  Inicio",                   "home",        page, "nav_home")
 _sidebar_button("◈  Configuración del club",   "club_config", page, "nav_club_config")
+_sidebar_button("🏆  Mis Torneos",             "tournaments", page, "nav_tournaments")
 
 def _phase_config_ready(phase_obj) -> bool:
     if phase_obj is None:
@@ -2809,21 +2810,21 @@ _T_STEPS = [
 ]
 _IS_TOURNAMENT = page in {k for k, *_ in _T_STEPS}
 
-st.sidebar.markdown('<div class="pp-nav-section"><span>Flujos guiados</span><span class="pp-nav-badge">2</span></div>', unsafe_allow_html=True)
-_sidebar_button("🏆  Mis Torneos",             "tournaments", page, "nav_tournaments")
-_sidebar_workflow("◫  Ranking",  _R_STEPS, page, "nav_r", expanded=_IS_RANKING)
-_sidebar_workflow("◈  Torneos",  _T_STEPS, page, "nav_t", expanded=_IS_TOURNAMENT)
+st.sidebar.markdown('<div class="pp-nav-section"><span>Herramientas</span><span class="pp-nav-badge">2</span></div>', unsafe_allow_html=True)
+_sidebar_workflow("📊  Ranking",  _R_STEPS, page, "nav_r", expanded=_IS_RANKING)
+_sidebar_workflow("🏆  Torneos",  _T_STEPS, page, "nav_t", expanded=_IS_TOURNAMENT)
 
 if _db_ok and is_superadmin():
     st.sidebar.markdown('<div class="pp-nav-section"><span>Sistema</span></div>', unsafe_allow_html=True)
     _sidebar_button("⚙  Administración", "admin", page, "nav_admin")
 
 _dry = _s.get("dry_run", True)
-_mode_txt = "Modo seguro" if _dry else "⚡ Escritura real"
-st.sidebar.markdown(
-    f'<div class="pp-sidebar-footer"><span class="pp-mode-pill">{"🔒  " if _dry else "⚡  "}{escape(_mode_txt)}</span></div>',
-    unsafe_allow_html=True,
-)
+if is_superadmin():
+    _mode_txt = "Modo seguro" if _dry else "⚡ Escritura real"
+    st.sidebar.markdown(
+        f'<div class="pp-sidebar-footer"><span class="pp-mode-pill">{"🔒  " if _dry else "⚡  "}{escape(_mode_txt)}</span></div>',
+        unsafe_allow_html=True,
+    )
 
 # Barra de navegacion inferior responsive; evita duplicar el modo movil dedicado.
 if not _is_mobile and _db_ok and is_authenticated():
