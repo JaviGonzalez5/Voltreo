@@ -346,6 +346,10 @@ def render_public_tournament(tournament_id: str) -> None:
         st.error("No se pudo cargar el torneo.")
         st.stop()
 
+    # Eliminar inscripciones (datos personales: emails, teléfonos, apellidos)
+    # antes de renderizar. La vista de resultados solo necesita partidos y grupos.
+    t.registrations = []
+
     # ── Hero ─────────────────────────────────────────────────────────────────
     _dates = t.start_date.strftime("%d/%m/%Y")
     if t.end_date and t.end_date != t.start_date:
