@@ -4752,8 +4752,9 @@ elif page == "results":
                         schedule_result=schedule_result_to_db(st.session_state.get("schedule_result")),
                         phase_id=_pid,
                     )
-                except Exception as _e:
-                    st.warning(f"⚠️ Guardado local OK, pero falló la BD: {_e}")
+                except Exception:
+                    logging.exception("Error persistiendo resultados en BD (phase=%s)", _pid)
+                    st.warning("⚠️ Guardado local OK, pero falló la conexión a la base de datos.")
 
         st.success(f"✅ {len(_new_results)} resultados guardados.")
 
@@ -4798,7 +4799,8 @@ elif page == "results":
                 if _sent_total:
                     st.info(f"📧 {_sent_total} notificaciones de email enviadas.")
         except Exception:
-            pass  # email es opcional — nunca bloqueamos el flujo principal
+            logging.exception("Error enviando notificaciones de email tras guardar resultados")
+            # email es opcional — nunca bloqueamos el flujo principal
 
         st.session_state["_nav_page"] = "standings"
         st.rerun()
