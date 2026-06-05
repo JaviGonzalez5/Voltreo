@@ -3149,7 +3149,7 @@ if page == "home":
         )
         _info_grid([
             ("1. Crea un club", "Registra el nombre del club y su identificador interno. Cada club tiene sus propios datos y usuarios."),
-            ("2. Añade un administrador", "Crea un usuario club_admin vinculado al club para que pueda acceder solo a su información."),
+            ("2. Añade un administrador", "Crea un usuario Admin de club vinculado al club para que pueda acceder solo a su información."),
             ("3. Configura ranking y torneos", "Con el club activo podrás configurar fases de ranking, pistas, parejas e importar datos."),
             ("4. Lista para mostrar", "Con datos de ejemplo la aplicación se ve como un producto terminado, lista para enseñar."),
         ])
@@ -4236,7 +4236,7 @@ elif page == "import":
                         else:
                             st.warning(
                                 "No se encontraron reservas existentes en ese rango de fechas. "
-                                "Puede ser normal si las fechas son futuras o si el parsing necesita ajuste."
+                                "Puede ser normal si las fechas son futuras o si la lectura de reservas necesita ajuste."
                             )
 
 # ---------------------------------------------------------------------------
@@ -5391,7 +5391,7 @@ elif page == "syltek":
             st.info("ℹ️ Sin base de datos activa; no se pueden persistir credenciales.")
 
     dry_run_toggle = st.toggle(
-        "Modo seguro (DRY-RUN) — simula las reservas sin crearlas de verdad",
+        "Modo simulación — simula las reservas sin crearlas de verdad",
         value=st.session_state.get("dry_run", True),
         key="syl_dry_run",
     )
@@ -5543,7 +5543,7 @@ elif page == "syltek":
 
     send_email = st.checkbox("Enviar email de confirmación a los jugadores", value=False)
 
-    mode_label = "🟠 SIMULACIÓN (dry-run)" if dry_run_toggle else "🔴 RESERVAS REALES"
+    mode_label = "🟠 SIMULACIÓN" if dry_run_toggle else "🔴 RESERVAS REALES"
     if st.button(f"🚀 Publicar {len(scheduled)} partidos en Syltek — {mode_label}", type="primary"):
         url_, user_, pass_ = st.session_state["syltek_credentials"]
         conn = SyltekConnector(url=url_, user=user_, password=pass_, dry_run=dry_run_toggle)
@@ -6070,7 +6070,7 @@ elif page == "t_config":
                         )
                         st.session_state["db_tournament_id"] = _t_saved["id"]
                     except Exception as _te:
-                        st.warning(f"⚠️ No se pudo guardar en BD: {_te}")
+                        st.warning("⚠️ No se pudo guardar la configuración del torneo. Inténtalo de nuevo.")
             st.success("✅ Configuración guardada.")
             st.session_state["_nav_page"] = "t_pairs"
             st.rerun()
@@ -7638,10 +7638,11 @@ elif page == "admin":
             _mv_user = _users_by_username2[_mv_username]
             _mv_cur_club = _club_id_to_name.get(_mv_user.get("club_id"), "— sin club —")
             with _mv2:
-                _mv_role = st.selectbox(
-                    "Rol", ["club_admin", "superadmin"],
+                _mv_role_label = st.selectbox(
+                    "Rol", ["Admin de club", "Super Admin"],
                     index=0 if _mv_user.get("role") == "club_admin" else 1, key="mv_role",
                 )
+                _mv_role = "club_admin" if _mv_role_label == "Admin de club" else "superadmin"
             with _mv3:
                 _mv_club_labels = list(_club_map.keys())
                 _mv_cur_id = _mv_user.get("club_id")
@@ -7649,10 +7650,11 @@ elif page == "admin":
                 _mv_idx = _mv_vals.index(_mv_cur_id) if _mv_cur_id in _mv_vals else 0
                 _mv_club_label = st.selectbox("Club", _mv_club_labels, index=_mv_idx, key="mv_club")
             _mv_club_id = _club_map[_mv_club_label]
-            st.caption(f"Actualmente: **{_mv_user.get('role','?')}** · club **{_mv_cur_club}**")
+            _mv_role_display = "Admin de club" if _mv_user.get("role") == "club_admin" else "Super Admin"
+            st.caption(f"Actualmente: **{_mv_role_display}** · club **{_mv_cur_club}**")
             if st.button("💾 Guardar club / rol del usuario", type="primary", key="mv_save"):
                 if _mv_role == "club_admin" and _mv_club_id is None:
-                    st.error("Un club_admin debe estar vinculado a un club. Elige un club o cambia el rol a superadmin.")
+                    st.error("Un Admin de club debe estar vinculado a un club. Elige un club o cambia el rol a Super Admin.")
                 else:
                     try:
                         _db.update_user(
@@ -7676,7 +7678,8 @@ elif page == "admin":
             _nu_display     = st.text_input("Nombre para mostrar", placeholder="Admin Madrid")
             _nu_email       = st.text_input("Email (opcional)", placeholder="admin@padelmadrid.es")
             _nu_password    = st.text_input("Contraseña", type="password")
-            _nu_role        = st.selectbox("Rol", ["club_admin", "superadmin"])
+            _nu_role_label  = st.selectbox("Rol", ["Admin de club", "Super Admin"])
+            _nu_role        = "club_admin" if _nu_role_label == "Admin de club" else "superadmin"
             _nu_club_label  = st.selectbox("Club", list(_club_map.keys()))
             _nu_club_id     = _club_map[_nu_club_label]
 
