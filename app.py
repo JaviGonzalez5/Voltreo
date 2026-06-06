@@ -2831,8 +2831,13 @@ if is_superadmin():
         unsafe_allow_html=True,
     )
 
-# Barra de navegacion inferior responsive; evita duplicar el modo movil dedicado.
-if not _is_mobile and _db_ok and is_authenticated():
+# Modo movil dedicado desactivado (modulo src/mobile_app no presente).
+# Falso => nav responsive (oculto en desktop por CSS) si, mobile_app import no.
+_is_mobile = False
+
+# Nav inferior movil: solo en modo movil dedicado (st.button no se oculta
+# bien en desktop por CSS, generaba botones sueltos). _is_mobile=False => off.
+if _is_mobile and _db_ok and is_authenticated():
     _render_mobile_nav(page)
 
 # ---------------------------------------------------------------------------
