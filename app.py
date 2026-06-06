@@ -2603,7 +2603,7 @@ if _db_ok:
         _show_login = (
             st.session_state.get("_show_login")
             or st.query_params.get("show_login") == "1"  # compatibilidad con links antiguos
-            or _qp_health is not None
+            or _early_health is not None
         )
         if not _show_login:
             render_landing_screen()   # calls st.stop() internally
