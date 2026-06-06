@@ -259,20 +259,23 @@ class SupabaseDB:
             payload["id"] = phase_id
 
         resp = self._c.table("ranking_phases").upsert(payload).execute()
-        saved = resp.data[0]
+        # Con return=minimal o RLS, resp.data puede venir vacío: no fallar por ello.
+        saved = resp.data[0] if resp.data else dict(payload)
+        _saved_id = saved.get("id")
 
-        # Siempre desactivar las otras fases del club (INSERT y UPDATE)
-        # Evita que múltiples fases queden is_active=True al guardar una existente
-        self._c.table("ranking_phases").update({"is_active": False}).eq(
-            "club_id", club_id
-        ).neq("id", saved["id"]).execute()
+        # Desactivar las otras fases del club. Solo si conocemos el id propio
+        # (para no desactivar la recién guardada).
+        if _saved_id:
+            self._c.table("ranking_phases").update({"is_active": False}).eq(
+                "club_id", club_id
+            ).neq("id", _saved_id).execute()
 
         _audit_action = "update_phase" if phase_id else "create_phase"
         self.log_audit_event(
             _audit_action,
             club_id=club_id,
             resource="phase",
-            resource_id=saved["id"],
+            resource_id=_saved_id,
             details={"name": name},
         )
         return saved

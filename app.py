@@ -3700,11 +3700,12 @@ elif page == "config":
                         bookings_data=_payload["bookings_data"], schedule_result=None,
                         phase_id=_payload["phase_id"],
                     )
-                    st.session_state["db_phase_id"] = _saved["id"]
+                    if _saved.get("id"):
+                        st.session_state["db_phase_id"] = _saved["id"]
                     st.success(f"✅ Fase **{_cfg_phase_name_clean}** guardada correctamente.")
-                except Exception:
-                    logging.exception("Error guardando fase en BD (club=%s)", _cid)
-                    st.warning("⚠️ No se pudo guardar en la base de datos. Comprueba la conexión.")
+                except Exception as _exc_phase:
+                    logging.exception("Error guardando fase en BD (club=%s)", _cfg_cid)
+                    st.error(f"⚠️ No se pudo guardar la fase: {type(_exc_phase).__name__}: {_exc_phase}")
             else:
                 st.success(f"✅ Fase **{_cfg_phase_name_clean}** guardada en sesión.")
             st.rerun()
