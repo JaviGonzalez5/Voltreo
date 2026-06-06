@@ -2758,6 +2758,7 @@ if _db_ok and is_authenticated() and not is_superadmin() and page == "admin":
 st.sidebar.markdown('<div class="pp-nav-section"><span>Principal</span></div>', unsafe_allow_html=True)
 _sidebar_button("⌂  Inicio",                   "home",        page, "nav_home")
 _sidebar_button("◈  Configuración del club",   "club_config", page, "nav_club_config")
+_sidebar_button("📊  Mis Rankings",            "rankings",    page, "nav_rankings")
 _sidebar_button("🏆  Mis Torneos",             "tournaments", page, "nav_tournaments")
 
 def _phase_config_ready(phase_obj) -> bool:
@@ -2908,6 +2909,134 @@ def _mobile_footer_now(current_page: str) -> None:
     if _is_mobile:
         from src.mobile_app import _bottom_nav as _mob_bottom_nav
         _mob_bottom_nav(current_page)
+
+
+# ---------------------------------------------------------------------------
+# PÁGINA: Mis Rankings (lista de fases)
+# ---------------------------------------------------------------------------
+
+if page == "rankings":
+    _page_header("📊", "Mis Rankings", "Todas las fases de ranking del club — crea, carga, activa o elimina")
+
+    _rk_cid = current_club_id() if _db_ok else None
+
+    if not _db_ok or _db is None:
+        _empty_state("🔌", "Base de datos no conectada",
+                     "Configura Supabase para guardar y listar rankings.")
+        st.stop()
+    if not _rk_cid:
+        _empty_state("🏢", "Selecciona un club",
+                     "Elige un club activo en el menú lateral para ver sus rankings.")
+        st.stop()
+
+    # Botón nuevo ranking
+    _rk_h1, _rk_h2 = st.columns([3, 1])
+    with _rk_h2:
+        if st.button("➕ Nueva fase", type="primary", use_container_width=True):
+            st.session_state.phase = None
+            st.session_state["db_phase_id"] = None
+            st.session_state.groups = []
+            st.session_state.bookings = []
+            st.session_state.data_loaded = False
+            st.session_state.schedule_result = None
+            st.session_state.matches_scheduled = False
+            _nav_to("config")
+
+    try:
+        _rk_phases = _db.list_phases(_rk_cid)
+    except Exception as _e_rk:
+        st.error(f"Error al cargar rankings: {_e_rk}")
+        _rk_phases = []
+
+    if not _rk_phases:
+        _empty_state("📊", "Aún no hay rankings",
+                     "Crea tu primera fase con el botón de arriba.")
+        st.stop()
+
+    _ES_MON_RK = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"]
+    def _fmt_range_rk(s: str, e: str) -> str:
+        try:
+            d1 = datetime.strptime(s, "%Y-%m-%d"); d2 = datetime.strptime(e, "%Y-%m-%d")
+            if d1.year == d2.year:
+                return f"{d1.day} {_ES_MON_RK[d1.month-1]} – {d2.day} {_ES_MON_RK[d2.month-1]} {d2.year}"
+            return f"{d1.day} {_ES_MON_RK[d1.month-1]} {d1.year} – {d2.day} {_ES_MON_RK[d2.month-1]} {d2.year}"
+        except Exception:
+            return f"{s} → {e}"
+
+    _rk_current = st.session_state.get("db_phase_id")
+
+    for _ph in _rk_phases:
+        _ph_id   = _ph["id"]
+        _is_act  = bool(_ph.get("is_active"))
+        _is_load = (_ph_id == _rk_current)
+        with st.container(border=True):
+            _c1, _c2 = st.columns([3, 2])
+            with _c1:
+                _badge = ""
+                if _is_act:  _badge += " 🟢 Activa"
+                if _is_load: _badge += " · 📂 Cargada"
+                st.markdown(f"**{escape(_ph['name'])}**{_badge}")
+                st.caption(_fmt_range_rk(_ph["start_date"], _ph["end_date"]))
+            with _c2:
+                _b1, _b2, _b3 = st.columns(3)
+                with _b1:
+                    if st.button("📂 Cargar", key=f"rk_load_{_ph_id}", use_container_width=True):
+                        _row = _db.get_phase(_ph_id, _rk_cid)
+                        if _row:
+                            from src.db_converters import phase_from_db as _pfdb
+                            _lp, _lr = _pfdb(_row)
+                            if _lp:
+                                st.session_state.phase = _lp
+                                st.session_state["db_phase_id"] = _ph_id
+                                st.session_state.groups = list(_lp.groups or [])
+                                st.session_state.data_loaded = bool(_lp.groups)
+                                st.session_state.bookings = list(_lp.bookings or [])
+                                if _lr:
+                                    st.session_state.schedule_result = _lr
+                                    st.session_state.matches_scheduled = True
+                                    st.session_state.matches = _lr.scheduled + _lr.conflicts
+                                    st.session_state.matches_generated = True
+                                else:
+                                    st.session_state.schedule_result = None
+                                    st.session_state.matches_scheduled = False
+                                st.success(f"✅ '{_ph['name']}' cargada.")
+                                _nav_to("config")
+                with _b2:
+                    if st.button("🟢 Activar", key=f"rk_act_{_ph_id}",
+                                 use_container_width=True, disabled=_is_act):
+                        try:
+                            _db.set_phase_active(_ph_id, _rk_cid)
+                            st.success(f"✅ '{_ph['name']}' es ahora la fase activa.")
+                            st.rerun()
+                        except Exception as _e_act:
+                            st.error(f"No se pudo activar: {_e_act}")
+                with _b3:
+                    if st.button("🗑️", key=f"rk_del_{_ph_id}",
+                                 use_container_width=True, help="Eliminar fase"):
+                        st.session_state["_confirm_del_phase"] = _ph_id
+                        st.rerun()
+
+            if st.session_state.get("_confirm_del_phase") == _ph_id:
+                st.warning(f"⚠️ ¿Eliminar **{_ph['name']}**? No se puede deshacer.")
+                _dc1, _dc2 = st.columns(2)
+                with _dc1:
+                    if st.button("Sí, eliminar", key=f"rk_delyes_{_ph_id}", type="primary"):
+                        try:
+                            _db.delete_phase(_ph_id, _rk_cid)
+                            st.session_state.pop("_confirm_del_phase", None)
+                            if _ph_id == _rk_current:
+                                st.session_state.phase = None
+                                st.session_state["db_phase_id"] = None
+                            st.success(f"✅ '{_ph['name']}' eliminada.")
+                            st.rerun()
+                        except Exception as _e_dp:
+                            st.error(f"Error al eliminar: {_e_dp}")
+                with _dc2:
+                    if st.button("Cancelar", key=f"rk_delno_{_ph_id}"):
+                        st.session_state.pop("_confirm_del_phase", None)
+                        st.rerun()
+
+    st.stop()
 
 
 # ---------------------------------------------------------------------------
