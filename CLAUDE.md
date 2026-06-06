@@ -46,7 +46,7 @@ src/
   config.py                    # Configuración global (pydantic-settings)
   db.py                        # Capa de acceso a Supabase (SupabaseDB class)
   db_converters.py             # Serialización/deserialización Pydantic ↔ JSONB
-  db_rls.sql                   # SQL para activar RLS (PENDIENTE de ejecutar)
+  db_rls.sql                   # SQL idempotente RLS (verificar si ejecutado en Supabase)
   email_sender.py              # Emails transaccionales vía Resend (único sistema)
   excel_exporter.py            # Export Excel básico
   excel_template_exporter.py   # Export Excel con plantilla del club
@@ -78,7 +78,7 @@ tests/
 | `users` | ✅ | Usuarios admin (no jugadores) |
 | `ranking_phases` | ✅ | Fases/temporadas del ranking |
 | `tournaments` | ✅ | Torneos completos (JSONB) |
-| `audit_log` | ✅ | Log de acciones (pendiente de crear) |
+| `audit_log` | ✅ | Log de acciones (login + fases) |
 
 **Clave importante:** la app usa `SUPABASE_KEY` = **service_role key**.  
 Nunca exponerla en código ni en repos públicos.
@@ -154,7 +154,7 @@ El aislamiento se aplica en **dos capas**:
 1. **App**: `current_club_id()` en `auth.py` devuelve el club del usuario
 2. **DB**: todas las queries en `db.py` filtran por `club_id`
 
-RLS está escrito en `src/db_rls.sql` pero **pendiente de ejecutar** en Supabase.
+RLS escrito (idempotente) en `src/db_rls.sql`. ⚠️ Verificar en dashboard si está ejecutado.
 
 ---
 
@@ -169,9 +169,6 @@ pytest tests/ -v
 
 # Compilar todos los módulos (detección de errores de sintaxis)
 python -m compileall app.py src
-
-# Ver qué hay en la rama de refactor
-git log --oneline refactor-voltreo-v1
 
 # Subir cambios a producción
 git push origin main   # ← despliega en Streamlit Cloud
@@ -206,7 +203,7 @@ EMAIL_FROM            = "..."             # opcional
 
 | Rama | Propósito |
 |---|---|
-| `main` | Producción (Streamlit Cloud lo despliega automáticamente) |
-| `refactor-voltreo-v1` | Refactor en curso (no mergear a main sin revisión) |
+| `main` | Producción (Streamlit Cloud despliega automáticamente). Trabaja aquí. |
 
+`refactor-voltreo-v1` ya fusionado a `main` — obsoleta.
 Remote principal: `origin` → `https://github.com/JaviGonzalez5/Voltreo.git`

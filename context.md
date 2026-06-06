@@ -1,154 +1,140 @@
 # context.md — Contexto acumulado del proyecto Voltreo
 
-Historial de decisiones técnicas, cambios importantes y deuda conocida.  
+Historial de decisiones técnicas, cambios importantes y deuda conocida.
 Actualizar cuando se hagan cambios significativos.
 
 ---
 
-## Estado actual del proyecto
+## Estado actual
 
-- **Rama de trabajo activa:** `refactor-voltreo-v1`
-- **Producción:** rama `main` → Streamlit Cloud → `voltreo.streamlit.app`
-- **Último commit de producción:** `6a079e5` (Add automatic registration confirmation email)
-- **Último commit del refactor:** `51c16a9` (security: strip registrations from public tournament view)
-
----
-
-## Refactor en curso — `refactor-voltreo-v1`
-
-### Commits de esta rama (sobre `main`)
-
-| Commit | Descripción |
-|---|---|
-| `470eef5` | Limpiar `__pycache__` del tracking de git, añadir `audit_artifacts/` al `.gitignore` |
-| `3293347` | Unificar sistema de email — borrar `email_service.py`, extender `email_sender.py` con Resend |
-| `51c16a9` | Seguridad: eliminar inscripciones (datos personales) de la vista pública de resultados |
-
-### Tareas pendientes del refactor (priorizadas)
-
-1. ✅ **Unificar email** — hecho en commit `3293347`
-2. ✅ **Sanitizar datos públicos** — hecho en commit `51c16a9`
-3. 🔲 **Activar RLS en Supabase** — SQL listo en `src/db_rls.sql`, pendiente de ejecutar
-4. 🔲 **Añadir `AUTH_COOKIE_SECRET` en Streamlit Cloud secrets** — desacoplar de `SUPABASE_KEY`
-5. 🔲 **Partir `app.py` en módulos de página** (`src/pages/`) — mayor impacto en mantenibilidad
-6. 🔲 **Registro de resultados de partido** — gap funcional bloqueante para vender el ranking
-7. 🔲 **Centralizar claves de session_state** en `src/state.py`
-8. 🔲 **Hacer Syltek un módulo opcional** — quitar `playwright` del core
+- **Rama de producción:** `main` → Streamlit Cloud → `voltreo.streamlit.app`
+- **Repo:** `JaviGonzalez5/Voltreo` (remote `origin`)
+- `refactor-voltreo-v1` ya fusionado a `main` (cherry-pick) — puede borrarse
 
 ---
 
-## Historial de cambios importantes (antes del refactor)
+## Cambios recientes en `main`
 
-### Sistema de email
-- Existía `src/email_sender.py` (Resend) para rankings/torneos
-- Se creó `src/email_service.py` (SMTP) para inscripciones — **duplicado**
-- **Decisión:** eliminar `email_service.py`, portar la función de inscripción a `email_sender.py`
-- `send_registration_confirmation` → renombrada `notify_registration_received` (API consistente)
+### Email unificado (Resend)
+- Antes: dos sistemas — `email_sender.py` (Resend) + `email_service.py` (SMTP, duplicado)
+- Ahora: **un solo sistema**, `src/email_sender.py` vía Resend; `email_service.py` eliminado
+- Funciones: `notify_result`, `notify_bracket_published`, `notify_registration_received`
+- `notify_registration_received` filtra emails inválidos, devuelve `False` si Resend no configurado
+- Config: `RESEND_API_KEY` (env var / secrets)
 
-### Inscripción pública en torneos
-- Flujo en 2 pasos: paso 1 = grid de categorías, paso 2 = formulario
-- Botón "Acceder" en cada categoría (no "Inscribirse") para permitir ver inscritos aunque esté llena
-- Pestaña "Parejas Inscritas" muestra nombre de pareja + nombre completo de cada jugador
-- Formulario recoge: Nombre, Primer apellido, Segundo apellido, Teléfono, Email (todo obligatorio)
-- Nombre de pareja generado automáticamente: `"J. García – C. López"`
-- Disponibilidad por días: selector "Puedo / No puedo" + horario Desde/Hasta por día de la semana
-- Los horarios Desde/Hasta se leen de la configuración del torneo (semana vs fin de semana)
+### Seguridad — vista pública
+- `render_public_tournament()` hace `t.registrations = []` tras cargar
+- Datos personales (emails, teléfonos, apellidos) no se exponen en `?t=<uuid>`
 
-### Modelos de datos del torneo
-- `TournamentRegistration` tiene campos separados: `player1_surname1`, `player1_surname2`, etc.
-- `pair_name` se genera automáticamente, el jugador no lo introduce
-- `availability_windows: dict` almacena ventanas horarias por fecha ISO
-- `unavailable_dates: list[str]` almacena fechas ISO en que no puede jugar
+### Móvil desactivado
+- Feature móvil quedó a medias (`src/mobile_app.py` ausente, `_is_mobile` sin definir) → crash `NameError`
+- Fix: `_is_mobile = False`, nav móvil off (sus `st.button` se colaban en desktop ignorando CSS)
 
-### Scheduler de torneo (pádel multi-día)
-- `schedule_distribute_over_days: bool` — distribuye partidos entre todos los días del torneo
-- `_player_day_busy` — restricción de máximo 1 partido por pareja por día
-- `_day_hours(d)` — helper que devuelve horario correcto según día de semana (L-V vs S-D)
-- `weekend_start_time / weekend_end_time` — franjas horarias de fin de semana en `TournamentConfig`
+### UX dashboard / sidebar (FASE 1-5)
+- Hero con eyebrow, KPIs con notas, onboarding por pasos
+- "Mis Torneos" en sección Principal; pasos condicionales en sidebar de ranking
+- Jerga → español llano ("club_admin" → "Admin de club")
+- Excepciones de BD ya no se filtran al usuario
 
-### Configuración de horarios
-- Un torneo puede tener franjas distintas L-V y S-D
-- Se detecta automáticamente si el rango de fechas incluye fin de semana
-- En la vista de inscripción, los selectores de hora se limitan al rango configurado
+### Auditoría
+- Tabla `audit_log` + `log_audit_event()` en `src/db.py`
+- Eventos: login + fases (torneos pendiente)
 
-### Bandeja de inscripciones (admin)
-- Pestaña "📩 Inscripciones (N)" en `t_pairs` con recarga automática desde BD
-- Organizada por categoría
-- Subpestañas: Pendientes (con aprobar/rechazar) / Aprobadas / Rechazadas
-- Al aprobar: se crea `TournamentPair` y se añade a `t.pairs`, estado → `APPROVED`
+---
 
-### Vista pública de torneos
-- Fondo claro (`#f4f6f9`), hero verde, cards de categorías
-- `t.registrations = []` en `render_public_tournament()` — los datos personales no se exponen en la vista de resultados
+## Tablas Supabase
+
+| Tabla | `club_id` | Notas |
+|---|---|---|
+| `clubs` | raíz | — |
+| `users` | ✅ | Admins (no jugadores) |
+| `ranking_phases` | ✅ | JSONB separados |
+| `tournaments` | ✅ | JSONB único `tournament_data` |
+| `audit_log` | ✅ | Log de acciones |
+
+`SUPABASE_KEY` = **service_role**. Nunca exponer.
+
+---
+
+## RLS — estado
+
+- SQL listo + idempotente en `src/db_rls.sql` (5 tablas, 9 policies)
+- ⚠️ **VERIFICAR si está ejecutado en Supabase.** ROADMAP lo marca hecho;
+  confirmar en dashboard antes de fiarse. Policies: solo `service_role` accede.
+- Aislamiento en app: `current_club_id()` + `.eq("club_id", ...)` en todas las queries
 
 ---
 
 ## Deuda técnica conocida
 
-### Alta prioridad
-
+### Alta
 | Problema | Archivo | Impacto |
 |---|---|---|
-| `app.py` tiene 7.630 líneas y 16 páginas | `app.py` | Muy difícil de mantener |
-| Sin RLS activo en Supabase | `src/db_rls.sql` | Riesgo de cross-club si hay bug en `club_id` |
-| `AUTH_COOKIE_SECRET` usa `SUPABASE_KEY` como fallback | `src/auth.py:116` | Rotación de DB key invalida sesiones |
+| `app.py` ~7.600 líneas, 16 páginas en un archivo | `app.py` | Difícil de mantener |
+| `AUTH_COOKIE_SECRET` usa `SUPABASE_KEY` como fallback | `src/auth.py` | Rotar DB key invalida sesiones |
+| Confirmar RLS ejecutado en Supabase | `src/db_rls.sql` | Riesgo cross-club si falta |
 
-### Media prioridad
-
+### Media
 | Problema | Impacto |
 |---|---|
-| 377 usos de `st.session_state` con claves string dispersas | Bugs silenciosos difíciles de rastrear |
-| `delete_user` no valida que el usuario pertenezca al club del admin | Bajo riesgo hoy, alto si se amplían permisos |
-| Sin registro de resultados de partido | Ranking no vendible sin esto |
+| ~377 usos de `st.session_state` con claves string dispersas | Bugs silenciosos |
+| `delete_user` no valida club del objetivo | Bajo hoy, alto si se amplían permisos |
+| Feature móvil a medias (desactivada, no borrada) | Código muerto |
 
-### Baja prioridad
-
+### Baja
 | Problema | Impacto |
 |---|---|
-| `syltek_connector.py` (1.557 líneas) acoplado al core | Playwright en requirements, scraping frágil |
-| `get_tournament_public` devuelve `tournament_data` completo | Ya mitigado en la vista de resultados |
+| `syltek_connector.py` (1.557 líneas) acoplado al core | Playwright pesado, scraping frágil |
+| Pydantic V2 `Field(env=...)` deprecado en `config.py` | Warning, romperá en Pydantic V3 |
+
+---
+
+## Próximas mejoras (ROADMAP)
+
+1. **Filtros y búsqueda en listas** — `st.multiselect` por categoría/estado (QoL, P1, in-app)
+2. Cablear notificaciones: resultado→rival, cuadro→participantes (funcs ya existen)
+3. Móvil jugadores (Next.js — proyecto aparte, P2)
+4. Rotar secrets, runbook operaciones, backup verificado (P3)
 
 ---
 
 ## Configuración de producción
 
-### Streamlit Cloud secrets (mínimo necesario)
-
 ```toml
 SUPABASE_URL       = "https://xxxx.supabase.co"
-SUPABASE_KEY       = "eyJ..."          # service_role (NO anon key)
-AUTH_COOKIE_SECRET = "..."             # PENDIENTE: añadir clave independiente
-RESEND_API_KEY     = "re_..."          # para emails (opcional)
+SUPABASE_KEY       = "eyJ..."          # service_role (NO anon)
+AUTH_COOKIE_SECRET = "..."             # PENDIENTE: clave independiente
+RESEND_API_KEY     = "re_..."          # emails (opcional)
 ```
 
-### Remotes Git
-
+Remotes:
 ```
-origin  → https://github.com/JaviGonzalez5/Voltreo.git        (producción)
-v2      → https://github.com/JaviGonzalez5/Ranking-Padelplus-Automatizado.git  (antiguo, no usar)
+origin → https://github.com/JaviGonzalez5/Voltreo.git              (producción)
+v2     → JaviGonzalez5/Ranking-Padelplus-Automatizado.git          (antiguo, no usar)
 ```
 
 ---
 
-## Decisiones de arquitectura tomadas
+## Decisiones de arquitectura
 
 | Decisión | Razón |
 |---|---|
-| Un solo `app.py` por ahora | Partir el monolito es tarea del refactor, no cambiar sobre la marcha |
-| Resend para email (no SMTP) | API moderna, una sola configuración, ya en `requirements.txt` |
-| `service_role` en el backend | Streamlit es server-side, nunca expuesto al navegador |
-| UUID como "secreto compartible" para vistas públicas | No-adivinable, sin auth extra necesaria |
-| Pydantic v2 para todos los modelos | Validación automática, serialización a JSON para JSONB |
-| JSONB único para torneo completo | Evita joins complejos, torneo es una unidad coherente |
-| `club_id` en todas las queries | Aislamiento multi-tenant sin RLS (segunda capa de seguridad) |
+| Un solo `app.py` por ahora | Partir el monolito es trabajo grande, no sobre la marcha |
+| Resend (no SMTP) | API moderna, una sola config, ya en requirements |
+| `service_role` en backend | Streamlit server-side, nunca expuesto al navegador |
+| UUID como secreto compartible | No-adivinable, sin auth extra |
+| Pydantic v2 para modelos | Validación + serialización JSONB |
+| JSONB único para torneo | Torneo es unidad coherente, evita joins |
+| `club_id` en todas las queries | Multi-tenant, segunda capa sobre RLS |
+| Móvil dedicado descartado | `st.button` no se oculta por CSS; rompía desktop |
 
 ---
 
-## Checklist antes de hacer merge a main
+## Checklist antes de tocar producción
 
-- [ ] Tests pasan: `pytest tests/ -v`
-- [ ] Sin errores de compilación: `python -m compileall app.py src`
-- [ ] Sin referencias a `email_service`: `grep -R "email_service" . --include="*.py"`
-- [ ] Confirmar que `SUPABASE_KEY` es `service_role` en Streamlit Cloud
-- [ ] RLS ejecutado en Supabase (o decisión explícita de posponerlo)
+- [ ] Tests pasan: `pytest -q` (205 actualmente)
+- [ ] Compila: `python -m compileall app.py src`
+- [ ] Sin refs a `email_service`: `grep -R email_service --include=*.py .`
+- [ ] `SUPABASE_KEY` es `service_role` en Streamlit Cloud
+- [ ] RLS confirmado ejecutado en Supabase
 - [ ] `AUTH_COOKIE_SECRET` añadido en secrets
