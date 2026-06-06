@@ -4058,7 +4058,7 @@ elif page == "import":
                             st.write(f"  Tabla {_i}: {len(_rows)} filas · cabecera: `{_hdr[:10]}`")
                         # 3. HTML alrededor de cada aparición de "Grupo N"
                         _html_full = _r_d.text
-                        _matches_g = list(_re.finditer(r"grupo\s*\d+", _html_full, _re.I))
+                        _matches_g = list(re.finditer(r"grupo\s*\d+", _html_full, re.I))
                         st.write(f"**Apariciones de 'Grupo N' en el HTML:** {len(_matches_g)}")
                         if _matches_g:
                             # Mostrar contexto de las primeras 6 apariciones

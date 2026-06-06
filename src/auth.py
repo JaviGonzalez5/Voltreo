@@ -914,7 +914,8 @@ def render_login_screen(db) -> None:
                 user = None
 
             if user is None and not _blocked:
-                _remaining_attempts = _MAX_ATTEMPTS - st.session_state.get(_login_attempts_key(), 0)
+                _attempts_used = _rate_limit_store.get(username.strip().lower(), {}).get("attempts", 0)
+                _remaining_attempts = _MAX_ATTEMPTS - _attempts_used
                 if _remaining_attempts > 0:
                     st.error(f"Usuario o contraseña incorrectos. ({_remaining_attempts} intentos restantes)")
                 else:
