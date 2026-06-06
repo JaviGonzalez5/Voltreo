@@ -249,10 +249,10 @@ class SupabaseDB:
             "name":            name,
             "start_date":      start_date,
             "end_date":        end_date,
-            "phase_config":    phase_config,
-            "groups_data":     groups_data,
-            "bookings_data":   bookings_data,
-            "schedule_result": schedule_result,
+            "config_json":     phase_config,
+            "groups_json":     groups_data,
+            "bookings_json":   bookings_data,
+            "matches_json":    schedule_result,
             "is_active":       True,
         }
         if phase_id:
@@ -326,7 +326,7 @@ class SupabaseDB:
         """
         resp = (
             self._c.table("ranking_phases")
-            .select("id, club_id, name, start_date, end_date, phase_config, groups_data, bookings_data, schedule_result")
+            .select("id, club_id, name, start_date, end_date, config_json, groups_json, bookings_json, matches_json")
             .eq("id", phase_id)
             .execute()
         )

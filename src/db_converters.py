@@ -65,10 +65,10 @@ def phase_from_db(row: dict) -> "tuple[RankingPhase, Optional[ScheduleResult]]":
 
     RankingPhase tendrá ya sus groups y bookings cargados.
     """
-    config  = row.get("phase_config") or {}
-    g_data  = row.get("groups_data")  or []
-    b_data  = row.get("bookings_data") or []
-    sr_data = row.get("schedule_result")
+    config  = row.get("config_json")   or {}
+    g_data  = row.get("groups_json")   or []
+    b_data  = row.get("bookings_json") or []
+    sr_data = row.get("matches_json")
 
     # Reconstruir grupos
     groups   = [Group.model_validate(g) for g in g_data]

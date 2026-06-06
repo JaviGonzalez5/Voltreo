@@ -101,10 +101,10 @@ class TestRankingFullFlow:
         row = {
             "id": phase.id, "name": phase.name,
             "start_date": "2026-06-01", "end_date": "2026-06-30",
-            "phase_config": payload["phase_config"],
-            "groups_data": payload["groups_data"],
-            "bookings_data": payload["bookings_data"],
-            "schedule_result": None,
+            "config_json": payload["phase_config"],
+            "groups_json": payload["groups_data"],
+            "bookings_json": payload["bookings_data"],
+            "matches_json": None,
         }
 
         # Recargar
@@ -123,10 +123,10 @@ class TestRankingFullFlow:
         row = {
             "id": phase.id, "name": phase.name,
             "start_date": "2026-06-01", "end_date": "2026-06-30",
-            "phase_config": payload["phase_config"],
-            "groups_data": payload["groups_data"],
-            "bookings_data": payload["bookings_data"],
-            "schedule_result": None,
+            "config_json": payload["phase_config"],
+            "groups_json": payload["groups_data"],
+            "bookings_json": payload["bookings_data"],
+            "matches_json": None,
         }
         phase2, _ = phase_from_db(row)
         assert phase2.scoring_rules.points_win == 2
