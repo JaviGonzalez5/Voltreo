@@ -16,8 +16,8 @@ class TestCompilation:
     def test_auth_compiles(self):
         py_compile.compile(str(ROOT / "src" / "auth.py"), doraise=True)
 
-    def test_email_service_compiles(self):
-        py_compile.compile(str(ROOT / "src" / "email_service.py"), doraise=True)
+    def test_email_sender_compiles(self):
+        py_compile.compile(str(ROOT / "src" / "email_sender.py"), doraise=True)
 
 
 class TestAuthModule:
@@ -43,18 +43,18 @@ class TestAuthModule:
         assert not hasattr(auth_mod, "_login_lockout_key")
 
 
-class TestEmailServiceModule:
+class TestEmailSenderModule:
 
-    def test_email_service_imports(self):
-        import src.email_service  # noqa: F401
+    def test_email_sender_imports(self):
+        import src.email_sender  # noqa: F401
 
-    def test_send_function_exists(self):
-        from src.email_service import send_registration_confirmation
-        assert callable(send_registration_confirmation)
+    def test_notify_function_exists(self):
+        from src.email_sender import notify_registration_received
+        assert callable(notify_registration_received)
 
     def test_html_function_exists(self):
-        from src.email_service import _html_email
-        assert callable(_html_email)
+        from src.email_sender import _registration_html
+        assert callable(_registration_html)
 
 
 class TestAppPyStructure:
