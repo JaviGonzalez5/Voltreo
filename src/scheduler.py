@@ -187,9 +187,10 @@ def build_availability_slots(
                 court_day_bookings[court.id][b.start_datetime.date()].append(b)
                 break  # a booking belongs to at most one court
 
+    _play_weekends = bool(getattr(phase, "play_weekends", False))
     while current <= phase.end_date:
-        # ── El ranking solo se juega de lunes a viernes
-        if current.weekday() >= 5:
+        # ── El ranking se juega de lunes a viernes salvo que play_weekends=True
+        if current.weekday() >= 5 and not _play_weekends:
             current += timedelta(days=1)
             continue
 

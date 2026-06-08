@@ -4084,6 +4084,12 @@ elif page == "config":
         with _h2:
             _cfg_end_h   = st.time_input("Última hora de juego",  value=_cfg_close_val)
         st.caption("💡 Los partidos se programarán dentro de esta franja horaria.")
+        _cfg_weekends = st.checkbox(
+            "Permitir partidos en fin de semana (sábado y domingo)",
+            value=bool(getattr(_ep, "play_weekends", False)) if _ep else False,
+            help="Por defecto el ranking solo se juega de lunes a viernes. "
+                 "Actívalo si tu club juega también sábado y/o domingo.",
+        )
 
     with col2:
         _section_start("🏟️", "Pistas para esta fase")
@@ -4192,6 +4198,7 @@ elif page == "config":
                 match_duration_minutes=_cfg_duration,
                 day_start_time=_cfg_start_h,
                 day_end_time=_cfg_end_h,
+                play_weekends=bool(_cfg_weekends),
                 max_matches_per_week=_cfg_max_week,
                 min_days_between_matches=_cfg_min_days,
                 random_seed=int(_cfg_seed) if _cfg_seed is not None else None,
@@ -4808,6 +4815,45 @@ elif page == "generate":
 
     with col1:
         _section_start("⚡", "Acciones")
+
+        # ── Diagnóstico de capacidad: ¿hay huecos donde asignar? ──
+        # Evita el caso desconcertante "400 a jugar, 0 asignados": casi siempre
+        # es que no hay huecos válidos (rango sin días entre semana, horario
+        # vacío, o se juega en finde pero está desactivado).
+        from src.scheduler import build_availability_slots as _bas
+        try:
+            _diag_slots = _bas(phase.courts, phase, phase.bookings)
+        except Exception:
+            _diag_slots = []
+        _diag_days = sorted({s.date for s in _diag_slots})
+        _play_we = bool(getattr(phase, "play_weekends", False))
+        if not _diag_slots:
+            _reasons = []
+            _rng_days = [
+                phase.start_date + timedelta(days=_i)
+                for _i in range((phase.end_date - phase.start_date).days + 1)
+            ] if phase.end_date >= phase.start_date else []
+            if phase.day_end_time <= phase.day_start_time:
+                _reasons.append("la hora de fin es anterior o igual a la de inicio")
+            if not _play_we and _rng_days and all(d.weekday() >= 5 for d in _rng_days):
+                _reasons.append("el rango de fechas solo tiene fines de semana y los findes están desactivados")
+            if not phase.courts:
+                _reasons.append("no hay pistas configuradas")
+            _why = "; ".join(_reasons) if _reasons else (
+                "el rango de fechas no tiene días de juego válidos"
+                + ("" if _play_we else " (el ranking solo juega lunes a viernes)")
+            )
+            st.error(
+                f"⛔ **0 huecos disponibles** → ningún partido podrá asignarse. "
+                f"Causa probable: {_why}. Revisa fechas, horario"
+                + ("" if _play_we else " o activa **fin de semana**")
+                + " en **⚙️ Configuración**."
+            )
+        else:
+            st.caption(
+                f"🗓️ {len(_diag_slots)} huecos en {len(_diag_days)} día(s) de juego "
+                f"({'L–D' if _play_we else 'L–V'}) · {len(phase.courts)} pista(s)."
+            )
 
         _had_schedule = st.session_state.matches_scheduled
         if _had_schedule:

@@ -250,3 +250,52 @@ def test_coerce_time_accepts_str_and_time():
     assert _coerce_time("") is None
     assert _coerce_time(None) is None
     assert _coerce_time("nonsense") is None
+
+
+# ---------------------------------------------------------------------------
+# play_weekends: el ranking puede jugarse en fin de semana si se activa.
+# Sin esto, un rango solo-finde daba 0 huecos y 0 asignados.
+# ---------------------------------------------------------------------------
+
+def _weekend_phase(play_weekends):
+    # 6-7 jun 2026 = sábado y domingo
+    g = Group(name="A", pairs=[_pair(f"P{i}") for i in range(4)])
+    return RankingPhase(
+        name="WE", start_date=date(2026, 6, 6), end_date=date(2026, 6, 7),
+        groups=[g], courts=[Court(id="c1", name="P1"), Court(id="c2", name="P2")],
+        bookings=[], match_duration_minutes=90,
+        day_start_time=time(9, 0), day_end_time=time(22, 0),
+        max_matches_per_week=5, min_days_between_matches=0,
+        random_seed=42, play_weekends=play_weekends,
+    )
+
+
+def test_weekend_excluded_by_default():
+    from src.scheduler import build_availability_slots
+    ph = _weekend_phase(play_weekends=False)
+    assert build_availability_slots(ph.courts, ph, []) == []
+    res = Scheduler(ph).schedule(generate_all_matches(ph.groups))
+    assert res.scheduled_count == 0  # nada cabe: solo findes y findes desactivados
+
+
+def test_weekend_played_when_enabled():
+    from src.scheduler import build_availability_slots
+    ph = _weekend_phase(play_weekends=True)
+    slots = build_availability_slots(ph.courts, ph, [])
+    assert slots, "play_weekends=True debe generar huecos en sábado/domingo"
+    assert {s.date.weekday() for s in slots} <= {5, 6}
+    res = Scheduler(ph).schedule(generate_all_matches(ph.groups))
+    assert res.scheduled_count > 0
+
+
+def test_weekdays_never_get_weekend_slots_by_default():
+    from src.scheduler import build_availability_slots
+    g = Group(name="A", pairs=[_pair(f"P{i}") for i in range(4)])
+    ph = RankingPhase(
+        name="WK", start_date=date(2026, 6, 1), end_date=date(2026, 6, 7),
+        groups=[g], courts=[Court(id="c1", name="P1")], bookings=[],
+        match_duration_minutes=90, day_start_time=time(9, 0), day_end_time=time(22, 0),
+        random_seed=42,
+    )
+    wds = {s.date.weekday() for s in build_availability_slots(ph.courts, ph, [])}
+    assert 5 not in wds and 6 not in wds

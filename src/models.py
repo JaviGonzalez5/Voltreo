@@ -213,6 +213,10 @@ class RankingPhase(BaseModel):
     match_duration_minutes: int = 90
     day_start_time: time = time(16, 0)
     day_end_time: time = time(22, 30)
+    # Si True, también se generan huecos en sábado y domingo. Por defecto False
+    # (el ranking se juega de lunes a viernes). Muchos clubs de pádel juegan en
+    # fin de semana: activar esto para que esos días tengan partidos.
+    play_weekends: bool = False
     max_matches_per_week: int = 2
     # Separación mínima entre dos partidos consecutivos de la misma pareja (en días).
     # 0 = sin restricción. Es una restricción dura.
