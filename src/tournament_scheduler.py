@@ -239,22 +239,24 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
                     _day_idx += 1
                     _placed_on_day = 0
 
-    # ── Tandas de juego: PRIORIDAD SUAVE (no barrera dura) ──────────────────
-    # Antes: cada tanda se planificaba por separado y la siguiente NO podía
-    # empezar hasta que TODA la anterior hubiera terminado (barrera dura). Eso
-    # dejaba pistas vacías en la cola de cada tanda (p.ej. al final de
-    # Masculino+Femenino, antes de que arrancara Mixto) y descompactaba el torneo.
-    #
-    # Ahora: un único pase VORAZ sobre TODOS los partidos. El número de tanda es
-    # solo una PRIORIDAD de desempate (a igual hora de inicio, la tanda menor va
-    # primero). Así las categorías de la tanda 1 ocupan las pistas mientras
-    # tengan partidos listos, y la tanda 2 (Mixto) RELLENA las pistas que de otro
-    # modo quedarían vacías en la cola. El _PlayerTimeline sigue impidiendo que
-    # un jugador físico tenga dos partidos a la vez entre categorías o tandas.
+    # ── Tandas de juego: BARRERA DURA entre tandas, mezcla DENTRO de la tanda ─
+    # Una tanda posterior (p.ej. Mixto = tanda 2) NO empieza hasta que TODA la
+    # tanda anterior (Masculino + Femenino = tanda 1) haya terminado. Esto se
+    # garantiza con dos mecanismos:
+    #   · readiness: un partido de la tanda W no está "listo" mientras queden
+    #     partidos sin programar de cualquier tanda < W.
+    #   · earliest: además, no puede empezar antes del fin del ÚLTIMO partido de
+    #     las tandas anteriores + descanso.
+    # DENTRO de una tanda, el pase voraz mezcla las categorías (Masculino y
+    # Femenino se intercalan, sin bloques) gracias al desempate por categoría
+    # menos colocada. El _PlayerTimeline impide partidos simultáneos del mismo
+    # jugador físico entre categorías o tandas.
     _waves_cfg = dict(getattr(config, "division_waves", {}) or {})
 
     def _wave_of(m: TournamentMatch) -> int:
         return int(_waves_cfg.get(m.division, 1)) if m.division else 1
+
+    _wave_numbers = sorted({_wave_of(m) for m in config.matches})
 
     # ── Estado compartido (pistas y jugadores) ──────────────────────────────
     court_tls = {c.id: _CourtTimeline() for c in active_courts}
@@ -274,20 +276,41 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
     # Estado de rondas por división: cuántos partidos completados / total
     completed_rounds: dict[tuple, int] = defaultdict(int)
     total_rounds:     dict[tuple, int] = defaultdict(int)
+    # Estado por tanda: total, programados y fin más tardío (para la barrera dura)
+    total_per_wave:     dict[int, int] = defaultdict(int)
+    completed_per_wave: dict[int, int] = defaultdict(int)
+    wave_end_latest:    dict[int, datetime] = {}
     for m in config.matches:
         total_rounds[(m.division, m.round)] += 1
+        total_per_wave[_wave_of(m)] += 1
 
     def _prev_round_of(div, rnd):
         seq = div_rounds_list.get(div, [])
         idx = seq.index(rnd) if rnd in seq else -1
         return seq[idx - 1] if idx > 0 else None
 
-    def _is_ready(m) -> bool:
-        """Listo si su ronda anterior (en SU categoría) está 100% completada.
+    def _lower_waves_done(w: int) -> bool:
+        """True si TODAS las tandas anteriores a w están 100% programadas."""
+        return all(
+            completed_per_wave[lw] == total_per_wave[lw]
+            for lw in _wave_numbers if lw < w
+        )
 
-        Así las semis de Masculino pueden asignarse en cuanto terminan los
-        grupos de Masculino, sin esperar a los grupos de Femenino ni a otra tanda.
+    def _wave_barrier_for(w: int) -> Optional[datetime]:
+        """Fin del último partido de las tandas anteriores + descanso (o None)."""
+        ends = [wave_end_latest[lw] for lw in _wave_numbers
+                if lw < w and lw in wave_end_latest]
+        return (max(ends) + _rest_td) if ends else None
+
+    def _is_ready(m) -> bool:
+        """Listo si (a) su ronda anterior en SU categoría está completada y
+        (b) no queda nada por programar de tandas anteriores (barrera dura).
+
+        Dentro de la misma tanda, las semis de Masculino pueden asignarse en
+        cuanto terminan los grupos de Masculino, sin esperar a los de Femenino.
         """
+        if not _lower_waves_done(_wave_of(m)):
+            return False
         pr = _prev_round_of(m.division, m.round)
         if pr is None:
             return True
@@ -297,12 +320,16 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
     div_round_latest: dict[tuple, datetime] = {}  # fin más tardío de cada (div, rnd)
 
     def _earliest_for(m) -> Optional[datetime]:
-        """No empieza antes del fin de su ronda anterior (misma categoría) + descanso."""
+        """No empieza antes de (a) el fin de su ronda anterior (misma categoría)
+        ni (b) el fin de TODAS las tandas anteriores, ambos + descanso."""
+        base = _wave_barrier_for(_wave_of(m))
         pr = _prev_round_of(m.division, m.round)
-        if pr is None:
-            return None
-        pe = div_round_latest.get((m.division, pr))
-        return pe + _rest_td if pe is not None else None
+        if pr is not None:
+            pe = div_round_latest.get((m.division, pr))
+            if pe is not None:
+                after_pr = pe + _rest_td
+                base = max(base, after_pr) if base else after_pr
+        return base
 
     unscheduled = list(config.matches)
     _safety = len(unscheduled) * len(active_courts) + 5
@@ -352,6 +379,9 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
                     "Sin hueco disponible. Amplía el rango de fechas, "
                     "añade más pistas o reduce la duración de los partidos."
                 )
+                # Contar el conflicto en su tanda para no bloquear la barrera
+                # de tandas posteriores (un partido sin hueco no se juega).
+                completed_per_wave[_wave_of(m)] += 1
                 unscheduled.remove(m)
             continue
 
@@ -402,6 +432,11 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
         placed_per_group_name[_gid_to_name.get(best_match.group_id, "")] += 1
         if _dk not in div_round_latest or s_end > div_round_latest[_dk]:
             div_round_latest[_dk] = s_end
+        # Barrera de tandas: contar el partido en su tanda y registrar su fin
+        _wn = _wave_of(best_match)
+        completed_per_wave[_wn] += 1
+        if _wn not in wave_end_latest or s_end > wave_end_latest[_wn]:
+            wave_end_latest[_wn] = s_end
 
         unscheduled.remove(best_match)
 

@@ -381,11 +381,11 @@ class TestMultiDivisionScheduling:
         assert set(first_slot_groups) == {"Grupo A", "Grupo B", "Grupo C"}
 
 
-class TestSoftWaveBarrier:
+class TestWaveBarrier:
     """
-    La tanda 2 no espera a que TODA la tanda 1 termine (barrera dura): rellena
-    las pistas que la tanda 1 deja vacías en su cola (compactación), pero la
-    tanda 1 conserva la prioridad en los huecos más tempranos.
+    Barrera dura entre tandas: la tanda 2 (Mixto) NO empieza hasta que toda la
+    tanda 1 (Masculino + Femenino) ha terminado. Dentro de cada tanda, las
+    categorías se mezclan (sin bloques) y se usan todas las pistas.
     """
 
     def _night_two_waves(self):
@@ -428,9 +428,9 @@ class TestSoftWaveBarrier:
         cfg = self._night_two_waves()
         assert [m for m in cfg.matches if m.status == TMatchStatus.CONFLICT] == []
 
-    def test_wave2_backfills_before_wave1_finishes(self):
-        """Algún partido de Mixto (tanda 2) empieza ANTES de que acabe el último
-        de tanda 1 → no hay barrera dura, rellena la cola."""
+    def test_wave2_starts_after_wave1_finishes(self):
+        """Barrera dura: NINGÚN partido de Mixto (tanda 2) empieza antes de que
+        termine el ÚLTIMO partido de la tanda 1 (Masculino + Femenino)."""
         cfg = self._night_two_waves()
         sched = [m for m in cfg.matches if m.status == TMatchStatus.SCHEDULED]
         wave1_last_end = max(
@@ -439,8 +439,8 @@ class TestSoftWaveBarrier:
         mixto_first_start = min(
             self._start_min(m) for m in sched if m.division == "mixto:1a"
         )
-        assert mixto_first_start < wave1_last_end, (
-            "Mixto (tanda 2) debería rellenar pistas durante la cola de la tanda 1"
+        assert mixto_first_start >= wave1_last_end, (
+            "Mixto (tanda 2) no debe empezar hasta que toda la tanda 1 haya terminado"
         )
 
     def test_wave1_keeps_priority_in_earliest_slot(self):
