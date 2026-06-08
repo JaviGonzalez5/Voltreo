@@ -78,6 +78,57 @@ def recommend_structure(n_pairs: int) -> dict:
     }
 
 
+def group_sizes_for(n_pairs: int, num_groups: int) -> list[int]:
+    """Reparto de parejas por grupo (los primeros grupos reciben una extra)."""
+    if num_groups < 1:
+        num_groups = 1
+    base  = n_pairs // num_groups
+    extra = n_pairs % num_groups
+    return [base + 1] * extra + [base] * (num_groups - extra)
+
+
+def preview_match_counts(
+    group_sizes: list[int],
+    final_phase: int,
+    third_place: bool = False,
+    qualifiers: int = 2,
+) -> dict:
+    """
+    Partidos previstos para UNA división, replicando la lógica del generador
+    (incluido el recorte del cuadro por clasificados disponibles).
+
+    Args:
+        group_sizes: tamaño de cada grupo (round-robin).
+        final_phase: cuadro pedido (0=liguilla, 2, 4, 8, 16). 0 = sin eliminatoria.
+        third_place: si hay partido de 3er/4º puesto (solo con cuadro ≥ 4).
+        qualifiers:  clasificados por grupo (por defecto 2).
+
+    Devuelve: {group_matches, per_group, final_matches, effective_bracket, total}.
+    """
+    per_group      = [s * (s - 1) // 2 for s in group_sizes]  # C(s,2)
+    group_matches  = sum(per_group)
+    final_matches  = 0
+    effective_bracket = 0
+    if final_phase >= 2 and group_sizes:
+        safe_q = max(1, min(qualifiers, min(group_sizes)))
+        n_qual = len(group_sizes) * safe_q
+        if n_qual >= 2:
+            max_bs = 1 << (n_qual.bit_length() - 1)   # mayor potencia de 2 ≤ n_qual
+            effective_bracket = min(max(2, final_phase), max_bs)
+            final_matches = effective_bracket - 1     # eliminatoria de B = B-1 partidos
+            # El generador solo crea 3er/4º puesto cuando la primera ronda del
+            # cuadro es la semifinal, es decir con un cuadro de exactamente 4.
+            if third_place and effective_bracket == 4:
+                final_matches += 1
+    return {
+        "group_matches":     group_matches,
+        "per_group":         per_group,
+        "final_matches":     final_matches,
+        "effective_bracket": effective_bracket,
+        "total":             group_matches + final_matches,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Reparto en grupos
 # ---------------------------------------------------------------------------

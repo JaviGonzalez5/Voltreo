@@ -6961,7 +6961,11 @@ elif page == "t_generate":
                 continue
 
             _rec = _recommend(_div_pairs_n)
-            _prev = _existing_draws_g.get(_dk)
+            # En torneos de una sola categoría _dk es None, pero los draws se
+            # guardan con la clave "default": normalizar para encontrar la config
+            # guardada (si no, se pierde y revierte a la recomendación al volver).
+            _draw_key = _dk or "default"
+            _prev = _existing_draws_g.get(_draw_key)
             _ng_key = f"tg_ng_{_dk}"
             _fp_key = f"tg_fp_{_dk}"
             _sig_key = f"tg_sig_{_dk}"
@@ -7056,6 +7060,35 @@ elif page == "t_generate":
                     if int(st.session_state.get(_fp_key, 0)) == 0 and int(_ng_val) == 1:
                         st.caption("🔁 Liguilla pura: todos contra todos, gana quien más puntos sume.")
 
+                # ── Previsión de partidos según la configuración ─────────────
+                # Usa el mismo cálculo que el generador (incluido el recorte del
+                # cuadro por clasificados), para que el número mostrado coincida
+                # con los partidos que se generarán de verdad.
+                from src.tournament_generator import (
+                    group_sizes_for as _group_sizes_for,
+                    preview_match_counts as _preview_counts,
+                )
+                _grp_sizes = _group_sizes_for(_div_pairs_n, int(_ng_val))
+                _fp_sel = int(st.session_state.get(_fp_key, 0))
+                _pv = _preview_counts(
+                    _grp_sizes, _fp_sel,
+                    third_place=getattr(t, "third_place_match", False),
+                )
+                _pg_txt = " · ".join(str(n) for n in _pv["per_group"])
+                _cap_note = ""
+                if _fp_sel >= 2 and _pv["effective_bracket"] and _pv["effective_bracket"] < _fp_sel:
+                    _cap_note = (f' <span style="color:#7a4b00">— el cuadro de {_fp_sel} '
+                                 f'se ajusta a {_pv["effective_bracket"]} por los clasificados disponibles</span>')
+                st.markdown(
+                    f'<div style="background:#f4f8ff;border:1px solid #d6e4f7;border-radius:8px;'
+                    f'padding:.55rem .8rem;margin-top:.45rem;font-size:.85rem;color:#234">'
+                    f'📊 <strong>Partidos previstos:</strong> '
+                    f'grupos <strong>{_pv["group_matches"]}</strong> (por grupo: {_pg_txt}) · '
+                    f'fase final <strong>{_pv["final_matches"]}</strong> · '
+                    f'total <strong>{_pv["total"]}</strong>{_cap_note}</div>',
+                    unsafe_allow_html=True,
+                )
+
         # ── Autoguardar la configuración elegida (sin generar partidos) ──────
         # Así, al refrescar, los grupos y la fase final quedan como la última vez.
         from src.tournament_models import TournamentDivision  # necesario en este bloque
@@ -7068,7 +7101,8 @@ elif page == "t_generate":
             _ng_v = int(st.session_state.get(f"tg_ng_{_dk}", 2))
             _fp_v = int(st.session_state.get(f"tg_fp_{_dk}", 0))
             _cfg_signature.append((_dk, _ng_v, _fp_v))
-            _prev_d = _cfg_draws.get(_dk)
+            _draw_key = _dk or "default"
+            _prev_d = _cfg_draws.get(_draw_key)
             _div_fmt = TournamentFormat.GROUPS if _fp_v == 0 else TournamentFormat.GROUPS_BRACKET
             _dcat_g, _dsub_g = _parse_division_key(_dk) if _dk else (t.category, t.subcategory)
             if _prev_d is not None:
@@ -7077,7 +7111,7 @@ elif page == "t_generate":
                 _prev_d.bracket_size = _fp_v or 2
                 _prev_d.format = _div_fmt
             else:
-                _cfg_draws[_dk] = TournamentDivision(
+                _cfg_draws[_draw_key] = TournamentDivision(
                     key=_dk or "default", category=_dcat_g, subcategory=_dsub_g,
                     format=_div_fmt, num_groups=_ng_v, group_size=t.group_size,
                     bracket_size=_fp_v or 2, groups_qualifiers=2,
@@ -7129,7 +7163,7 @@ elif page == "t_generate":
                 # Fase final 0 = liguilla pura (solo grupos, sin eliminatoria)
                 _div_fmt = TournamentFormat.GROUPS if _fp_v == 0 else TournamentFormat.GROUPS_BRACKET
                 _dcat_g, _dsub_g = _parse_division_key(_dk) if _dk else (t.category, t.subcategory)
-                _draws_g[_dk] = _TDivG(
+                _draws_g[_dk or "default"] = _TDivG(
                     key=_dk or "default", category=_dcat_g, subcategory=_dsub_g,
                     format=_div_fmt, num_groups=_ng_v, group_size=t.group_size,
                     bracket_size=_fp_v or 2, groups_qualifiers=2,
