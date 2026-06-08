@@ -2189,6 +2189,29 @@ def _tournament_match_sort_key(t_obj, match) -> tuple:
     )
 
 
+def _revalidate_models(seq, model_cls):
+    """
+    Reconstruye una lista de objetos como instancias de la clase ACTUAL del
+    modelo. Si la app se redesplegó con la sesión abierta, los objetos
+    persistidos en session_state son instancias de una versión anterior de la
+    clase y pydantic los rechaza ("Input should be a valid dictionary or
+    instance of …"). Volcar a dict y revalidar los reconstruye con la clase
+    vigente. Tolerante: descarta lo que no se pueda reconstruir.
+    """
+    out = []
+    for x in (seq or []):
+        try:
+            if isinstance(x, model_cls):
+                out.append(x)
+            elif isinstance(x, dict):
+                out.append(model_cls.model_validate(x))
+            elif hasattr(x, "model_dump"):
+                out.append(model_cls.model_validate(x.model_dump()))
+        except Exception:
+            continue
+    return out
+
+
 def _tournament_matches_excel_bytes(t_obj) -> bytes:
     """Genera un Excel moderno con la estructura de partidos del torneo."""
     import openpyxl
@@ -2360,17 +2383,20 @@ def _tournament_groups_excel_bytes(t_obj) -> bytes:
     if not ordered_keys:
         ordered_keys = [None]
 
-    headers = ["Grupo", "Pareja", "Jugador 1", "Jugador 2", "Cabeza de serie"]
+    # Columnas de la tabla de cada grupo (sin columna "Grupo": va como cabecera)
+    headers = ["Pareja", "Jugador 1", "Jugador 2", "Cabeza de serie"]
+    _NCOL = len(headers)
+    group_band_fill = PatternFill("solid", fgColor="0F9B57")  # verde marca
 
     def _title(ws, title, subtitle=""):
-        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=_NCOL)
         c = ws.cell(1, 1, title)
         c.font = Font(bold=True, size=16, color="FFFFFF")
         c.fill = header_fill
         c.alignment = Alignment(horizontal="left", vertical="center")
         ws.row_dimensions[1].height = 28
         if subtitle:
-            ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(headers))
+            ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=_NCOL)
             sc = ws.cell(2, 1, subtitle)
             sc.font = Font(size=10, color="46627A")
             sc.fill = group_fill
@@ -2382,44 +2408,56 @@ def _tournament_groups_excel_bytes(t_obj) -> bytes:
         ws = wb.create_sheet(_safe_excel_sheet_name(_label or "Grupos", used_sheets))
         _title(ws, _label, f"{len(_grps)} grupos · "
                            f"{sum(len(getattr(g, 'pairs', []) or []) for g in _grps)} parejas")
-        # Cabecera de tabla
+
         _row = 4
-        for ci, h in enumerate(headers, 1):
-            cell = ws.cell(_row, ci, h)
-            cell.font = Font(bold=True, color="FFFFFF", size=10)
-            cell.fill = header_fill
-            cell.border = border
-            cell.alignment = Alignment(horizontal="center", vertical="center")
-        _row += 1
-        _zebra = 0
         for g in _grps:
             _pairs = list(getattr(g, "pairs", []) or [])
-            for _p in _pairs:
+            # ── Banda de cabecera del grupo: "GRUPO A" ───────────────────────
+            ws.merge_cells(start_row=_row, start_column=1, end_row=_row, end_column=_NCOL)
+            _band = ws.cell(_row, 1, str(g.name).upper())
+            _band.font = Font(bold=True, size=12, color="FFFFFF")
+            _band.fill = group_band_fill
+            _band.alignment = Alignment(horizontal="left", vertical="center")
+            for _ci in range(1, _NCOL + 1):
+                ws.cell(_row, _ci).border = border
+            ws.row_dimensions[_row].height = 22
+            _row += 1
+            # ── Cabecera de columnas ─────────────────────────────────────────
+            for ci, h in enumerate(headers, 1):
+                cell = ws.cell(_row, ci, h)
+                cell.font = Font(bold=True, color="FFFFFF", size=10)
+                cell.fill = header_fill
+                cell.border = border
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+            _row += 1
+            # ── Parejas del grupo ────────────────────────────────────────────
+            for _i, _p in enumerate(_pairs):
                 _vals = [
-                    g.name,
                     _p.display_name,
                     _p.player_1.full_name if getattr(_p, "player_1", None) else "",
                     _p.player_2.full_name if getattr(_p, "player_2", None) else "",
                     f"#{_p.seed}" if getattr(_p, "seed", None) else "",
                 ]
-                fill = group_fill if _zebra % 2 == 0 else even_fill
+                fill = group_fill if _i % 2 == 0 else even_fill
                 for ci, v in enumerate(_vals, 1):
                     cell = ws.cell(_row, ci, v)
-                    cell.fill = odd_fill if (ci == 1) else fill
+                    cell.fill = fill
                     cell.border = border
                     cell.font = Font(size=10, color="102A43", bold=(ci == 1))
                     cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
                 _row += 1
-            _zebra += 1
-        # Anchos de columna
-        ws.freeze_panes = "A5"
-        for ci in range(1, len(headers) + 1):
+            # Fila en blanco separadora entre grupos
+            _row += 1
+
+        # Anchos de columna (según el contenido de toda la hoja)
+        ws.freeze_panes = "A4"
+        for ci in range(1, _NCOL + 1):
             _maxw = len(headers[ci - 1])
-            for _r in range(5, _row):
+            for _r in range(4, _row):
                 _v = ws.cell(_r, ci).value
                 if _v:
                     _maxw = max(_maxw, len(str(_v)))
-            ws.column_dimensions[get_column_letter(ci)].width = min(_maxw + 3, 40)
+            ws.column_dimensions[get_column_letter(ci)].width = min(_maxw + 4, 42)
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -7078,6 +7116,13 @@ elif page == "t_generate":
         st.warning("⚠️ Añade las parejas antes de generar la estructura.")
         if st.button("← Añadir parejas"): st.session_state["_nav_page"] = "t_pairs"; st.rerun()
         st.stop()
+
+    # Normalizar las parejas a la clase actual del modelo. Si la app se
+    # redesplegó con la sesión abierta, t.pairs contiene instancias de una
+    # versión anterior de TournamentPair y construir TournamentDivision con
+    # ellas lanzaría ValidationError al generar la estructura.
+    from src.tournament_models import TournamentPair as _TPairG
+    t.pairs = _revalidate_models(t.pairs, _TPairG)
 
     n_pairs = len(t.pairs)
     _tg_div_keys = list(getattr(t, "divisions", []) or [])
