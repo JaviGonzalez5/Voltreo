@@ -6187,10 +6187,35 @@ elif page == "t_config":
                 TournamentCourt(id=f"tc_{i}", name=str(c["name"]).strip())
                 for i, c in enumerate(_raw_courts)
             ]
-            _pairs_keep = []
-            for _p in (getattr(t, "pairs", []) if t else []):
-                if getattr(_p, "player_1", None) is not None and getattr(_p, "player_2", None) is not None:
-                    _pairs_keep.append(_p)
+            # Re-validar a la clase ACTUAL del modelo. Si la app se redesplegó
+            # con la sesión abierta, los objetos persistidos en session_state son
+            # instancias de una versión anterior de la clase y pydantic los
+            # rechaza ("Input should be a valid dictionary or instance of …").
+            # Volcar a dict y revalidar los reconstruye con la clase vigente.
+            from src.tournament_models import (
+                TournamentPair as _TPairCur,
+                TournamentRegistration as _TRegCur,
+            )
+
+            def _revalidate_list(_seq, _Model):
+                _out = []
+                for _x in (_seq or []):
+                    try:
+                        if isinstance(_x, _Model):
+                            _out.append(_x)
+                        elif isinstance(_x, dict):
+                            _out.append(_Model.model_validate(_x))
+                        elif hasattr(_x, "model_dump"):
+                            _out.append(_Model.model_validate(_x.model_dump()))
+                    except Exception:
+                        continue
+                return _out
+
+            _pairs_all = _revalidate_list(getattr(t, "pairs", []) if t else [], _TPairCur)
+            _pairs_keep = [
+                _p for _p in _pairs_all
+                if _p.player_1 is not None and _p.player_2 is not None
+            ]
             _primary_cat, _primary_sub = (None, None)
             if t_divisions:
                 _primary_cat, _primary_sub = _parse_division_key(t_divisions[0])
@@ -6267,7 +6292,7 @@ elif page == "t_config":
                 registration_closes_date=t_reg_close,   # del campo del formulario
                 registration_max_pairs=_reg_max_clean,
                 registration_ask_availability=getattr(t, "registration_ask_availability", False) if t else False,
-                registrations=list(getattr(t, "registrations", [])) if t else [],
+                registrations=_revalidate_list(getattr(t, "registrations", []) if t else [], _TRegCur),
             )
             try:
                 new_t = TournamentConfig(**_t_payload_new)
