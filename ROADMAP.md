@@ -1,4 +1,4 @@
-# PadelPlus — Roadmap SaaS v1
+# Voltreo — Roadmap SaaS v1
 
 ## Evaluación arquitectural honesta
 
@@ -48,11 +48,11 @@ Streamlit (admin privado)  ←→  Supabase (DB)  ←→  Next.js (vistas públi
 | `groups_qualifiers=0` y `bracket n=0` no crashean | ✅ | 19 tests passing |
 | Health-check `?health=1` corregido (doble `set_page_config`) | ✅ | `_early_health` antes de `st.set_page_config` |
 | Excepciones silenciadas en carga de datos → `logging.exception` | ✅ | Fase y torneo muestran warning genérico al usuario |
-| Confirmación de inscripción por email (SMTP) | ✅ | `src/email_service.py` + tests |
+| Confirmación de inscripción por email (Resend) | ✅ | `src/email_sender.py` + tests |
 | Vista pública de torneo compartible por URL | ✅ | `src/public_view.py` → `?t=<id>` |
 | Vista pública de ranking compartible por URL | ✅ | `src/public_ranking.py` → `?r=<id>` |
 | Inscripción pública en torneo por URL | ✅ | `src/public_view.py` → `?join=<id>` |
-| Test suite: 204 tests | ✅ | 204/204 PASSED |
+| Test suite: 233 tests | ✅ | 233/233 PASSED |
 | RLS en Supabase (5 tablas, 9 policies) | ✅ | Ejecutado manualmente en Supabase |
 | Audit log: tabla + helper `log_audit_event` | ✅ | login\_blocked/failed/success + create/update\_phase |
 
@@ -97,18 +97,27 @@ Streamlit (admin privado)  ←→  Supabase (DB)  ←→  Next.js (vistas públi
 | Vista pública compartible | ✅ Funciona | `src/public_view.py` → `?t=<id>` |
 | Inscripción pública por URL | ✅ Funciona | `src/public_view.py` → `?join=<id>` |
 | Exportar Excel | ✅ Funciona | `page == "t_export"` |
-| **Filtros y búsqueda en listas** | ❌ No existe | st.multiselect por categoría/estado (QoL) |
+| Filtros y búsqueda en listas | ✅ Funciona | `src/list_filters.py` + UI en Mis Rankings, Mis Torneos, Admin Clubs/Usuarios (texto + estado/categoría/rol/club) |
 
 ---
 
 ## FASE P2 — Experiencia de producto (Semanas 4-6)
 **Objetivo: UX premium, móvil, funcionalidades de valor diferencial.**
 
-### Next.js layer (vistas públicas y móvil)
+### Vistas públicas básicas — ✅ ya existen en Streamlit
+
+Las vistas públicas compartibles por enlace **ya están implementadas en la propia app Streamlit** (no requieren Next.js):
+- `?r=<phase_id>`  → clasificación pública del ranking (`src/public_ranking.py`)
+- `?t=<tournament_id>` → cuadro/resultados del torneo, shareable (`src/public_view.py`)
+- `?join=<tournament_id>` → inscripción pública del jugador (`src/public_view.py`)
+
+### Next.js layer — futuro móvil/premium para jugadores (no bloqueante)
+
+Capa **opcional y futura**, orientada a una experiencia móvil-first y premium para jugadores (no para reemplazar las vistas públicas actuales, que ya funcionan):
 
 ```
-/club/[slug]/ranking          → Clasificación pública del ranking
-/club/[slug]/torneo/[id]      → Cuadro/resultados del torneo (shareable)
+/club/[slug]/ranking          → Clasificación pública (versión móvil premium)
+/club/[slug]/torneo/[id]      → Cuadro/resultados (versión móvil premium)
 /club/[slug]/partido/[id]     → Formulario de resultado para jugadores (móvil)
 ```
 
@@ -117,17 +126,17 @@ Streamlit (admin privado)  ←→  Supabase (DB)  ←→  Next.js (vistas públi
 **Tiempo estimado:** 2 semanas para las 3 rutas básicas
 
 ### Notificaciones (email básico)
-- ✅ `send_registration_confirmation` implementado en `src/email_service.py` (SMTP con TLS)
-- Resultado registrado → notificar pareja rival (pendiente)
-- Cuadro publicado → notificar participantes (pendiente)
-- **Stack actual:** SMTP configurable vía `st.secrets["email"]`
+- ✅ Confirmación de inscripción implementada en `src/email_sender.py` (Resend)
+- Resultado registrado → notificar pareja rival (función `notify_result` lista, falta cablear)
+- Cuadro publicado → notificar participantes (función `notify_bracket_published` lista, falta cablear)
+- **Stack actual:** Resend vía `RESEND_API_KEY` (sistema único; `email_service.py`/SMTP eliminado)
 
 ---
 
 ## FASE P3 — Go-live y escala (Semanas 6-8)
 
 ### Seguridad adicional
-- [ ] Ejecutar `src/db_rls.sql` en Supabase (RLS real)
+- [x] RLS ejecutado en Supabase (5 tablas, 9 policies) — completado en P0
 - [ ] Supabase Auth para jugadores (login social/magic link)
 - [ ] Cloudflare en frente de Streamlit (rate limit por IP)
 - [ ] Rotate service_role key cada 90 días
@@ -172,7 +181,7 @@ Streamlit (admin privado)  ←→  Supabase (DB)  ←→  Next.js (vistas públi
 - [ ] Tiempo de aprendizaje < 10 min (video demo)
 
 ### Operación
-- [x] 204 tests automatizados
+- [x] 233 tests automatizados
 - [ ] Runbook de operaciones (cómo crear club, resetear contraseña, recuperar datos)
 - [ ] Política de backup verificada
 - [ ] Monitorización básica (Supabase logs activados)
