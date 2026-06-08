@@ -564,6 +564,37 @@ class TestGroupsPlayInParallel:
             )
             assert longest < matches_per_group
 
+    @staticmethod
+    def _worst_slot_same_group(cfg):
+        """Para cada tanda horaria, máximo de pistas con el MISMO nombre de grupo.
+        Devuelve (peor_valor, nº_grupos_distintos)."""
+        from collections import Counter, defaultdict
+        gname = {g.id: g.name for g in cfg.groups}
+        slots = defaultdict(list)
+        for m in cfg.matches:
+            if m.round == MatchRound.GROUP and m.match_date:
+                slots[(m.match_date, m.start_time)].append(gname.get(m.group_id))
+        worst = max((max(Counter(v).values()) for v in slots.values()), default=0)
+        return worst, len({g.name for g in cfg.groups})
+
+    def test_distinct_groups_fill_courts_in_same_slot(self):
+        # 1 categoría, 4 grupos de 4, 4 pistas → cada tanda debe tener los 4
+        # grupos distintos (A,B,C,D), nunca el mismo grupo repetido.
+        A = "mixto:3a"
+        cfg = self._groups_config([A], {A: 1}, npairs=16, group_size=4, ncourts=4)
+        worst, ngroups = self._worst_slot_same_group(cfg)
+        assert ngroups == 4
+        assert worst == 1, f"Una tanda repite grupo ({worst}) habiendo 4 grupos y 4 pistas"
+
+    def test_slot_does_not_repeat_group_when_alternatives_exist(self):
+        # 2 categorías × 2 grupos (nombres A/B compartidos), 4 pistas. Solo hay 2
+        # letras de grupo → como mucho 2 pistas por letra en una tanda (2A + 2B),
+        # nunca 4 de la misma letra.
+        A, B = "mixto:3a", "mixto:35a"
+        cfg = self._groups_config([A, B], {A: 1, B: 1}, npairs=8, group_size=4, ncourts=4)
+        worst, _ = self._worst_slot_same_group(cfg)
+        assert worst <= 2, f"Una tanda puso {worst} partidos del mismo grupo (esperado <=2)"
+
     def test_groups_interleave_respecting_waves(self):
         # 2 tandas: los grupos de la tanda 1 terminan antes de empezar la tanda 2,
         # pero DENTRO de cada tanda los grupos se mezclan.

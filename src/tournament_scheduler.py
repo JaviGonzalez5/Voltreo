@@ -371,6 +371,13 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
         if m.round == MatchRound.GROUP:
             return _round_idx.get(m.id, 0)
         return 1000
+
+    # Grupo del último partido colocado: se evita repetirlo en el siguiente hueco
+    # mientras haya partidos pendientes de OTROS grupos (rotación A→B→C→D por
+    # pista dentro de la misma tanda horaria). Si solo queda un grupo con
+    # partidos, se permite repetir.
+    _last_group_name: str = ""
+
     # Modo distribución: una pareja no puede jugar más de 1 partido por día.
     _player_day_busy: dict[str, set[date]] = defaultdict(set)
 
@@ -424,23 +431,32 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
         #                             2 (refuerza la barrera dura de tandas)
         #   2. ronda round-robin    → completa la ronda 0 de TODOS los grupos de la
         #                             tanda antes que la ronda 1, etc. → los grupos
-        #                             avanzan en paralelo y se mezclan SIEMPRE,
-        #                             para cualquier nº de grupos/parejas/pistas
-        #   3. categoría menos colocada → mezcla categorías (no 4 de la misma)
-        #   4. rotación de grupos   → A→B→C dentro de la misma ronda
-        #   5. inicio más temprano  → compactación (no dejar pistas vacías)
-        #   6. fin más temprano     → partidos cortos primero
-        #   7. nº de partido y UUID → determinismo
-        candidates.sort(key=lambda c: (
-            _wave_of(c[3]),
-            _round_key(c[3]),
-            placed_per_div[c[3].division],
-            placed_per_group_name[_gid_to_name.get(c[3].group_id, "")],
-            c[0],
-            c[1],
-            c[3].match_number,
-            c[3].id,
-        ))
+        #                             avanzan en paralelo, para cualquier nº de
+        #                             grupos/parejas/pistas
+        #   3. NO repetir grupo     → si el último colocado fue Grupo B, los demás
+        #                             grupos van antes → rota grupos por pista en la
+        #                             misma tanda (A→B→C→D). Solo repite si es el
+        #                             único grupo con partidos pendientes.
+        #   4. grupo menos colocado → equidad global de grupos
+        #   5. categoría menos colocada → mezcla categorías (no 4 de la misma)
+        #   6. inicio más temprano  → compactación (no dejar pistas vacías)
+        #   7. fin más temprano     → partidos cortos primero
+        #   8. nº de partido y UUID → determinismo
+        def _sort_key(c):
+            gname = _gid_to_name.get(c[3].group_id, "")
+            repeat_penalty = 1 if (gname and gname == _last_group_name) else 0
+            return (
+                _wave_of(c[3]),
+                _round_key(c[3]),
+                repeat_penalty,
+                placed_per_group_name[gname],
+                placed_per_div[c[3].division],
+                c[0],
+                c[1],
+                c[3].match_number,
+                c[3].id,
+            )
+        candidates.sort(key=_sort_key)
         s_start, s_end, court, best_match = candidates[0]
 
         _session_day = s_start.date()
@@ -466,7 +482,10 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
         _dk = (best_match.division, best_match.round)
         completed_rounds[_dk] += 1
         placed_per_div[best_match.division] += 1
-        placed_per_group_name[_gid_to_name.get(best_match.group_id, "")] += 1
+        _bm_group = _gid_to_name.get(best_match.group_id, "")
+        placed_per_group_name[_bm_group] += 1
+        if _bm_group:
+            _last_group_name = _bm_group
         if _dk not in div_round_latest or s_end > div_round_latest[_dk]:
             div_round_latest[_dk] = s_end
         # Barrera de tandas: contar el partido en su tanda y registrar su fin
