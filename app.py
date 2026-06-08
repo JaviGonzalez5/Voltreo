@@ -4900,34 +4900,88 @@ elif page == "generate":
     with col2:
         if st.session_state.matches:
             _section_start("📊", "Resumen")
+            _all_ms   = st.session_state.matches
+            _total_ms = len(_all_ms)
+            _sched_ms = [m for m in _all_ms if m.status == MatchStatus.SCHEDULED]
+            _conf_ms  = [m for m in _all_ms if m.status == MatchStatus.CONFLICT]
+            # Asignación manual (parejas con manual_only) — quedan PENDING con nota
+            _manual_ms = [
+                m for m in _all_ms
+                if m.status == MatchStatus.PENDING
+                and (getattr(m.pair_1, "manual_only", False) or getattr(m.pair_2, "manual_only", False))
+            ]
+
+            # ── Partidos en Pista Fija (PF) ──
+            from src.scheduler import _pair_pf_slots as _pf_slots
+            def _pf_match_pairs(m):
+                return set(_pf_slots(m.pair_1)) | set(_pf_slots(m.pair_2))
+            # Partidos que INVOLUCRAN una pareja con PF (deberían ir a su franja fija)
+            _pf_expected = [m for m in _all_ms if _pf_match_pairs(m)]
+            # Partidos asignados QUE caen en la franja PF de alguna de sus parejas
+            def _on_pf_slot(m):
+                if not m.suggested_date or not m.suggested_start_time:
+                    return False
+                return (m.suggested_date.weekday(), m.suggested_start_time) in _pf_match_pairs(m)
+            _pf_ok = [m for m in _sched_ms if _on_pf_slot(m)]
+
             result: ScheduleResult = st.session_state.schedule_result
+
+            # ── Fila principal de métricas ──
+            m1, m2, m3 = st.columns(3)
+            m1.metric("🎾 A jugar", _total_ms)
+            m2.metric("✅ Asignados", len(_sched_ms))
+            m3.metric("⚠️ Conflictos", len(_conf_ms),
+                      delta=f"-{len(_conf_ms)}" if _conf_ms else None,
+                      delta_color="inverse")
+
+            m4, m5, m6 = st.columns(3)
+            m4.metric("📌 En pista fija", len(_pf_ok),
+                      help=f"De {len(_pf_expected)} partidos con pareja de pista fija, "
+                           f"{len(_pf_ok)} cayeron en su franja preferida.")
+            m5.metric("📋 Manual", len(_manual_ms),
+                      help="Parejas marcadas como asignación manual (p.ej. «MIRAR MAIL»).")
             if result:
-                m1, m2, m3 = st.columns(3)
-                m1.metric("✅ Programados", result.scheduled_count)
-                m2.metric("⚠️ Conflictos", result.conflict_count,
-                          delta=f"-{result.conflict_count}" if result.conflict_count else None,
-                          delta_color="inverse")
-                m3.metric("🎯 Tasa de éxito", f"{result.success_rate:.1f}%")
+                m6.metric("🎯 Tasa de éxito", f"{result.success_rate:.1f}%")
+            else:
+                m6.metric("⏳ Sin asignar", _total_ms - len(_sched_ms))
 
-                # ---- Panel rápido de validación ----
-                violations = st.session_state.get("schedule_violations")
+            if result is None:
+                st.info("Pulsa **🗓️ Asignar horarios** para repartir los partidos entre pistas y horas.")
 
-                if violations is not None:
-                    vs = validation_summary(violations)
-                    st.markdown("**Validación del calendario:**")
-                    vc1, vc2, vc3 = st.columns(3)
-                    vc1.metric("🔴 Errores",   vs["errors"])
-                    vc2.metric("🟡 Avisos",    vs["warnings"])
-                    vc3.metric("🔵 Info (PF)", vs["infos"])
-                    if vs["total"] == 0:
-                        st.success("✅ Sin incidencias — el calendario cumple todas las restricciones.")
+            # ── Desglose por grupo (total / asignados / conflicto) ──
+            with st.expander("📊 Desglose por grupo", expanded=False):
+                from collections import defaultdict as _dd
+                _g_tot = _dd(int); _g_asg = _dd(int); _g_cf = _dd(int)
+                for _m in _all_ms:
+                    _gn = _m.group_name or "Sin grupo"
+                    _g_tot[_gn] += 1
+                    if _m.status == MatchStatus.SCHEDULED: _g_asg[_gn] += 1
+                    elif _m.status == MatchStatus.CONFLICT: _g_cf[_gn] += 1
+                _brk = [
+                    {"Grupo": _gn, "A jugar": _g_tot[_gn],
+                     "Asignados": _g_asg[_gn], "Conflictos": _g_cf[_gn]}
+                    for _gn in sorted(_g_tot)
+                ]
+                st.dataframe(pd.DataFrame(_brk), hide_index=True, use_container_width=True)
+
+            # ---- Panel rápido de validación ----
+            violations = st.session_state.get("schedule_violations")
+            if result and violations is not None:
+                vs = validation_summary(violations)
+                st.markdown("**Validación del calendario:**")
+                vc1, vc2, vc3 = st.columns(3)
+                vc1.metric("🔴 Errores",   vs["errors"])
+                vc2.metric("🟡 Avisos",    vs["warnings"])
+                vc3.metric("🔵 Info (PF)", vs["infos"])
+                if vs["total"] == 0:
+                    st.success("✅ Sin incidencias — el calendario cumple todas las restricciones.")
+                else:
+                    if vs["errors"] > 0:
+                        st.error(f"⛔ Hay {vs['errors']} error(es) críticos. Revísalos en la página **🔍 Revisión**.")
+                    elif vs["warnings"] > 0:
+                        st.warning(f"⚠️ Hay {vs['warnings']} aviso(s). Revísalos en **🔍 Revisión**.")
                     else:
-                        if vs["errors"] > 0:
-                            st.error(f"⛔ Hay {vs['errors']} error(es) críticos. Revísalos en la página **🔍 Revisión**.")
-                        elif vs["warnings"] > 0:
-                            st.warning(f"⚠️ Hay {vs['warnings']} aviso(s). Revísalos en **🔍 Revisión**.")
-                        else:
-                            st.info(f"ℹ️ {vs['infos']} nota(s) sobre pistas fijas. Ver **🔍 Revisión**.")
+                        st.info(f"ℹ️ {vs['infos']} nota(s) sobre pistas fijas. Ver **🔍 Revisión**.")
 
     if st.session_state.matches:
         _section_start("📋", "Calendario generado")
