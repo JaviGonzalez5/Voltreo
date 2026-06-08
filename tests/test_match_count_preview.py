@@ -61,6 +61,43 @@ def test_preview_matches_generator(n_pairs, num_groups, final_phase, third):
     assert pv["total"] == real_g + real_f
 
 
+class TestExpectedTotalMatches:
+
+    def _multi(self, draws_spec):
+        from src.tournament_models import TournamentConfig, TournamentDivision
+        divs = [k for k, _ng, _bs in draws_spec]
+        pairs = []
+        draws = []
+        for k, ng, bs in draws_spec:
+            np_ = ng * 4  # 4 parejas por grupo
+            dpairs = [_pair(f"{k[:3]}{k[-1]}_{i}", k) for i in range(np_)]
+            pairs += dpairs
+            draws.append(TournamentDivision(
+                key=k, format=TournamentFormat.GROUPS_BRACKET, num_groups=ng,
+                bracket_size=bs, group_size=4, groups_qualifiers=2, pairs=dpairs))
+        cfg = TournamentConfig(
+            name="t", start_date=date(2026, 6, 12), end_date=date(2026, 6, 12),
+            divisions=divs, format=TournamentFormat.GROUPS_BRACKET,
+            courts=[TournamentCourt(id="c", name="P")], pairs=pairs,
+            day_start_time=time(19, 0), day_end_time=time(2, 0),
+            division_draws=draws)
+        return generate_tournament_structure(cfg)
+
+    def test_expected_equals_generated_multi_division(self):
+        from src.tournament_generator import expected_total_matches
+        cfg = self._multi([("masculino:3a", 3, 4), ("femenino:3a", 2, 4), ("mixto:3a", 3, 4)])
+        assert expected_total_matches(cfg) == len(cfg.matches)
+
+    def test_returns_none_without_division_draws(self):
+        from src.tournament_models import TournamentConfig
+        from src.tournament_generator import expected_total_matches
+        cfg = TournamentConfig(
+            name="t", start_date=date(2026, 6, 12), end_date=date(2026, 6, 12),
+            divisions=[], format=TournamentFormat.GROUPS_BRACKET,
+            courts=[TournamentCourt(id="c", name="P")], pairs=[])
+        assert expected_total_matches(cfg) is None
+
+
 class TestGroupSizes:
 
     def test_even_split(self):

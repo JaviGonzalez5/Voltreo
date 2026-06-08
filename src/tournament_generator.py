@@ -129,6 +129,42 @@ def preview_match_counts(
     }
 
 
+def expected_total_matches(config) -> Optional[int]:
+    """
+    Total de partidos que el torneo DEBERÍA generar según su estructura
+    (grupos round-robin + fase final por categoría), replicando al generador.
+
+    Devuelve None si la estructura no está suficientemente configurada como
+    para estimarlo con fiabilidad (p.ej. sin nº de grupos definido).
+    """
+    from .tournament_models import TournamentFormat
+
+    draws = list(getattr(config, "division_draws", []) or [])
+    if not draws:
+        return None
+
+    total = 0
+    for d in draws:
+        n_pairs    = len(getattr(d, "pairs", []) or [])
+        num_groups = int(getattr(d, "num_groups", 0) or 0)
+        if n_pairs < 2:
+            continue
+        if num_groups <= 0:
+            return None  # estructura incompleta → no estimar
+        fmt = getattr(d, "format", None)
+        if fmt == TournamentFormat.GROUPS:
+            final_phase = 0
+        else:
+            final_phase = int(getattr(d, "bracket_size", 0) or 0)
+        total += preview_match_counts(
+            group_sizes_for(n_pairs, num_groups),
+            final_phase,
+            third_place=bool(getattr(d, "third_place_match", False)),
+            qualifiers=int(getattr(d, "groups_qualifiers", 2) or 2),
+        )["total"]
+    return total
+
+
 # ---------------------------------------------------------------------------
 # Reparto en grupos
 # ---------------------------------------------------------------------------

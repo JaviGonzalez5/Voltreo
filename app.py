@@ -7360,10 +7360,22 @@ elif page == "t_schedule":
     with col_sum:
         if any(m.status == TMatchStatus.SCHEDULED for m in t.matches):
             _ss2 = tournament_schedule_summary(t)
-            _sm1, _sm2, _sm3 = st.columns(3)
+            _total_matches = len(t.matches)
+            _sm0, _sm1, _sm2, _sm3 = st.columns(4)
+            _sm0.metric("📋 Total partidos", _total_matches)
             _sm1.metric("✅ Programados", _ss2["scheduled"])
             _sm2.metric("❌ Conflictos", _ss2["conflicts"])
             _sm3.metric("🏟️ Pistas usadas", len(_ss2["courts_used"]))
+            # Cross-check con lo que la estructura debería producir
+            from src.tournament_generator import expected_total_matches as _exp_total
+            _expected = _exp_total(t)
+            if _expected is not None and _expected != _total_matches:
+                st.warning(
+                    f"⚠️ Según la estructura configurada deberían generarse "
+                    f"**{_expected}** partidos, pero hay **{_total_matches}**. "
+                    f"Si faltan, vuelve a **Estructura** y pulsa *Generar estructura* "
+                    f"para regenerarlos con la configuración actual."
+                )
             if _ss2["first_match"]: st.caption(f"🕘 Inicio: **{_ss2['first_match']}**")
             if _ss2["last_match"]:  st.caption(f"🏁 Fin: **{_ss2['last_match']}**")
             if getattr(t, "semifinal_duration_minutes", 0) or getattr(t, "final_duration_minutes", 0):
