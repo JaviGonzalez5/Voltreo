@@ -494,6 +494,103 @@ class TestCategoryMixingTiebreak:
         assert {m.division for m in first} == set(divs)
 
 
+class TestGroupsPlayInParallel:
+    """
+    Garantía general (cualquier nº de grupos/parejas/pistas): dentro de una tanda,
+    los grupos avanzan EN PARALELO ronda a ronda. Nunca se juega un grupo entero
+    y luego otro entero.
+    """
+
+    @staticmethod
+    def _groups_config(divs, waves, npairs, group_size, ncourts):
+        pairs = [
+            _pair(f"{d[-3:]}{i:02d}", d)
+            for d in divs for i in range(npairs)
+        ]
+        cfg = TournamentConfig(
+            name="Paralelo", start_date=date(2026, 6, 12), end_date=date(2026, 6, 12),
+            divisions=divs, division_waves=waves,
+            format=TournamentFormat.GROUPS, group_size=group_size,
+            courts=[TournamentCourt(id=f"c{i}", name=f"Pista {i}") for i in range(1, ncourts + 1)],
+            pairs=pairs, match_duration_minutes=15, rest_between_matches_min=15,
+            day_start_time=time(9, 0), day_end_time=time(23, 59, 59),
+            division_draws=[
+                TournamentDivision(key=d, format=TournamentFormat.GROUPS, group_size=group_size)
+                for d in divs
+            ],
+        )
+        return schedule_tournament(generate_tournament_structure(cfg))
+
+    @staticmethod
+    def _longest_same_group_run(cfg):
+        """Racha máxima de partidos consecutivos del mismo (división, grupo)
+        al ordenar por (hora, pista)."""
+        gname = {g.id: g.name for g in cfg.groups}
+        gm = [m for m in cfg.matches
+              if m.round == MatchRound.GROUP and m.match_date]
+        gm.sort(key=lambda m: (m.match_date, m.start_time, m.court.name))
+        seq = [(m.division, gname.get(m.group_id)) for m in gm]
+        longest = cur = 1 if seq else 0
+        for a, b in zip(seq, seq[1:]):
+            cur = cur + 1 if a == b else 1
+            longest = max(longest, cur)
+        return longest, len(gm)
+
+    def test_even_ratio_perfect_alternation(self):
+        # 2 categorías × 2 grupos de 4, 4 pistas → alternancia perfecta (racha 1)
+        A, B = "mixto:3a", "mixto:35a"
+        cfg = self._groups_config([A, B], {A: 1, B: 1}, npairs=8, group_size=4, ncourts=4)
+        longest, total = self._longest_same_group_run(cfg)
+        assert total == 24
+        assert longest == 1, f"Esperada alternancia perfecta, racha={longest}"
+
+    def test_no_full_group_block_various_configs(self):
+        # En ninguna config se juega un grupo entero seguido: la racha del mismo
+        # grupo debe ser MUY inferior al nº de partidos por grupo (6 en grupos de 4).
+        A, B, C = "mixto:3a", "mixto:35a", "masculino:1a"
+        configs = [
+            ([A, B], {A: 1, B: 1}, 8, 4, 2),
+            ([A, B], {A: 1, B: 1}, 12, 6, 4),
+            ([A, B], {A: 1, B: 1}, 10, 5, 3),
+            ([A], {A: 1}, 16, 4, 4),
+        ]
+        for divs, waves, npairs, gsize, ncourts in configs:
+            cfg = self._groups_config(divs, waves, npairs, gsize, ncourts)
+            longest, total = self._longest_same_group_run(cfg)
+            matches_per_group = gsize * (gsize - 1) // 2
+            assert longest <= max(2, ncourts), (
+                f"Bloque de grupo demasiado largo ({longest}) en "
+                f"divs={divs} g{gsize} {npairs}p {ncourts}pistas"
+            )
+            assert longest < matches_per_group
+
+    def test_groups_interleave_respecting_waves(self):
+        # 2 tandas: los grupos de la tanda 1 terminan antes de empezar la tanda 2,
+        # pero DENTRO de cada tanda los grupos se mezclan.
+        A, B = "mixto:3a", "mixto:35a"          # tanda 1
+        C = "masculino:1a"                       # tanda 2
+        cfg = self._groups_config([A, B, C], {A: 1, B: 1, C: 2},
+                                  npairs=8, group_size=4, ncourts=4)
+
+        def smin(m):
+            h = m.start_time.hour
+            return (h + 24 if h < 8 else h) * 60 + m.start_time.minute
+
+        def emin(m):
+            h = m.end_time.hour
+            return (h + 24 if h < 8 else h) * 60 + m.end_time.minute
+
+        sched = [m for m in cfg.matches if m.match_date and m.round == MatchRound.GROUP]
+        w1 = [m for m in sched if m.division in (A, B)]
+        w2 = [m for m in sched if m.division == C]
+        assert max(emin(m) for m in w1) <= min(smin(m) for m in w2), (
+            "La tanda 2 no debe empezar hasta que termine toda la tanda 1"
+        )
+        # Dentro de la tanda 1, los dos grupos/categorías se mezclan (racha pequeña)
+        longest, _ = self._longest_same_group_run(cfg)
+        assert longest <= 4
+
+
 class TestBackwardCompatibility:
 
     def test_single_division_still_works(self):

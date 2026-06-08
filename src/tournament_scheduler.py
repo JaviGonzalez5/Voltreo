@@ -337,6 +337,40 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
     placed_per_div:        dict[object, int] = defaultdict(int)
     placed_per_group_name: dict[str, int]    = defaultdict(int)
     _gid_to_name = {g.id: g.name for g in config.groups}
+
+    # ── Índice de ronda round-robin por partido de grupo ─────────────────────
+    # Para cada grupo, se descomponen sus partidos en "rondas": ronda 0 es la
+    # primera tanda donde cada pareja juega una sola vez, ronda 1 la siguiente,
+    # etc. Usado como clave de orden FUERTE (tras la tanda, antes del balance de
+    # categoría/grupo): el scheduler completa la ronda 0 de TODOS los grupos de
+    # la tanda antes de pasar a la ronda 1, de modo que los grupos avanzan en
+    # paralelo y se mezclan por construcción —no solo como desempate—. Esto es
+    # independiente del nº de grupos, parejas o pistas. Los partidos de cuadro
+    # (no-grupo) reciben un índice alto para que vayan después de los grupos.
+    _round_idx: dict[str, int] = {}
+    _grp_by_gid: dict = defaultdict(list)
+    for _gm in config.matches:
+        if _gm.round == MatchRound.GROUP and _gm.group_id:
+            _grp_by_gid[_gm.group_id].append(_gm)
+    for _gid, _gms in _grp_by_gid.items():
+        _busy_in_round: dict[int, set] = defaultdict(set)
+        for _gm in sorted(_gms, key=lambda x: x.match_number):
+            _ids = [p.id for p in (_gm.pair_1, _gm.pair_2) if p is not None]
+            _r = 0
+            while any(_pid in _busy_in_round[_r] for _pid in _ids):
+                _r += 1
+            for _pid in _ids:
+                _busy_in_round[_r].add(_pid)
+            _round_idx[_gm.id] = _r
+
+    def _round_key(m) -> int:
+        # Grupos: su ronda round-robin (0,1,2…) → avanzan en paralelo.
+        # Cuadro: constante alta IGUAL para todas las categorías, para que los
+        # partidos de cuadro vayan tras los grupos pero se mezclen entre
+        # categorías (no por ronda: el avance de ronda ya lo controla readiness).
+        if m.round == MatchRound.GROUP:
+            return _round_idx.get(m.id, 0)
+        return 1000
     # Modo distribución: una pareja no puede jugar más de 1 partido por día.
     _player_day_busy: dict[str, set[date]] = defaultdict(set)
 
@@ -386,21 +420,24 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
             continue
 
         # Orden de selección (lexicográfico):
-        #   1. inicio más temprano  → compactación (no dejar pistas vacías)
-        #   2. fin más temprano     → partidos cortos primero
-        #   3. nº de tanda          → la tanda 1 (Masc+Fem) tiene prioridad; la
-        #                             tanda 2 (Mixto) solo entra cuando la 1 no
-        #                             puede llenar ese hueco → rellena la cola
-        #   4. categoría menos colocada → mezcla categorías (evita 4-Masc o 4-Fem
-        #                             seguidos cuando hay varias categorías listas)
-        #   5. rotación de grupos   → evita bloques Grupo A, luego B, luego C
-        #   6. nº de partido y UUID → determinismo
+        #   1. nº de tanda          → la tanda 1 tiene prioridad absoluta sobre la
+        #                             2 (refuerza la barrera dura de tandas)
+        #   2. ronda round-robin    → completa la ronda 0 de TODOS los grupos de la
+        #                             tanda antes que la ronda 1, etc. → los grupos
+        #                             avanzan en paralelo y se mezclan SIEMPRE,
+        #                             para cualquier nº de grupos/parejas/pistas
+        #   3. categoría menos colocada → mezcla categorías (no 4 de la misma)
+        #   4. rotación de grupos   → A→B→C dentro de la misma ronda
+        #   5. inicio más temprano  → compactación (no dejar pistas vacías)
+        #   6. fin más temprano     → partidos cortos primero
+        #   7. nº de partido y UUID → determinismo
         candidates.sort(key=lambda c: (
-            c[0],
-            c[1],
             _wave_of(c[3]),
+            _round_key(c[3]),
             placed_per_div[c[3].division],
             placed_per_group_name[_gid_to_name.get(c[3].group_id, "")],
+            c[0],
+            c[1],
             c[3].match_number,
             c[3].id,
         ))
