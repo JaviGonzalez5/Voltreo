@@ -774,6 +774,69 @@ class TestGroupsPlayInParallel:
                     "partidos posteriores de grupos B/C en la misma tanda."
                 )
 
+    def test_critical_path_divisions_finish_first_and_fillers_cover_finals(self):
+        # Dos divisiones tienen semis/final y dos son solo grupos. Para comprimir
+        # el torneo, el scheduler debe terminar antes las divisiones con cuadro y
+        # usar los grupos puros como relleno mientras se juegan finales/semis.
+        masc3 = "masculino:3a"
+        masc35 = "masculino:35a"
+        fem3 = "femenino:3a"
+        fem35 = "femenino:35a"
+        divisions = [masc3, masc35, fem3, fem35]
+        formats = {
+            masc3: TournamentFormat.GROUPS_BRACKET,
+            masc35: TournamentFormat.GROUPS_BRACKET,
+            fem3: TournamentFormat.GROUPS,
+            fem35: TournamentFormat.GROUPS,
+        }
+        pairs = [
+            _pair(f"{division[-3:]}-{idx:02d}", division)
+            for division in divisions
+            for idx in range(8 if division.startswith("masculino") else 6)
+        ]
+        cfg = TournamentConfig(
+            name="Camino critico",
+            start_date=date(2026, 6, 12), end_date=date(2026, 6, 12),
+            divisions=divisions,
+            division_waves={division: 1 for division in divisions},
+            format=TournamentFormat.GROUPS,
+            courts=[TournamentCourt(id=f"c{i}", name=f"Pista {i}") for i in range(1, 5)],
+            pairs=pairs, match_duration_minutes=15,
+            semifinal_duration_minutes=15, final_duration_minutes=20,
+            rest_between_matches_min=0,
+            day_start_time=time(19, 0), day_end_time=time(2, 0),
+            division_draws=[
+                TournamentDivision(
+                    key=division,
+                    format=formats[division],
+                    group_size=4,
+                    bracket_size=4,
+                )
+                for division in divisions
+            ],
+        )
+        cfg = schedule_tournament(generate_tournament_structure(cfg))
+
+        knockout = [
+            m for m in cfg.matches
+            if m.round in (MatchRound.SEMIFINAL, MatchRound.FINAL) and m.match_date
+        ]
+        filler_groups = [
+            m for m in cfg.matches
+            if m.division in (fem3, fem35) and m.round == MatchRound.GROUP and m.match_date
+        ]
+        assert knockout
+        assert filler_groups
+
+        knockout_window_start = min(m.start_time for m in knockout)
+        filler_during_knockout = [
+            m for m in filler_groups
+            if m.start_time >= knockout_window_start
+        ]
+        assert filler_during_knockout, (
+            "Los grupos sin cuadro deben reservarse como relleno durante semis/finales."
+        )
+
 
 class TestBackwardCompatibility:
 
