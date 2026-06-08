@@ -6225,13 +6225,30 @@ elif page == "t_config":
                     _draw_payload["pairs"] = []
                     _new_division_draws.append(TournamentDivision(**_draw_payload))
 
+            # Saneado defensivo de dicts int: datos antiguos pueden traer None
+            # (p.ej. un máximo de parejas sin fijar) y romperían la validación
+            # de `dict[str, int]` al construir TournamentConfig.
+            def _clean_int_map(_m) -> dict:
+                out: dict = {}
+                for _k, _v in dict(_m or {}).items():
+                    if _v is None:
+                        continue
+                    try:
+                        out[_k] = int(_v)
+                    except (TypeError, ValueError):
+                        continue
+                return out
+
+            _division_waves_clean = _clean_int_map(_division_waves)
+            _reg_max_clean = _clean_int_map(getattr(t, "registration_max_pairs", {}) if t else {})
+
             _t_payload_new = dict(
                 id=t.id if t else str(__import__("uuid").uuid4()),
                 name=_t_name_clean,
                 category=_primary_cat,
                 subcategory=_primary_sub,
                 divisions=t_divisions,
-                division_waves=_division_waves,
+                division_waves=_division_waves_clean,
                 is_top=t_is_top, prize=t_prize, location=t_location,
                 start_date=t_start, end_date=t_end, courts=_courts_obj, pairs=_pairs_keep,
                 format=t_format, match_duration_minutes=t_match_dur,
@@ -6248,15 +6265,29 @@ elif page == "t_config":
                 registration_open=getattr(t, "registration_open", False) if t else False,
                 registration_opens_date=getattr(t, "registration_opens_date", None) if t else None,
                 registration_closes_date=t_reg_close,   # del campo del formulario
-                registration_max_pairs=getattr(t, "registration_max_pairs", {}) if t else {},
+                registration_max_pairs=_reg_max_clean,
                 registration_ask_availability=getattr(t, "registration_ask_availability", False) if t else False,
                 registrations=list(getattr(t, "registrations", [])) if t else [],
             )
             try:
                 new_t = TournamentConfig(**_t_payload_new)
-            except Exception:
+            except Exception as _e_cfg1:
+                # Reintento sin la estructura generada (puede tener datos antiguos)
                 _t_payload_new["division_draws"] = []
-                new_t = TournamentConfig(**_t_payload_new)
+                try:
+                    new_t = TournamentConfig(**_t_payload_new)
+                except Exception as _e_cfg2:
+                    # No crashear la página: mostrar el detalle real al admin
+                    try:
+                        _detail = "; ".join(
+                            f"{'/'.join(str(x) for x in _err.get('loc', []))}: {_err.get('msg', '')}"
+                            for _err in _e_cfg2.errors()
+                        )
+                    except Exception:
+                        _detail = str(_e_cfg2)
+                    st.error(f"No se pudo guardar el torneo. Revisa la configuración. "
+                             f"Detalle técnico: {_detail}")
+                    st.stop()
             st.session_state["tournament"] = new_t
             # Persistir en Supabase
             if _db_ok and _db is not None:
