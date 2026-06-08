@@ -2464,6 +2464,100 @@ def _tournament_groups_excel_bytes(t_obj) -> bytes:
     return buf.getvalue()
 
 
+def _tournament_pairs_excel_bytes(t_obj) -> bytes:
+    """
+    Excel de las PAREJAS inscritas organizado por NIVELES (categorías).
+
+    Un único archivo con una hoja por nivel; dentro, la lista de parejas de ese
+    nivel (Pareja · Jugador 1 · Jugador 2 · Cabeza de serie). Si el torneo no
+    tiene categorías, genera una sola hoja "Parejas".
+    """
+    import openpyxl
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+
+    navy = "0B1F33"
+    header_fill = PatternFill("solid", fgColor=navy)
+    sub_fill = PatternFill("solid", fgColor="E8F7EF")
+    odd_fill = PatternFill("solid", fgColor="F8FAFC")
+    even_fill = PatternFill("solid", fgColor="FFFFFF")
+    thin = Side(style="thin", color="D9E2EC")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    used_sheets: set[str] = set()
+    headers = ["Pareja", "Jugador 1", "Jugador 2", "Cabeza de serie"]
+    _NCOL = len(headers)
+
+    def _division_label(key):
+        if not key:
+            return "General"
+        cat, sub = _parse_division_key(key)
+        if cat and sub:
+            return f"{cat.label} {sub.label}"
+        return str(key)
+
+    pairs = list(getattr(t_obj, "pairs", []) or [])
+    by_div: dict = {}
+    for p in pairs:
+        by_div.setdefault(getattr(p, "division", None), []).append(p)
+
+    _div_order = list(getattr(t_obj, "divisions", []) or [])
+    ordered_keys = [k for k in _div_order if k in by_div] + [k for k in by_div if k not in _div_order]
+    if not ordered_keys:
+        ordered_keys = [None]
+
+    for _key in ordered_keys:
+        _label = _division_label(_key)
+        _plist = by_div.get(_key, [])
+        ws = wb.create_sheet(_safe_excel_sheet_name(_label or "Parejas", used_sheets))
+        # Título
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=_NCOL)
+        c = ws.cell(1, 1, _label)
+        c.font = Font(bold=True, size=16, color="FFFFFF"); c.fill = header_fill
+        c.alignment = Alignment(horizontal="left", vertical="center")
+        ws.row_dimensions[1].height = 28
+        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=_NCOL)
+        sc = ws.cell(2, 1, f"{len(_plist)} parejas")
+        sc.font = Font(size=10, color="46627A"); sc.fill = sub_fill
+        sc.alignment = Alignment(horizontal="left", vertical="center")
+        # Cabecera de columnas
+        _row = 4
+        for ci, h in enumerate(headers, 1):
+            cell = ws.cell(_row, ci, h)
+            cell.font = Font(bold=True, color="FFFFFF", size=10); cell.fill = header_fill
+            cell.border = border
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+        _row += 1
+        for _i, _p in enumerate(_plist):
+            _vals = [
+                _p.display_name,
+                _p.player_1.full_name if getattr(_p, "player_1", None) else "",
+                _p.player_2.full_name if getattr(_p, "player_2", None) else "",
+                f"#{_p.seed}" if getattr(_p, "seed", None) else "",
+            ]
+            fill = sub_fill if _i % 2 == 0 else even_fill
+            for ci, v in enumerate(_vals, 1):
+                cell = ws.cell(_row, ci, v)
+                cell.fill = fill; cell.border = border
+                cell.font = Font(size=10, color="102A43", bold=(ci == 1))
+                cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+            _row += 1
+        ws.freeze_panes = "A5"
+        for ci in range(1, _NCOL + 1):
+            _maxw = len(headers[ci - 1])
+            for _r in range(5, _row):
+                _v = ws.cell(_r, ci).value
+                if _v:
+                    _maxw = max(_maxw, len(str(_v)))
+            ws.column_dimensions[get_column_letter(ci)].width = min(_maxw + 4, 42)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 def _tournament_schedule_excel_bytes(t_obj) -> bytes:
     """Excel visual para imprimir/compartir horarios del torneo."""
     import openpyxl
@@ -7065,14 +7159,23 @@ elif page == "t_pairs":
 
         st.divider()
         # ── Guardar / Exportar ──────────────────────────────────────────────
-        _exp_c1, _exp_c2, _exp_c3 = st.columns([2, 2, 1])
+        _exp_c0, _exp_c1, _exp_c2, _exp_c3 = st.columns([2, 2, 2, 1])
+        _pairs_slug = re.sub(r"[^A-Za-z0-9_-]+", "_", t.name.strip()).strip("_") or "torneo"
+        with _exp_c0:
+            st.download_button(
+                "⬇️ Exportar a Excel (por niveles)",
+                data=_tournament_pairs_excel_bytes(t),
+                file_name=f"parejas_{_pairs_slug}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="dl_t_pairs_excel", use_container_width=True,
+            )
         with _exp_c1:
             _csv_rows = [{"pair_name": _p.display_name,
                           "player1_name": _p.player_1.full_name, "player1_phone": _p.player_1.phone or "",
                           "player2_name": _p.player_2.full_name, "player2_phone": _p.player_2.phone or "",
                           "seed": _p.seed or "", "division": _p.division or ""} for _p in t.pairs]
             st.download_button("⬇️ Exportar CSV", data=pd.DataFrame(_csv_rows).to_csv(index=False).encode("utf-8"),
-                               file_name=f"parejas_{t.name.replace(' ','_')}.csv", mime="text/csv", use_container_width=True)
+                               file_name=f"parejas_{_pairs_slug}.csv", mime="text/csv", use_container_width=True)
         with _exp_c2:
             if st.button("💾 Guardar en la nube", type="primary", use_container_width=True):
                 if _db_ok and _db is not None:
