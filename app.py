@@ -2621,6 +2621,34 @@ def _tournament_schedule_excel_bytes(t_obj) -> bytes:
             sc.fill = PatternFill("solid", fgColor=light_green)
             sc.alignment = Alignment(horizontal="left", vertical="center")
 
+    def _match_card_text(m, include_time: bool = True, include_reason: bool = False) -> str:
+        division_txt = _division_label(getattr(m, "division", None))
+        group_txt = group_map.get(getattr(m, "group_id", None), "") if m.group_id else ""
+        round_txt = f"{m.round_display}{' - ' + group_txt if group_txt else ''}"
+        lines = [
+            division_txt,
+            round_txt,
+            m.p1_display,
+            "vs",
+            m.p2_display,
+        ]
+        if include_time and getattr(m, "start_time", None):
+            end_txt = m.end_time.strftime("%H:%M") if getattr(m, "end_time", None) else ""
+            lines.append(f"{m.start_time.strftime('%H:%M')} - {end_txt}")
+        if include_reason:
+            reason = getattr(m, "conflict_reason", "") or "Sin hueco disponible."
+            lines.append("")
+            lines.append(f"Motivo: {reason}")
+        return "\n".join(line for line in lines if line is not None)
+
+    def _duration_label(m) -> str:
+        minutes = getattr(t_obj, "match_duration_minutes", 15)
+        if m.round == MatchRound.SEMIFINAL:
+            minutes = getattr(t_obj, "semifinal_duration_minutes", 0) or minutes
+        elif m.round in (MatchRound.FINAL, MatchRound.THIRD_PLACE):
+            minutes = getattr(t_obj, "final_duration_minutes", 0) or minutes
+        return f"{minutes} min"
+
     # Portada / resumen
     ws_summary = wb.create_sheet("Resumen")
     _title(ws_summary, f"{BRAND_NAME} - Horarios", getattr(t_obj, "name", "Torneo"))
@@ -2679,15 +2707,7 @@ def _tournament_schedule_excel_bytes(t_obj) -> bytes:
                 cell.fill = round_fills.get(m.round_display, match_fill) if m else grid_fill
                 cell.alignment = Alignment(wrap_text=True, vertical="top")
                 if m:
-                    division_txt = _division_label(getattr(m, "division", None))
-                    group_txt = group_map.get(getattr(m, "group_id", None), "") if m.group_id else ""
-                    round_txt = f"{m.round_display}{' - ' + group_txt if group_txt else ''}"
-                    cell.value = (
-                        f"{division_txt}\n"
-                        f"{round_txt}\n"
-                        f"{m.p1_display}\nvs\n{m.p2_display}\n"
-                        f"{m.start_time.strftime('%H:%M')} - {m.end_time.strftime('%H:%M') if m.end_time else ''}"
-                    )
+                    cell.value = _match_card_text(m, include_time=True)
                     cell.font = Font(bold=m.round_display in ("Semifinal", "Final"), color="0B1F33", size=10)
         ws.freeze_panes = "B5"
         ws.column_dimensions["A"].width = 10
@@ -2695,6 +2715,57 @@ def _tournament_schedule_excel_bytes(t_obj) -> bytes:
             ws.column_dimensions[get_column_letter(ci)].width = 34
         for ri in range(5, 5 + len(slots)):
             ws.row_dimensions[ri].height = 92
+
+    conflicts = [
+        m for m in (getattr(t_obj, "matches", []) or [])
+        if getattr(m, "status", None) == TMatchStatus.CONFLICT
+    ]
+    conflicts = sorted(
+        conflicts,
+        key=lambda m: (
+            _division_label(getattr(m, "division", None)),
+            getattr(m.round, "order", 99),
+            getattr(m, "match_number", 0),
+            getattr(m, "id", ""),
+        ),
+    )
+    if conflicts:
+        ws_conf = wb.create_sheet("Conflictos")
+        _title(
+            ws_conf,
+            "Partidos en conflicto",
+            "Celdas listas para copiar o mover manualmente al calendario",
+        )
+        conflict_headers = ["Partidos sin horario"] * 4
+        for ci, h in enumerate(conflict_headers, 1):
+            cell = ws_conf.cell(4, ci, h)
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = header_fill
+            cell.border = border
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        for idx, m in enumerate(conflicts):
+            row = 5 + (idx // 4) * 2
+            col = 1 + (idx % 4)
+            card = ws_conf.cell(row, col)
+            card.value = _match_card_text(m, include_time=False)
+            card.fill = round_fills.get(m.round_display, match_fill)
+            card.font = Font(bold=m.round_display in ("Semifinal", "Final"), color="0B1F33", size=10)
+            card.alignment = Alignment(wrap_text=True, vertical="top")
+            card.border = border
+
+            meta = ws_conf.cell(row + 1, col)
+            meta.value = f"Duracion: {_duration_label(m)}\n{getattr(m, 'conflict_reason', '') or 'Sin hueco disponible.'}"
+            meta.fill = PatternFill("solid", fgColor="F8FAFC")
+            meta.font = Font(color="52616B", size=9)
+            meta.alignment = Alignment(wrap_text=True, vertical="top")
+            meta.border = border
+
+        for ci in range(1, 5):
+            ws_conf.column_dimensions[get_column_letter(ci)].width = 34
+        for ri in range(5, 5 + ((len(conflicts) + 3) // 4) * 2):
+            ws_conf.row_dimensions[ri].height = 92 if ri % 2 else 48
+        ws_conf.freeze_panes = "A5"
 
     # Listado ordenado
     ws_list = wb.create_sheet("Listado")
