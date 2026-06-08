@@ -375,34 +375,6 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
             return _round_idx.get(m.id, 0)
         return 1000
 
-    _division_max_round_order: dict[object, int] = defaultdict(int)
-    _division_total_matches: dict[object, int] = defaultdict(int)
-    _division_group_matches: dict[object, int] = defaultdict(int)
-    _division_wave: dict[object, int] = {}
-    for _m in config.matches:
-        _division_total_matches[_m.division] += 1
-        _division_wave[_m.division] = _wave_of(_m)
-        if _m.round == MatchRound.GROUP:
-            _division_group_matches[_m.division] += 1
-        _division_max_round_order[_m.division] = max(
-            _division_max_round_order[_m.division],
-            _m.round.order,
-        )
-    _wave_has_knockout: dict[int, bool] = defaultdict(bool)
-    for _div, _max_order in _division_max_round_order.items():
-        if _max_order > MatchRound.GROUP.order:
-            _wave_has_knockout[_division_wave.get(_div, 1)] = True
-
-    def _critical_path_key(m) -> tuple[int, int, int]:
-        if m.round != MatchRound.GROUP:
-            return (0, -m.round.order, 0)
-        if not _wave_has_knockout[_wave_of(m)]:
-            return (1, 0, 0)
-        has_knockout = _division_max_round_order[m.division] > MatchRound.GROUP.order
-        if has_knockout:
-            return (1, _division_group_matches[m.division], -_division_max_round_order[m.division])
-        return (2, 0, -_division_total_matches[m.division])
-
     # Grupo del último partido colocado: se evita repetirlo en el siguiente hueco
     # mientras haya partidos pendientes de OTROS grupos (rotación A→B→C→D por
     # pista dentro de la misma tanda horaria). Si solo queda un grupo con
@@ -482,7 +454,6 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
             return (
                 _wave_of(c[3]),
                 slot_start,
-                _critical_path_key(c[3]),
                 placed_per_slot_div_group[(slot_start, div, gid)],
                 placed_per_slot_group[(slot_start, gname)],
                 placed_per_slot_div[(slot_start, div)],
