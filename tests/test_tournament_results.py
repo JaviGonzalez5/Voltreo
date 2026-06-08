@@ -217,3 +217,70 @@ class TestResultsSummary:
         register_result(cfg, final.id, final.pair_1.id)
         s = results_summary(cfg)
         assert s["champion"] is not None
+
+
+# ---------------------------------------------------------------------------
+# Clasificación de la fase de grupos
+# ---------------------------------------------------------------------------
+
+from src.tournament_results import group_standings, _parse_score, GroupStanding
+
+
+class TestParseScore:
+
+    def test_two_sets(self):
+        assert _parse_score("6-4 6-3") == (2, 0, 12, 7)
+
+    def test_split_sets_with_commas(self):
+        # 1 set cada uno, juegos sumados
+        assert _parse_score("6-4, 3-6, 10-8") == (2, 1, 19, 18)
+
+    def test_empty_and_garbage(self):
+        assert _parse_score("") is None
+        assert _parse_score("   ") is None
+        assert _parse_score("walkover") is None
+
+
+def _groups_config() -> TournamentConfig:
+    cfg = TournamentConfig(
+        name="Liga",
+        start_date=date(2026, 6, 1), end_date=date(2026, 6, 1),
+        format=TournamentFormat.GROUPS,
+        group_size=4,
+        pairs=[_pair(chr(65 + i)) for i in range(4)],  # A B C D → 1 grupo, 6 partidos
+    )
+    return generate_tournament_structure(cfg)
+
+
+class TestGroupStandings:
+
+    def test_all_pairs_listed_even_without_results(self):
+        cfg = _groups_config()
+        st = group_standings(cfg)
+        assert len(st) == 1
+        table = next(iter(st.values()))
+        assert len(table) == 4
+        assert all(s.played == 0 and s.points == 0 for s in table)
+
+    def test_win_gives_three_points_and_orders_top(self):
+        cfg = _groups_config()
+        gid = cfg.groups[0].id
+        gms = [m for m in cfg.matches if m.round == MatchRound.GROUP]
+        # Pareja A gana todos sus partidos del grupo
+        a_id = cfg.pairs[0].id
+        for m in gms:
+            if m.pair_1.id == a_id:
+                register_result(cfg, m.id, a_id, "6-1 6-1")
+            elif m.pair_2.id == a_id:
+                register_result(cfg, m.id, a_id, "1-6 1-6")
+        table = group_standings(cfg)[gid]
+        top = table[0]
+        assert top.pair_id == a_id
+        assert top.won == 3 and top.lost == 0
+        assert top.points == 9
+        assert top.set_diff == 6  # 6 sets a favor, 0 en contra
+
+    def test_division_filter(self):
+        cfg = _groups_config()
+        # Sin división → devuelve el grupo; con división inexistente → grupo vacío
+        assert group_standings(cfg, division="no-existe") == {}

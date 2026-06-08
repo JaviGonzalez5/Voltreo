@@ -7,6 +7,7 @@ Funciones principales:
 """
 
 from math import ceil
+from typing import Optional
 from uuid import uuid4
 
 from .tournament_models import (

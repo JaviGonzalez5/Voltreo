@@ -11,7 +11,7 @@ import streamlit as st
 from .db import get_db, is_db_configured
 from .db_converters import tournament_from_db
 from .tournament_models import MatchRound, TMatchStatus
-from .tournament_results import champions_by_division
+from .tournament_results import champions_by_division, group_standings
 from .branding import BRAND_NAME, BRAND_MONOGRAM, BRAND_GRADIENT
 
 
@@ -267,6 +267,71 @@ div[data-testid="stButton"] > button.pv-back-btn {{
     margin: .8rem 0 .4rem;
 }}
 
+/* ── Clasificación de grupos (tabla) ── */
+.pv-group-head {{
+    display: flex; align-items: baseline; gap: .5rem;
+    margin: 1.3rem 0 .5rem; font-size: .95rem; font-weight: 800; color: #065f46;
+}}
+.pv-group-head .pv-group-tag {{
+    font-size: .62rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+    color: #9ca3af;
+}}
+.pv-table {{
+    width: 100%; border-collapse: collapse; background: #fff;
+    border: 1px solid #e9ecef; border-radius: 12px; overflow: hidden;
+    box-shadow: 0 1px 4px rgba(0,0,0,.05); margin-bottom: .3rem;
+}}
+.pv-table th {{
+    background: #f0fdf4; color: #065f46; font-size: .64rem; font-weight: 800;
+    letter-spacing: .05em; text-transform: uppercase; padding: .5rem .5rem; text-align: center;
+}}
+.pv-table th.left {{ text-align: left; }}
+.pv-table td {{
+    padding: .55rem .5rem; font-size: .86rem; color: #4b5563; text-align: center;
+    border-top: 1px solid #f1f5f9; white-space: nowrap;
+}}
+.pv-table td.left {{ text-align: left; font-weight: 700; color: #111827; white-space: normal; }}
+.pv-table td.pts {{ color: #00897b; font-weight: 800; font-size: .92rem; }}
+.pv-table tr.qual td {{ background: #f7fdf9; }}
+.pv-table tr.qual td.left {{ box-shadow: inset 3px 0 0 #00c853; }}
+.pv-pos {{ font-weight: 800; color: #9ca3af; font-size: .82rem; }}
+.pv-table-legend {{
+    color: #9ca3af; font-size: .68rem; margin: 0 0 .8rem .2rem;
+}}
+
+/* ── Estado vacío ── */
+.pv-empty {{
+    background: #fff; border: 1px dashed #d1d5db; border-radius: 12px;
+    padding: 1.4rem; text-align: center; color: #9ca3af; font-size: .88rem;
+    margin: 1rem 0;
+}}
+
+/* ── Tabs de categoría (Streamlit) ── */
+[data-testid="stTabs"] [data-baseweb="tab-list"] {{
+    gap: .4rem; flex-wrap: wrap; border-bottom: none !important;
+}}
+[data-testid="stTabs"] [data-baseweb="tab"] {{
+    background: #fff !important; border: 1px solid #e5e7eb !important;
+    border-radius: 30px !important; padding: .35rem 1rem !important;
+    font-size: .85rem !important; font-weight: 700 !important; color: #6b7280 !important;
+}}
+[data-testid="stTabs"] [aria-selected="true"] {{
+    background: linear-gradient(135deg, #00c853, #00897b) !important;
+    color: #fff !important; border-color: transparent !important;
+    box-shadow: 0 3px 10px rgba(0,200,83,.3) !important;
+}}
+[data-testid="stTabs"] [data-baseweb="tab-highlight"],
+[data-testid="stTabs"] [data-baseweb="tab-border"] {{ display: none !important; }}
+
+/* ── Expander de partidos del grupo ── */
+[data-testid="stExpander"] {{
+    border: 1px solid #e9ecef !important; border-radius: 10px !important;
+    background: #fff !important; margin-bottom: 1rem !important;
+}}
+[data-testid="stExpander"] summary {{
+    font-size: .8rem !important; font-weight: 700 !important; color: #6b7280 !important;
+}}
+
 /* ── Footer ── */
 .pv-foot {{
     text-align: center; color: #9ca3af; font-size: .78rem;
@@ -315,6 +380,36 @@ def _fmt_when(m) -> str:
     t = m.start_time.strftime("%H:%M") if m.start_time else ""
     court = f" · {m.court.name}" if m.court else ""
     return f"{d} {t}{court}".strip()
+
+
+def _short_player(pl) -> str:
+    """'Carlos García Pérez' → 'C. García'. Inicial del nombre + primer apellido."""
+    if pl is None:
+        return ""
+    n = (getattr(pl, "name", "") or "").strip()
+    s = (getattr(pl, "surname", "") or "").strip()
+    s_first = s.split()[0] if s else ""
+    if n and s_first:
+        return f"{n[0].upper()}. {s_first}"
+    return s_first or n
+
+
+def _short_pair(pair) -> str:
+    """Nombre compacto de pareja: 'J. García / M. López'. Fallback al display_name."""
+    if pair is None:
+        return ""
+    p1 = _short_player(getattr(pair, "player_1", None))
+    p2 = _short_player(getattr(pair, "player_2", None))
+    if p1 and p2:
+        return f"{p1} / {p2}"
+    return getattr(pair, "display_name", "") or p1 or p2
+
+
+def _short_slot(pair, label: str) -> str:
+    """Nombre corto para un hueco del cuadro (pareja real o etiqueta 'Por determinar')."""
+    if pair is not None:
+        return _short_pair(pair)
+    return label or "Por determinar"
 
 
 def render_public_tournament(tournament_id: str) -> None:
@@ -368,43 +463,130 @@ def render_public_tournament(tournament_id: str) -> None:
     )
 
     # ── Resultados por división ───────────────────────────────────────────────
+    from .tournament_models import MatchRound as _MR
     div_keys = sorted({m.division for m in t.matches if m.division is not None})
     champs = champions_by_division(t)
+    _qualifiers = max(1, int(getattr(t, "groups_qualifiers", 2) or 2))
+    _medal = {1: "🥇", 2: "🥈", 3: "🥉"}
 
-    def _render_division(div_key, label):
-        if label:
-            st.markdown(f'<div class="pv-divh">{escape(label)}</div>', unsafe_allow_html=True)
+    def _group_division(g) -> "str | None":
+        return next((p.division for p in g.pairs if p.division is not None), None)
+
+    def _render_group_table(gid: str, gname: str):
+        table = _standings.get(gid, [])
+        if not table:
+            return
+        rows_html = ""
+        for pos, s in enumerate(table, 1):
+            cls = ' class="qual"' if pos <= _qualifiers else ""
+            pos_html = _medal.get(pos, f'<span class="pv-pos">{pos}</span>')
+            rows_html += (
+                f"<tr{cls}>"
+                f"<td>{pos_html}</td>"
+                f'<td class="left">{escape(_short_by_id.get(s.pair_id, s.pair_name))}</td>'
+                f"<td>{s.played}</td><td>{s.won}</td><td>{s.lost}</td>"
+                f'<td class="pts">{s.points}</td>'
+                f"</tr>"
+            )
+        st.markdown(
+            f'<div class="pv-group-head">{escape(gname)}'
+            f'<span class="pv-group-tag">Clasificación</span></div>'
+            f'<table class="pv-table"><thead><tr>'
+            f'<th>#</th><th class="left">Pareja</th>'
+            f'<th>PJ</th><th>G</th><th>P</th><th>Pts</th>'
+            f"</tr></thead><tbody>{rows_html}</tbody></table>",
+            unsafe_allow_html=True,
+        )
+
+    def _render_match_rows(matches):
+        for m in sorted(matches, key=lambda x: x.match_number):
+            win1 = m.winner_id and m.pair_1 and m.winner_id == m.pair_1.id
+            win2 = m.winner_id and m.pair_2 and m.winner_id == m.pair_2.id
+            p1cls = "pair win" if win1 else "pair"
+            p2cls = "pair win" if win2 else "pair"
+            p1 = escape(_short_slot(m.pair_1, m.pair_1_label))
+            p2 = escape(_short_slot(m.pair_2, m.pair_2_label))
+            sc = escape(m.score) if m.score else ("✓" if m.winner_id else "")
+            when = _fmt_when(m)
+            when_html = f'<span class="pv-when">{escape(when)}</span>' if when else ""
+            st.markdown(
+                f'<div class="pv-match">'
+                f'<span class="{p1cls}">{p1}</span>'
+                f'<span class="vs">vs</span>'
+                f'<span class="{p2cls}" style="text-align:right">{p2}</span>'
+                f'<span class="sc">{sc}</span>{when_html}</div>',
+                unsafe_allow_html=True,
+            )
+
+    def _render_division(div_key):
+        nonlocal _standings
         champ = champs.get(div_key or "_")
         if champ:
             st.markdown(
                 f'<div class="pv-champ"><span style="font-size:1.5rem">🏆</span>'
-                f'<div><div class="c1">Campeón</div><div class="c2">{escape(champ)}</div></div></div>',
+                f'<div><div class="c1">Campeón</div>'
+                f'<div class="c2">{escape(_short_by_name.get(champ, champ))}</div></div></div>',
                 unsafe_allow_html=True,
             )
+
         dms = [m for m in t.matches if (div_key is None or m.division == div_key)]
-        by_round = {}
-        for m in dms:
-            by_round.setdefault(m.round, []).append(m)
-        for rnd in sorted(by_round.keys(), key=lambda r: r.order):
-            visible = [m for m in by_round[rnd] if m.pair_1 or m.pair_2]
+
+        # ── Fase de grupos: clasificación + partidos plegados ──
+        _standings = group_standings(t, div_key)
+        div_groups = [g for g in t.groups
+                      if (div_key is None or _group_division(g) == div_key)]
+        div_groups.sort(key=lambda g: g.name)
+        group_matches = [m for m in dms if m.round == _MR.GROUP]
+        if div_groups and any(_standings.get(g.id) for g in div_groups):
+            st.markdown('<div class="pv-section-title">Fase de grupos</div>',
+                        unsafe_allow_html=True)
+            for g in div_groups:
+                _render_group_table(g.id, g.name)
+                gms = [m for m in group_matches
+                       if m.group_id == g.id and (m.pair_1 or m.pair_2)]
+                if gms:
+                    with st.expander(f"Ver {len(gms)} partidos del grupo"):
+                        _render_match_rows(gms)
+            st.markdown(
+                '<div class="pv-table-legend">PJ=Jugados · G=Ganados · P=Perdidos · '
+                'Pts=Puntos (3 por victoria) · '
+                f'verde = clasifican ({_qualifiers} por grupo)</div>',
+                unsafe_allow_html=True,
+            )
+
+        # ── Cuadro eliminatorio ──
+        bracket_rounds = [r for r in sorted(
+            {m.round for m in dms if m.round != _MR.GROUP}, key=lambda r: r.order)]
+        bracket_html_shown = False
+        for rnd in bracket_rounds:
+            visible = [m for m in dms if m.round == rnd and (m.pair_1 or m.pair_2)]
             if not visible:
                 continue
-            st.markdown(f'<div class="pv-round">{escape(rnd.display)}</div>', unsafe_allow_html=True)
-            for m in sorted(visible, key=lambda x: x.match_number):
-                p1cls = "pair win" if (m.winner_id and m.pair_1 and m.winner_id == m.pair_1.id) else "pair"
-                p2cls = "pair win" if (m.winner_id and m.pair_2 and m.winner_id == m.pair_2.id) else "pair"
-                p1 = escape(m.p1_display); p2 = escape(m.p2_display)
-                sc = escape(m.score) if m.score else ("✓" if m.winner_id else "")
-                when = _fmt_when(m)
-                when_html = f'<span class="pv-when">{escape(when)}</span>' if when else ""
-                st.markdown(
-                    f'<div class="pv-match">'
-                    f'<span class="{p1cls}">{p1}</span>'
-                    f'<span class="vs">vs</span>'
-                    f'<span class="{p2cls}" style="text-align:right">{p2}</span>'
-                    f'<span class="sc">{sc}</span>{when_html}</div>',
-                    unsafe_allow_html=True,
-                )
+            if not bracket_html_shown:
+                st.markdown('<div class="pv-section-title">Cuadro final</div>',
+                            unsafe_allow_html=True)
+                bracket_html_shown = True
+            st.markdown(f'<div class="pv-round">{escape(rnd.display)}</div>',
+                        unsafe_allow_html=True)
+            _render_match_rows(visible)
+
+        # ── Estado vacío ──
+        if not group_matches and not bracket_rounds:
+            st.markdown(
+                '<div class="pv-empty">Todavía no hay partidos publicados. '
+                'Vuelve cuando empiece el torneo.</div>',
+                unsafe_allow_html=True,
+            )
+
+    # Lookup de nombres cortos por id y por display_name (para campeón)
+    _all_pairs = list(getattr(t, "pairs", []) or [])
+    for g in t.groups:
+        _all_pairs.extend(g.pairs)
+    for m in t.matches:
+        _all_pairs.extend(p for p in (m.pair_1, m.pair_2) if p is not None)
+    _short_by_id = {p.id: _short_pair(p) for p in _all_pairs}
+    _short_by_name = {p.display_name: _short_pair(p) for p in _all_pairs}
+    _standings: dict = {}
 
     if div_keys:
         from .tournament_models import TournamentCategory, TournamentSubcategory
@@ -413,11 +595,12 @@ def render_public_tournament(tournament_id: str) -> None:
             c = next((x for x in TournamentCategory if x.value == cat), None)
             s = next((x for x in TournamentSubcategory if x.value == sub), None)
             return " ".join([p for p in [c.label if c else "", s.label if s else ""] if p]) or k
-        st.markdown('<div class="pv-section-title">Resultados</div>', unsafe_allow_html=True)
-        for dk in div_keys:
-            _render_division(dk, _label(dk))
+        _tabs = st.tabs([_label(dk) for dk in div_keys])
+        for _tab, dk in zip(_tabs, div_keys):
+            with _tab:
+                _render_division(dk)
     else:
-        _render_division(None, "")
+        _render_division(None)
 
     st.markdown(
         f'<div class="pv-foot">Organizado con <a href="https://{BRAND_NAME.lower()}.streamlit.app">'

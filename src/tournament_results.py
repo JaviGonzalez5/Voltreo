@@ -9,6 +9,7 @@ El cuadro se enlaza por (ronda, match_number):
   - Perdedores de Semifinal → partido de 3er/4º puesto (si existe).
 """
 
+from dataclasses import dataclass, field
 from math import ceil
 from typing import Optional
 
@@ -182,6 +183,136 @@ def champions_by_division(config: TournamentConfig) -> dict[str, Optional[str]]:
     for div in _divisions_present(config):
         champ = tournament_champion(config, division=div)
         out[div or "_"] = champ.display_name if champ else None
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Clasificación de la fase de grupos
+# ---------------------------------------------------------------------------
+
+@dataclass
+class GroupStanding:
+    """Fila de clasificación de una pareja dentro de un grupo."""
+    pair_id: str
+    pair_name: str
+    played: int = 0
+    won: int = 0
+    lost: int = 0
+    sets_for: int = 0
+    sets_against: int = 0
+    games_for: int = 0
+    games_against: int = 0
+
+    @property
+    def points(self) -> int:
+        # Pádel/pickleball sin empates: victoria = 3 puntos.
+        return self.won * 3
+
+    @property
+    def set_diff(self) -> int:
+        return self.sets_for - self.sets_against
+
+    @property
+    def game_diff(self) -> int:
+        return self.games_for - self.games_against
+
+
+def _parse_score(score: str) -> Optional[tuple[int, int, int, int]]:
+    """
+    Parsea un marcador legible ("6-4 6-3", "6-4, 3-6, 10-8") y devuelve
+    (sets_p1, sets_p2, games_p1, games_p2). None si no se puede interpretar.
+    El lado izquierdo de cada set corresponde a pair_1, el derecho a pair_2.
+    """
+    if not score or not score.strip():
+        return None
+    tokens = score.replace(",", " ").split()
+    sets_p1 = sets_p2 = games_p1 = games_p2 = 0
+    parsed_any = False
+    for tok in tokens:
+        sep = "-" if "-" in tok else ("/" if "/" in tok else None)
+        if sep is None:
+            continue
+        a_str, _, b_str = tok.partition(sep)
+        try:
+            a, b = int(a_str.strip()), int(b_str.strip())
+        except ValueError:
+            continue
+        parsed_any = True
+        games_p1 += a
+        games_p2 += b
+        if a > b:
+            sets_p1 += 1
+        elif b > a:
+            sets_p2 += 1
+    if not parsed_any:
+        return None
+    return sets_p1, sets_p2, games_p1, games_p2
+
+
+def group_standings(
+    config: TournamentConfig, division: Optional[str] = None
+) -> dict[str, list[GroupStanding]]:
+    """
+    Calcula la clasificación de cada grupo de la división (o de todo el torneo).
+
+    Devuelve {group_id: [GroupStanding, ...]} ya ordenado por:
+    puntos → diferencia de sets → diferencia de juegos → victorias.
+
+    Solo cuenta partidos de la ronda GROUP que estén jugados (con winner_id).
+    Si un partido jugado no tiene marcador parseable, cuenta la victoria/derrota
+    pero no suma sets ni juegos.
+    """
+    # Mapa de parejas por grupo (a partir de config.groups; filtrado por división)
+    rows: dict[str, dict[str, GroupStanding]] = {}
+    group_div: dict[str, Optional[str]] = {}
+    for g in config.groups:
+        # Una división por grupo: la de sus parejas
+        gdiv = next((p.division for p in g.pairs if p.division is not None), None)
+        group_div[g.id] = gdiv
+        if division is not None and gdiv != division:
+            continue
+        rows[g.id] = {
+            p.id: GroupStanding(pair_id=p.id, pair_name=p.display_name)
+            for p in g.pairs
+        }
+
+    for m in config.matches:
+        if m.round != MatchRound.GROUP or not m.is_played:
+            continue
+        if m.group_id not in rows:
+            continue
+        if m.pair_1 is None or m.pair_2 is None:
+            continue
+        table = rows[m.group_id]
+        s1 = table.get(m.pair_1.id)
+        s2 = table.get(m.pair_2.id)
+        if s1 is None or s2 is None:
+            continue
+
+        s1.played += 1
+        s2.played += 1
+        if m.winner_id == m.pair_1.id:
+            s1.won += 1
+            s2.lost += 1
+        elif m.winner_id == m.pair_2.id:
+            s2.won += 1
+            s1.lost += 1
+
+        parsed = _parse_score(m.score)
+        if parsed is not None:
+            sp1, sp2, gp1, gp2 = parsed
+            s1.sets_for += sp1; s1.sets_against += sp2
+            s2.sets_for += sp2; s2.sets_against += sp1
+            s1.games_for += gp1; s1.games_against += gp2
+            s2.games_for += gp2; s2.games_against += gp1
+
+    out: dict[str, list[GroupStanding]] = {}
+    for gid, table in rows.items():
+        out[gid] = sorted(
+            table.values(),
+            key=lambda s: (s.points, s.set_diff, s.game_diff, s.won),
+            reverse=True,
+        )
     return out
 
 
