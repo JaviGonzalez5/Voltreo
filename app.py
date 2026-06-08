@@ -7097,7 +7097,7 @@ elif page == "t_pairs":
         _changed_flag = {"v": False}
 
         def _render_pair_row(_pp):
-            _c1, _c2, _c3, _c4 = st.columns([3, 2, 1, 1])
+            _c1, _c2, _c3, _c4, _c5 = st.columns([3, 2, 1, 0.8, 0.8])
             with _c1:
                 st.markdown(f"**{escape(_pp.display_name)}**")
                 st.caption(f"{escape(_pp.player_1.full_name)} · {escape(_pp.player_2.full_name)}")
@@ -7124,6 +7124,37 @@ elif page == "t_pairs":
                     t.pairs[_pair_id_to_idx[_pp.id]].seed = _new_seed if _new_seed > 0 else None
                     _changed_flag["v"] = True
             with _c4:
+                # ── Editar nombres sin borrar la pareja ──────────────────────
+                with st.popover("✏️", help="Editar nombres de la pareja"):
+                    st.markdown("**Editar pareja**")
+                    _e_p1n = st.text_input("Jugador 1 · nombre", value=_pp.player_1.name,
+                                           key=f"ed_p1n_{_pp.id}")
+                    _e_p1s = st.text_input("Jugador 1 · apellidos", value=_pp.player_1.surname or "",
+                                           key=f"ed_p1s_{_pp.id}")
+                    _e_p2n = st.text_input("Jugador 2 · nombre", value=_pp.player_2.name,
+                                           key=f"ed_p2n_{_pp.id}")
+                    _e_p2s = st.text_input("Jugador 2 · apellidos", value=_pp.player_2.surname or "",
+                                           key=f"ed_p2s_{_pp.id}")
+                    _e_name = st.text_input("Nombre de la pareja (opcional)", value=_pp.name or "",
+                                            key=f"ed_name_{_pp.id}",
+                                            help="Si lo dejas vacío se compone con los nombres de los jugadores.")
+                    if st.button("💾 Guardar nombres", key=f"ed_save_{_pp.id}", type="primary",
+                                 use_container_width=True):
+                        _idx = _pair_id_to_idx[_pp.id]
+                        if not _e_p1n.strip() or not _e_p2n.strip():
+                            st.error("El nombre de cada jugador es obligatorio.")
+                        else:
+                            t.pairs[_idx].player_1.name = _e_p1n.strip()
+                            t.pairs[_idx].player_1.surname = _e_p1s.strip()
+                            t.pairs[_idx].player_2.name = _e_p2n.strip()
+                            t.pairs[_idx].player_2.surname = _e_p2s.strip()
+                            t.pairs[_idx].name = _e_name.strip() or f"{_e_p1n.strip()}- {_e_p2n.strip()}"
+                            # Cambiar nombres NO altera la estructura: no reseteamos grupos.
+                            st.session_state["tournament"] = t
+                            _autosave_tournament(t)
+                            st.success("✅ Pareja actualizada.")
+                            st.rerun()
+            with _c5:
                 if st.button("🗑️", key=f"tdel_{_pp.id}", help=f"Eliminar {_pp.display_name}"):
                     t.pairs = [p for p in t.pairs if p.id != _pp.id]
                     t.groups = []; t.matches = []; t.division_draws = []
@@ -7491,6 +7522,36 @@ elif page == "t_generate":
         st.metric("Parejas en el cuadro", bs)
 
     st.divider()
+
+    # ── Guardar estructura (sin generar partidos) ─────────────────────────────
+    # Guarda la configuración de grupos y fase final de cada categoría con
+    # feedback explícito, para no depender solo del autoguardado silencioso.
+    if _is_groups_fmt:
+        if st.button("💾 Guardar estructura del torneo", use_container_width=True,
+                     help="Guarda la configuración de grupos y fase final. No regenera los partidos."):
+            st.session_state["tournament"] = t
+            if _db_ok and _db is not None:
+                _cid_gs = current_club_id()
+                if _cid_gs:
+                    try:
+                        _pgs = tournament_to_db(t, _cid_gs, st.session_state.get("db_tournament_id"))
+                        _sgs = _db.upsert_tournament(
+                            club_id=_cid_gs, name=_pgs["name"],
+                            start_date=_pgs["start_date"], end_date=_pgs["end_date"],
+                            tournament_data=_pgs["tournament_data"],
+                            tournament_id=_pgs["tournament_id"],
+                        )
+                        st.session_state["db_tournament_id"] = _sgs["id"]
+                        st.success("✅ Estructura guardada en la nube.")
+                    except Exception:
+                        logging.exception("Error guardando estructura (tournament=%s)",
+                                          st.session_state.get("db_tournament_id"))
+                        st.error("No se pudo guardar la estructura. Comprueba la conexión a la base de datos.")
+                else:
+                    st.warning("No hay club activo: la estructura queda guardada solo en esta sesión.")
+            else:
+                st.info("Base de datos no configurada — la estructura queda guardada solo en esta sesión.")
+
     # Avisar si ya hay resultados registrados (se perderán al regenerar)
     _has_played = any(getattr(m, "winner_id", None) for m in getattr(t, "matches", []))
     if _has_played:
