@@ -453,11 +453,11 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
             gid = c[3].group_id or ""
             return (
                 _wave_of(c[3]),
+                _round_key(c[3]),
                 slot_start,
                 placed_per_slot_div_group[(slot_start, div, gid)],
                 placed_per_slot_group[(slot_start, gname)],
                 placed_per_slot_div[(slot_start, div)],
-                _round_key(c[3]),
                 repeat_penalty,
                 placed_per_group_name[gname],
                 placed_per_div[div],
