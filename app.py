@@ -2656,21 +2656,7 @@ def _tournament_schedule_excel_bytes(t_obj) -> bytes:
         ws = wb.create_sheet(_safe_excel_sheet_name(d.strftime("%d-%m-%Y"), used_names))
         _title(ws, d.strftime("%A %d/%m/%Y").capitalize(), "Calendario por hora y pista")
 
-        def _slot_dt(t):
-            base = datetime.combine(d, t)
-            if t < t_obj.day_start_time:
-                base += timedelta(days=1)
-            return base
-
-        def _match_bounds(m):
-            start_dt = _slot_dt(m.start_time)
-            end_time = m.end_time or m.start_time
-            end_dt = datetime.combine(start_dt.date(), end_time)
-            if end_dt <= start_dt:
-                end_dt += timedelta(days=1)
-            return start_dt, end_dt
-
-        slots = sorted({m.start_time for m in day_matches}, key=_slot_dt)
+        slots = sorted({m.start_time for m in day_matches}, key=lambda t: datetime.combine(d, t) + (timedelta(days=1) if t < t_obj.day_start_time else timedelta()))
         headers = ["Hora"] + [c.name for c in courts]
         for ci, h in enumerate(headers, 1):
             cell = ws.cell(4, ci, h)
@@ -2680,30 +2666,6 @@ def _tournament_schedule_excel_bytes(t_obj) -> bytes:
             cell.alignment = Alignment(horizontal="center", vertical="center")
 
         by_slot_court = {(m.start_time, m.court.id): m for m in day_matches if m.court}
-        by_court = {}
-        for m in day_matches:
-            if m.court:
-                by_court.setdefault(m.court.id, []).append(m)
-
-        def _match_cell_text(m):
-            division_txt = _division_label(getattr(m, "division", None))
-            group_txt = group_map.get(getattr(m, "group_id", None), "") if m.group_id else ""
-            round_txt = f"{m.round_display}{' - ' + group_txt if group_txt else ''}"
-            return (
-                f"{division_txt}\n"
-                f"{round_txt}\n"
-                f"{m.p1_display}\nvs\n{m.p2_display}\n"
-                f"{m.start_time.strftime('%H:%M')} - {m.end_time.strftime('%H:%M') if m.end_time else ''}"
-            )
-
-        def _ongoing_match(slot, court_id):
-            slot_dt = _slot_dt(slot)
-            for m in by_court.get(court_id, []):
-                start_dt, end_dt = _match_bounds(m)
-                if start_dt < slot_dt < end_dt:
-                    return m
-            return None
-
         for ri, slot in enumerate(slots, 5):
             tc = ws.cell(ri, 1, slot.strftime("%H:%M"))
             tc.font = Font(bold=True, color="0B1F33")
@@ -2712,18 +2674,21 @@ def _tournament_schedule_excel_bytes(t_obj) -> bytes:
             tc.alignment = Alignment(horizontal="center", vertical="center")
             for ci, court in enumerate(courts, 2):
                 m = by_slot_court.get((slot, court.id))
-                ongoing = None if m else _ongoing_match(slot, court.id)
                 cell = ws.cell(ri, ci)
                 cell.border = border
-                display_match = m or ongoing
-                cell.fill = round_fills.get(display_match.round_display, match_fill) if display_match else grid_fill
+                cell.fill = round_fills.get(m.round_display, match_fill) if m else grid_fill
                 cell.alignment = Alignment(wrap_text=True, vertical="top")
                 if m:
-                    cell.value = _match_cell_text(m)
+                    division_txt = _division_label(getattr(m, "division", None))
+                    group_txt = group_map.get(getattr(m, "group_id", None), "") if m.group_id else ""
+                    round_txt = f"{m.round_display}{' - ' + group_txt if group_txt else ''}"
+                    cell.value = (
+                        f"{division_txt}\n"
+                        f"{round_txt}\n"
+                        f"{m.p1_display}\nvs\n{m.p2_display}\n"
+                        f"{m.start_time.strftime('%H:%M')} - {m.end_time.strftime('%H:%M') if m.end_time else ''}"
+                    )
                     cell.font = Font(bold=m.round_display in ("Semifinal", "Final"), color="0B1F33", size=10)
-                elif ongoing:
-                    cell.value = "↳ Continúa\n" + _match_cell_text(ongoing)
-                    cell.font = Font(italic=True, bold=ongoing.round_display in ("Semifinal", "Final"), color="52616B", size=9)
         ws.freeze_panes = "B5"
         ws.column_dimensions["A"].width = 10
         for ci in range(2, len(courts) + 2):
