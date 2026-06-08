@@ -336,9 +336,6 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
     # Contadores para mezclar categorías y rotar grupos (solo como desempate).
     placed_per_div:        dict[object, int] = defaultdict(int)
     placed_per_group_name: dict[str, int]    = defaultdict(int)
-    placed_per_slot_div:   dict[tuple, int]  = defaultdict(int)
-    placed_per_slot_group: dict[tuple, int]  = defaultdict(int)
-    placed_per_slot_div_group: dict[tuple, int] = defaultdict(int)
     _gid_to_name = {g.id: g.name for g in config.groups}
 
     # ── Índice de ronda round-robin por partido de grupo ─────────────────────
@@ -448,19 +445,13 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
         def _sort_key(c):
             gname = _gid_to_name.get(c[3].group_id, "")
             repeat_penalty = 1 if (gname and gname == _last_group_name) else 0
-            slot_start = c[0]
-            div = c[3].division
-            gid = c[3].group_id or ""
             return (
                 _wave_of(c[3]),
                 _round_key(c[3]),
-                slot_start,
-                placed_per_slot_div_group[(slot_start, div, gid)],
-                placed_per_slot_group[(slot_start, gname)],
-                placed_per_slot_div[(slot_start, div)],
                 repeat_penalty,
                 placed_per_group_name[gname],
-                placed_per_div[div],
+                placed_per_div[c[3].division],
+                c[0],
                 c[1],
                 c[3].match_number,
                 c[3].id,
@@ -493,9 +484,6 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
         placed_per_div[best_match.division] += 1
         _bm_group = _gid_to_name.get(best_match.group_id, "")
         placed_per_group_name[_bm_group] += 1
-        placed_per_slot_div[(s_start, best_match.division)] += 1
-        placed_per_slot_group[(s_start, _bm_group)] += 1
-        placed_per_slot_div_group[(s_start, best_match.division, best_match.group_id or "")] += 1
         if _bm_group:
             _last_group_name = _bm_group
         if _dk not in div_round_latest or s_end > div_round_latest[_dk]:
