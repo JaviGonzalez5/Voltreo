@@ -45,6 +45,10 @@ CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 --    se guardan como JSONB para no necesitar 10 tablas en el MVP.
 --    Se pueden normalizar más adelante si se necesita reporting.
 -- ============================================================
+-- IMPORTANTE: los nombres de columna deben coincidir EXACTAMENTE con los que
+-- usa src/db.py (config_json / groups_json / bookings_json / matches_json).
+-- Si no coinciden, PostgREST rechaza el upsert con "column not found" y CADA
+-- guardado/carga de ranking falla.
 CREATE TABLE IF NOT EXISTS ranking_phases (
     id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     club_id         UUID        NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
@@ -52,17 +56,47 @@ CREATE TABLE IF NOT EXISTS ranking_phases (
     start_date      DATE        NOT NULL,
     end_date        DATE        NOT NULL,
     -- Configuración de la fase (RankingPhase sin groups/bookings)
-    phase_config    JSONB       NOT NULL DEFAULT '{}',
+    config_json     JSONB       NOT NULL DEFAULT '{}',
     -- Grupos y parejas importados (list[Group])
-    groups_data     JSONB       NOT NULL DEFAULT '[]',
+    groups_json     JSONB       NOT NULL DEFAULT '[]',
     -- Reservas Syltek importadas (list[Booking])
-    bookings_data   JSONB       NOT NULL DEFAULT '[]',
+    bookings_json   JSONB       NOT NULL DEFAULT '[]',
     -- Resultado del calendario generado (ScheduleResult | null)
-    schedule_result JSONB,
+    matches_json    JSONB,
     is_active       BOOLEAN     DEFAULT true,
     created_at      TIMESTAMPTZ DEFAULT now(),
     updated_at      TIMESTAMPTZ DEFAULT now()
 );
+
+-- ── Migración auto-reparadora (idempotente) ──────────────────────────────────
+-- Tablas creadas con el esquema antiguo tenían columnas phase_config / groups_data
+-- / bookings_data / schedule_result. Las renombramos a los nombres que el código
+-- espera. Si ya están renombradas, no hace nada. Ejecutable cuantas veces se quiera.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name='ranking_phases' AND column_name='phase_config') THEN
+        ALTER TABLE public.ranking_phases RENAME COLUMN phase_config TO config_json;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name='ranking_phases' AND column_name='groups_data') THEN
+        ALTER TABLE public.ranking_phases RENAME COLUMN groups_data TO groups_json;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name='ranking_phases' AND column_name='bookings_data') THEN
+        ALTER TABLE public.ranking_phases RENAME COLUMN bookings_data TO bookings_json;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name='ranking_phases' AND column_name='schedule_result') THEN
+        ALTER TABLE public.ranking_phases RENAME COLUMN schedule_result TO matches_json;
+    END IF;
+END $$;
+
+-- Garantizar que existen las columnas con el nombre correcto (instalaciones mixtas).
+ALTER TABLE public.ranking_phases ADD COLUMN IF NOT EXISTS config_json   JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE public.ranking_phases ADD COLUMN IF NOT EXISTS groups_json   JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE public.ranking_phases ADD COLUMN IF NOT EXISTS bookings_json JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE public.ranking_phases ADD COLUMN IF NOT EXISTS matches_json  JSONB;
 
 CREATE INDEX IF NOT EXISTS idx_phases_club    ON ranking_phases(club_id);
 CREATE INDEX IF NOT EXISTS idx_phases_active  ON ranking_phases(club_id, is_active);

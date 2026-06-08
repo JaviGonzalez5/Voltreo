@@ -194,15 +194,23 @@ class SupabaseDB:
     # ================================================================
 
     def list_phases(self, club_id: str) -> list[dict]:
-        """Lista fases de un club ordenadas por fecha de creación (más reciente primero)."""
+        """Lista fases de un club ordenadas por fecha de creación (más reciente primero).
+
+        Ordena en Python (no en el servidor) para no fallar si la tabla no tiene
+        created_at/updated_at en algún entorno — mismo criterio que list_tournaments.
+        """
         resp = (
             self._c.table("ranking_phases")
             .select("id, name, start_date, end_date, is_active, created_at, updated_at")
             .eq("club_id", club_id)
-            .order("created_at", desc=True)
             .execute()
         )
-        return resp.data or []
+        rows = resp.data or []
+        rows.sort(
+            key=lambda r: r.get("created_at") or r.get("updated_at") or "",
+            reverse=True,
+        )
+        return rows
 
     def get_phase(self, phase_id: str, club_id: str) -> Optional[dict]:
         """Carga una fase completa (con todos sus JSONB)."""
@@ -216,17 +224,25 @@ class SupabaseDB:
         return resp.data[0] if resp.data else None
 
     def get_active_phase(self, club_id: str) -> Optional[dict]:
-        """Carga la fase activa de un club (la más reciente con is_active=true)."""
+        """Carga la fase activa de un club (la más reciente con is_active=true).
+
+        Ordena en Python para no depender de created_at en el servidor.
+        """
         resp = (
             self._c.table("ranking_phases")
             .select("*")
             .eq("club_id", club_id)
             .eq("is_active", True)
-            .order("created_at", desc=True)
-            .limit(1)
             .execute()
         )
-        return resp.data[0] if resp.data else None
+        rows = resp.data or []
+        if not rows:
+            return None
+        rows.sort(
+            key=lambda r: r.get("created_at") or r.get("updated_at") or "",
+            reverse=True,
+        )
+        return rows[0]
 
     def upsert_phase(
         self,
