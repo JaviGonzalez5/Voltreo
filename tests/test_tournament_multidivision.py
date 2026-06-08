@@ -381,6 +381,119 @@ class TestMultiDivisionScheduling:
         assert set(first_slot_groups) == {"Grupo A", "Grupo B", "Grupo C"}
 
 
+class TestSoftWaveBarrier:
+    """
+    La tanda 2 no espera a que TODA la tanda 1 termine (barrera dura): rellena
+    las pistas que la tanda 1 deja vacías en su cola (compactación), pero la
+    tanda 1 conserva la prioridad en los huecos más tempranos.
+    """
+
+    def _night_two_waves(self):
+        masc = "masculino:1a"   # tanda 1, grande (poste largo)
+        fem  = "femenino:1a"    # tanda 1, pequeña (se agota pronto)
+        mix  = "mixto:1a"       # tanda 2
+        cfg = TournamentConfig(
+            name="Nocturno 2 tandas",
+            start_date=date(2026, 6, 12), end_date=date(2026, 6, 12),
+            divisions=[masc, fem, mix],
+            division_waves={masc: 1, fem: 1, mix: 2},
+            format=TournamentFormat.GROUPS_BRACKET,
+            courts=[TournamentCourt(id=f"c{i}", name=f"Pista {i}") for i in range(1, 5)],
+            pairs=(
+                [_pair(f"M{i}", masc) for i in range(9)] +
+                [_pair(f"F{i}", fem)  for i in range(3)] +
+                [_pair(f"X{i}", mix)  for i in range(3)]
+            ),
+            match_duration_minutes=15, rest_between_matches_min=0,
+            day_start_time=time(19, 0), day_end_time=time(23, 30),
+            division_draws=[
+                TournamentDivision(key=masc, format=TournamentFormat.GROUPS_BRACKET, num_groups=3, bracket_size=4),
+                TournamentDivision(key=fem,  format=TournamentFormat.GROUPS_BRACKET, num_groups=1, bracket_size=2),
+                TournamentDivision(key=mix,  format=TournamentFormat.GROUPS_BRACKET, num_groups=1, bracket_size=2),
+            ],
+        )
+        return schedule_tournament(generate_tournament_structure(cfg))
+
+    @staticmethod
+    def _start_min(m):
+        h = m.start_time.hour
+        return (h + 24 if h < 12 else h) * 60 + m.start_time.minute
+
+    @staticmethod
+    def _end_min(m):
+        h = m.end_time.hour
+        return (h + 24 if h < 12 else h) * 60 + m.end_time.minute
+
+    def test_all_scheduled_no_conflicts(self):
+        cfg = self._night_two_waves()
+        assert [m for m in cfg.matches if m.status == TMatchStatus.CONFLICT] == []
+
+    def test_wave2_backfills_before_wave1_finishes(self):
+        """Algún partido de Mixto (tanda 2) empieza ANTES de que acabe el último
+        de tanda 1 → no hay barrera dura, rellena la cola."""
+        cfg = self._night_two_waves()
+        sched = [m for m in cfg.matches if m.status == TMatchStatus.SCHEDULED]
+        wave1_last_end = max(
+            self._end_min(m) for m in sched if m.division in ("masculino:1a", "femenino:1a")
+        )
+        mixto_first_start = min(
+            self._start_min(m) for m in sched if m.division == "mixto:1a"
+        )
+        assert mixto_first_start < wave1_last_end, (
+            "Mixto (tanda 2) debería rellenar pistas durante la cola de la tanda 1"
+        )
+
+    def test_wave1_keeps_priority_in_earliest_slot(self):
+        """El primer slot (19:00) es exclusivamente de tanda 1: Mixto no roba los
+        huecos más tempranos."""
+        cfg = self._night_two_waves()
+        first = [m for m in cfg.matches
+                 if m.status == TMatchStatus.SCHEDULED and m.start_time == time(19, 0)]
+        assert first, "Debe haber partidos a las 19:00"
+        assert all(m.division != "mixto:1a" for m in first), (
+            "Mixto (tanda 2) no debe ocupar el primer slot mientras la tanda 1 tiene partidos"
+        )
+
+    def test_no_court_overlap_across_waves(self):
+        cfg = self._night_two_waves()
+        sched = [m for m in cfg.matches if m.status == TMatchStatus.SCHEDULED]
+        by_court = {}
+        for m in sched:
+            by_court.setdefault(m.court.id, []).append(m)
+        for ms in by_court.values():
+            ms.sort(key=self._start_min)
+            for a, b in zip(ms, ms[1:]):
+                assert self._end_min(a) <= self._start_min(b), "Solapamiento en pista entre tandas"
+
+
+class TestCategoryMixingTiebreak:
+    """A igual hora de inicio, se mezclan las categorías (no 4 de la misma)."""
+
+    def test_multiple_ready_divisions_are_interleaved(self):
+        divs = ["masculino:1a", "femenino:1a", "mixto:1a"]
+        cfg = TournamentConfig(
+            name="Mix categorias",
+            start_date=date(2026, 6, 12), end_date=date(2026, 6, 12),
+            divisions=divs,
+            division_waves={d: 1 for d in divs},   # misma tanda → deben mezclarse
+            format=TournamentFormat.GROUPS_BRACKET,
+            courts=[TournamentCourt(id=f"c{i}", name=f"Pista {i}") for i in range(1, 4)],
+            pairs=[_pair(f"d{di}p{i}", d) for di, d in enumerate(divs) for i in range(3)],
+            match_duration_minutes=15, rest_between_matches_min=0,
+            day_start_time=time(19, 0), day_end_time=time(23, 0),
+            division_draws=[
+                TournamentDivision(key=d, format=TournamentFormat.GROUPS_BRACKET, num_groups=1, bracket_size=2)
+                for d in divs
+            ],
+        )
+        cfg = schedule_tournament(generate_tournament_structure(cfg))
+        first = [m for m in cfg.matches
+                 if m.status == TMatchStatus.SCHEDULED and m.start_time == time(19, 0)]
+        # 3 pistas, 3 categorías listas → el primer slot tiene las 3 mezcladas
+        assert len(first) == 3
+        assert {m.division for m in first} == set(divs)
+
+
 class TestBackwardCompatibility:
 
     def test_single_division_still_works(self):

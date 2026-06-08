@@ -239,214 +239,179 @@ def schedule_tournament(config: TournamentConfig) -> TournamentConfig:
                     _day_idx += 1
                     _placed_on_day = 0
 
-    # ── Tandas de juego: agrupar divisiones por nº de tanda (1, 2, 3…)
+    # ── Tandas de juego: PRIORIDAD SUAVE (no barrera dura) ──────────────────
+    # Antes: cada tanda se planificaba por separado y la siguiente NO podía
+    # empezar hasta que TODA la anterior hubiera terminado (barrera dura). Eso
+    # dejaba pistas vacías en la cola de cada tanda (p.ej. al final de
+    # Masculino+Femenino, antes de que arrancara Mixto) y descompactaba el torneo.
+    #
+    # Ahora: un único pase VORAZ sobre TODOS los partidos. El número de tanda es
+    # solo una PRIORIDAD de desempate (a igual hora de inicio, la tanda menor va
+    # primero). Así las categorías de la tanda 1 ocupan las pistas mientras
+    # tengan partidos listos, y la tanda 2 (Mixto) RELLENA las pistas que de otro
+    # modo quedarían vacías en la cola. El _PlayerTimeline sigue impidiendo que
+    # un jugador físico tenga dos partidos a la vez entre categorías o tandas.
     _waves_cfg = dict(getattr(config, "division_waves", {}) or {})
 
     def _wave_of(m: TournamentMatch) -> int:
         return int(_waves_cfg.get(m.division, 1)) if m.division else 1
 
-    _wave_numbers = sorted({_wave_of(m) for m in config.matches})
+    # ── Estado compartido (pistas y jugadores) ──────────────────────────────
+    court_tls = {c.id: _CourtTimeline() for c in active_courts}
+    player_tl = _PlayerTimeline(config.rest_between_matches_min)
+    _rest_td  = timedelta(minutes=config.rest_between_matches_min)
 
-    # ── Estado compartido (persiste entre tandas: pistas y jugadores)
-    court_tls  = {c.id: _CourtTimeline() for c in active_courts}
-    player_tl  = _PlayerTimeline(config.rest_between_matches_min)
+    # Secuencia de rondas por división (para readiness y orden del cuadro)
+    all_divisions = _ordered_wave_divisions(config, config.matches)
+    div_rounds_list = {
+        div: sorted(
+            {m.round for m in config.matches if m.division == div},
+            key=lambda r: r.order,
+        )
+        for div in all_divisions
+    }
 
-    # Fin de la tanda anterior: la siguiente tanda no empieza antes
-    wave_prev_end: Optional[datetime] = None
+    # Estado de rondas por división: cuántos partidos completados / total
+    completed_rounds: dict[tuple, int] = defaultdict(int)
+    total_rounds:     dict[tuple, int] = defaultdict(int)
+    for m in config.matches:
+        total_rounds[(m.division, m.round)] += 1
 
-    for _wave in _wave_numbers:
-        wave_matches = [m for m in config.matches if _wave_of(m) == _wave]
-        wave_divisions = _ordered_wave_divisions(config, wave_matches)
+    def _prev_round_of(div, rnd):
+        seq = div_rounds_list.get(div, [])
+        idx = seq.index(rnd) if rnd in seq else -1
+        return seq[idx - 1] if idx > 0 else None
 
-        matches_by_round: dict[tuple[str | None, MatchRound], list[TournamentMatch]] = defaultdict(list)
-        for m in wave_matches:
-            matches_by_round[(m.division, m.round)].append(m)
-        rounds_by_division: dict[str | None, list[MatchRound]] = {
-            division: sorted(
-                {m.round for m in wave_matches if m.division == division},
-                key=lambda r: r.order,
-            )
-            for division in wave_divisions
-        }
+    def _is_ready(m) -> bool:
+        """Listo si su ronda anterior (en SU categoría) está 100% completada.
 
-        # ── Planificación VORAZ dentro de la ola ──────────────────────────
-        # En lugar de procesar etapas globales (todos los grupos → todas las semis),
-        # en cada paso se elige el partido "listo" que puede empezar ANTES.
-        # "Listo" = todos los partidos de la ronda anterior de SU categoría
-        # ya están programados. Así, si los grupos de Masculino terminan antes
-        # que los de Femenino, las semis de Masculino se pueden asignar
-        # INMEDIATAMENTE a las pistas libres, sin esperar a los grupos de Femenino.
-        # Las olas siguen siendo secuenciales (Tanda 2 espera a Tanda 1).
+        Así las semis de Masculino pueden asignarse en cuanto terminan los
+        grupos de Masculino, sin esperar a los grupos de Femenino ni a otra tanda.
+        """
+        pr = _prev_round_of(m.division, m.round)
+        if pr is None:
+            return True
+        _key = (m.division, pr)
+        return completed_rounds[_key] == total_rounds[_key]
 
-        _rest_td = timedelta(minutes=config.rest_between_matches_min)
+    div_round_latest: dict[tuple, datetime] = {}  # fin más tardío de cada (div, rnd)
 
-        # Estado de rondas por división: cuántos partidos quedan por completar
-        completed_rounds: dict[tuple, int] = defaultdict(int)   # completados
-        total_rounds:     dict[tuple, int] = defaultdict(int)    # total
-        for m in wave_matches:
-            total_rounds[(m.division, m.round)] += 1
+    def _earliest_for(m) -> Optional[datetime]:
+        """No empieza antes del fin de su ronda anterior (misma categoría) + descanso."""
+        pr = _prev_round_of(m.division, m.round)
+        if pr is None:
+            return None
+        pe = div_round_latest.get((m.division, pr))
+        return pe + _rest_td if pe is not None else None
 
-        div_rounds_list = {
-            div: sorted(rounds_by_division.get(div, []), key=lambda r: r.order)
-            for div in wave_divisions
-        }
+    unscheduled = list(config.matches)
+    _safety = len(unscheduled) * len(active_courts) + 5
+    # Contadores para mezclar categorías y rotar grupos (solo como desempate).
+    placed_per_div:        dict[object, int] = defaultdict(int)
+    placed_per_group_name: dict[str, int]    = defaultdict(int)
+    _gid_to_name = {g.id: g.name for g in config.groups}
+    # Modo distribución: una pareja no puede jugar más de 1 partido por día.
+    _player_day_busy: dict[str, set[date]] = defaultdict(set)
 
-        def _prev_round_of(div, rnd):
-            seq = div_rounds_list.get(div, [])
-            idx = seq.index(rnd) if rnd in seq else -1
-            return seq[idx - 1] if idx > 0 else None
+    while unscheduled and _safety > 0:
+        _safety -= 1
+        ready = [m for m in unscheduled if _is_ready(m)]
+        if not ready:
+            break
 
-        def _is_ready_wave(m) -> bool:
-            """El partido está listo si su ronda anterior en su categoría está 100% completada."""
-            pr = _prev_round_of(m.division, m.round)
-            if pr is None:
-                return True
-            _key = (m.division, pr)
-            return completed_rounds[_key] == total_rounds[_key]
-
-        div_round_latest: dict[tuple, datetime] = {}  # fin más tardío de cada (div, rnd)
-
-        def _earliest_for(m) -> Optional[datetime]:
-            pr = _prev_round_of(m.division, m.round)
-            base = wave_prev_end
-            if pr is not None:
-                pe = div_round_latest.get((m.division, pr))
-                if pe is not None:
-                    after_pr = pe + _rest_td
-                    base = max(base, after_pr) if base else after_pr
-            return base
-
-        unscheduled_wave = list(wave_matches)
-        wave_latest_end: Optional[datetime] = None
-        _safety = len(unscheduled_wave) * len(active_courts) + 5
-        # Contador de partidos ya colocados por división y última división usada:
-        # garantizan alternancia entre categorías (nadie monopoliza las pistas).
-        placed_per_div:        dict[object, int] = defaultdict(int)
-        placed_per_group_name: dict[str, int]   = defaultdict(int)  # nombre del grupo ("Grupo A"…)
-        last_placed_div:       object            = None
-        _gid_to_name = {g.id: g.name for g in config.groups}
-        wave_group_end: Optional[datetime]      = None   # fin del último partido de GRUPOS
-        # Modo distribución: una pareja no puede jugar más de 1 partido por día.
-        # _player_day_busy[player_key] = {date, ...} días ya ocupados.
-        _player_day_busy: dict[str, set[date]] = defaultdict(set)
-
-        while unscheduled_wave and _safety > 0:
-            _safety -= 1
-            ready = [m for m in unscheduled_wave if _is_ready_wave(m)]
-            if not ready:
-                break
-
-            # Calcular el hueco más temprano posible para cada partido listo
-            candidates: list[tuple] = []   # (s_start, s_end, court, match)
-            for m in ready:
-                rnd_earliest = _earliest_for(m)
-                # Modo distribución: si el partido tiene día asignado,
-                # no puede empezar antes de ese día.
-                if _distribute and m.id in _day_target:
-                    _assigned_day = _day_target[m.id]
-                    _day_dt = _dt(_assigned_day, _day_hours(_assigned_day)[0])
-                    rnd_earliest = max(rnd_earliest, _day_dt) if rnd_earliest else _day_dt
-                # Modo distribución: días donde algún jugador ya tiene partido
-                # (máximo 1 partido por pareja por día).
-                _blocked_days: set[date] = set()
-                if _distribute:
-                    for _pk in _all_potential_player_keys(m, config.matches):
-                        _blocked_days.update(_player_day_busy.get(_pk, set()))
-                duration = _duration_for_match(config, match=m)
-                slot = _find_best_slot(
-                    match=m, active_courts=active_courts, court_tls=court_tls,
-                    player_tl=player_tl, duration=duration, all_days=all_days,
-                    day_start=day_start, day_end=day_end, rnd_earliest=rnd_earliest,
-                    all_matches=config.matches, blocked_days=_blocked_days,
-                    day_hours_fn=_day_hours,
-                )
-                if slot is not None:
-                    s_start, s_end, court = slot
-                    candidates.append((s_start, s_end, court, m))
-
-            if not candidates:
-                for m in ready:
-                    m.status = TMatchStatus.CONFLICT
-                    m.conflict_reason = (
-                        "Sin hueco disponible. Amplía el rango de fechas, "
-                        "añade más pistas o reduce la duración de los partidos."
-                    )
-                    unscheduled_wave.remove(m)
-                continue
-
-            # Ordenar por inicio más temprano; desempate por:
-            # 1. División con menos partidos colocados (equidad entre categorías)
-            # 2. Evitar repetir la misma división (alternancia)
-            # 3. Grupo con menos partidos colocados DENTRO de la división (rotación de grupos)
-            # 4. Número de partido y UUID (determinismo)
-            # NOTA: round.order no se usa aquí porque _is_ready_wave ya garantiza que
-            # no se programa un partido de cuadro antes de que sus grupos terminen.
-            # Empaque máximo: SIEMPRE el hueco que empiece antes (pista libre lo
-            # antes posible). Sin retrasar partidos por "equidad" — en un torneo
-            # comprimido lo prioritario es no dejar pistas vacías.
-            # Desempates (mismo inicio): rotar grupo/división solo para variar el
-            # orden visual, nunca para retrasar.
-            candidates.sort(key=lambda c: (
-                c[0],                                                          # inicio más temprano (densidad)
-                c[1],                                                          # fin más temprano (partidos cortos primero)
-                placed_per_group_name[_gid_to_name.get(c[3].group_id, "")],   # rotación visual de grupos
-                c[3].match_number,
-                c[3].id,
-            ))
-            s_start, s_end, court, best_match = candidates[0]
-
-            _session_day = s_start.date()
-            if s_start.time() < _day_hours(s_start.date())[0]:
-                _session_day = s_start.date() - timedelta(days=1)
-            best_match.match_date = _session_day
-            best_match.start_time = s_start.time()
-            best_match.end_time   = s_end.time()
-            best_match.court      = court
-            best_match.status     = TMatchStatus.SCHEDULED
-
-            court_tls[court.id].mark_occupied(s_end)
-            # Registrar con jugadores potenciales (TBD → busca en rondas anteriores)
-            # para que el _PlayerTimeline bloquee correctamente cross-wave
-            player_tl.record(
-                _all_potential_player_keys(best_match, config.matches), s_end
-            )
-            # Modo distribución: marcar el día del partido como ocupado
-            # para cada jugador (restricción 1 partido/día por pareja).
+        # Calcular el hueco más temprano posible para cada partido listo
+        candidates: list[tuple] = []   # (s_start, s_end, court, match)
+        for m in ready:
+            rnd_earliest = _earliest_for(m)
+            # Modo distribución: si el partido tiene día asignado, no antes de ese día.
+            if _distribute and m.id in _day_target:
+                _assigned_day = _day_target[m.id]
+                _day_dt = _dt(_assigned_day, _day_hours(_assigned_day)[0])
+                rnd_earliest = max(rnd_earliest, _day_dt) if rnd_earliest else _day_dt
+            # Modo distribución: días donde algún jugador ya tiene partido.
+            _blocked_days: set[date] = set()
             if _distribute:
-                _sched_day = best_match.match_date
-                for _pk in _match_player_keys(best_match):
-                    _player_day_busy[_pk].add(_sched_day)
-
-            _dk = (best_match.division, best_match.round)
-            completed_rounds[_dk] += 1
-            placed_per_div[best_match.division] += 1
-            placed_per_group_name[_gid_to_name.get(best_match.group_id, "")] += 1
-            last_placed_div = best_match.division
-            if _dk not in div_round_latest or s_end > div_round_latest[_dk]:
-                div_round_latest[_dk] = s_end
-            if wave_latest_end is None or s_end > wave_latest_end:
-                wave_latest_end = s_end
-            # Fin del último partido de GRUPOS de esta tanda (para barrear la siguiente)
-            if best_match.round == MatchRound.GROUP:
-                if wave_group_end is None or s_end > wave_group_end:
-                    wave_group_end = s_end
-
-            unscheduled_wave.remove(best_match)
-
-        # Conflictos residuales
-        for m in unscheduled_wave:
-            m.status = TMatchStatus.CONFLICT
-            m.conflict_reason = (
-                "Sin hueco disponible. Amplía el rango de fechas, "
-                "añade más pistas o reduce la duración de los partidos."
+                for _pk in _all_potential_player_keys(m, config.matches):
+                    _blocked_days.update(_player_day_busy.get(_pk, set()))
+            duration = _duration_for_match(config, match=m)
+            slot = _find_best_slot(
+                match=m, active_courts=active_courts, court_tls=court_tls,
+                player_tl=player_tl, duration=duration, all_days=all_days,
+                day_start=day_start, day_end=day_end, rnd_earliest=rnd_earliest,
+                all_matches=config.matches, blocked_days=_blocked_days,
+                day_hours_fn=_day_hours,
             )
+            if slot is not None:
+                s_start, s_end, court = slot
+                candidates.append((s_start, s_end, court, m))
 
-        # ── Barrera para la tanda siguiente ────────────────────────────────
-        # La siguiente tanda (Mixto) NO empieza hasta que el ÚLTIMO partido
-        # de esta tanda (Masculino + Femenino) haya terminado completamente.
-        if wave_latest_end is not None:
-            _next = wave_latest_end + _rest_td
-            wave_prev_end = max(wave_prev_end, _next) if wave_prev_end else _next
+        if not candidates:
+            for m in ready:
+                m.status = TMatchStatus.CONFLICT
+                m.conflict_reason = (
+                    "Sin hueco disponible. Amplía el rango de fechas, "
+                    "añade más pistas o reduce la duración de los partidos."
+                )
+                unscheduled.remove(m)
+            continue
+
+        # Orden de selección (lexicográfico):
+        #   1. inicio más temprano  → compactación (no dejar pistas vacías)
+        #   2. fin más temprano     → partidos cortos primero
+        #   3. nº de tanda          → la tanda 1 (Masc+Fem) tiene prioridad; la
+        #                             tanda 2 (Mixto) solo entra cuando la 1 no
+        #                             puede llenar ese hueco → rellena la cola
+        #   4. categoría menos colocada → mezcla categorías (evita 4-Masc o 4-Fem
+        #                             seguidos cuando hay varias categorías listas)
+        #   5. rotación de grupos   → evita bloques Grupo A, luego B, luego C
+        #   6. nº de partido y UUID → determinismo
+        candidates.sort(key=lambda c: (
+            c[0],
+            c[1],
+            _wave_of(c[3]),
+            placed_per_div[c[3].division],
+            placed_per_group_name[_gid_to_name.get(c[3].group_id, "")],
+            c[3].match_number,
+            c[3].id,
+        ))
+        s_start, s_end, court, best_match = candidates[0]
+
+        _session_day = s_start.date()
+        if s_start.time() < _day_hours(s_start.date())[0]:
+            _session_day = s_start.date() - timedelta(days=1)
+        best_match.match_date = _session_day
+        best_match.start_time = s_start.time()
+        best_match.end_time   = s_end.time()
+        best_match.court      = court
+        best_match.status     = TMatchStatus.SCHEDULED
+
+        court_tls[court.id].mark_occupied(s_end)
+        # Registrar con jugadores potenciales (TBD → busca en rondas anteriores)
+        # para que el _PlayerTimeline bloquee correctamente entre tandas.
+        player_tl.record(
+            _all_potential_player_keys(best_match, config.matches), s_end
+        )
+        if _distribute:
+            _sched_day = best_match.match_date
+            for _pk in _match_player_keys(best_match):
+                _player_day_busy[_pk].add(_sched_day)
+
+        _dk = (best_match.division, best_match.round)
+        completed_rounds[_dk] += 1
+        placed_per_div[best_match.division] += 1
+        placed_per_group_name[_gid_to_name.get(best_match.group_id, "")] += 1
+        if _dk not in div_round_latest or s_end > div_round_latest[_dk]:
+            div_round_latest[_dk] = s_end
+
+        unscheduled.remove(best_match)
+
+    # Conflictos residuales (si _safety se agotó o quedaron sin hueco)
+    for m in unscheduled:
+        m.status = TMatchStatus.CONFLICT
+        m.conflict_reason = (
+            "Sin hueco disponible. Amplía el rango de fechas, "
+            "añade más pistas o reduce la duración de los partidos."
+        )
 
     return config
 
