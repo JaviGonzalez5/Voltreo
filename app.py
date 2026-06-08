@@ -7417,7 +7417,7 @@ elif page == "t_results":
     _has_bracket = any(m.round in _bracket_rounds for m in t.matches)
     if _has_bracket:
         _tr_div_keys_b = sorted({m.division for m in t.matches if m.division and m.round in _bracket_rounds} or [None])
-        with st.expander("🏆 Ver cuadro eliminatorio", expanded=len(_summ.get('played', 0) and True)):
+        with st.expander("🏆 Ver cuadro eliminatorio", expanded=bool(_summ.get('played', 0))):
             for _dk_b in _tr_div_keys_b:
                 _div_ms = {r: sorted([m for m in t.matches if m.round == r
                                        and (m.division == _dk_b or _dk_b is None)],
