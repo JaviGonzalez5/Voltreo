@@ -332,6 +332,47 @@ div[data-testid="stButton"] > button.pv-back-btn {{
     font-size: .8rem !important; font-weight: 700 !important; color: #6b7280 !important;
 }}
 
+/* ── Cuadro visual (árbol) ── */
+.pv-bracket-scroll {{ overflow-x: auto; padding: .3rem .1rem 1rem; -webkit-overflow-scrolling: touch; }}
+.pv-bracket {{ display: flex; min-width: max-content; align-items: stretch; }}
+.pv-bcol {{ display: flex; flex-direction: column; min-width: 200px; }}
+.pv-bcol:not(:last-child) {{ padding-right: 1.4rem; }}
+.pv-bcol-title {{
+    font-size: .64rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+    color: #00897b; text-align: center; padding: .2rem 0 .5rem;
+}}
+.pv-bcol-body {{ display: flex; flex-direction: column; justify-content: space-around; flex: 1; }}
+.pv-bmatch {{
+    flex: 1; display: flex; flex-direction: column; justify-content: center;
+    position: relative; padding: .45rem 0;
+}}
+.pv-bcard {{
+    background: #fff; border: 1px solid #e9ecef; border-radius: 10px; overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}}
+.pv-bteam {{
+    display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+    padding: .42rem .65rem; font-size: .82rem; color: #4b5563;
+}}
+.pv-bteam + .pv-bteam {{ border-top: 1px solid #f1f5f9; }}
+.pv-bteam.win {{ color: #065f46; font-weight: 800; background: #f7fdf9; }}
+.pv-bteam.win .sc {{ color: #00897b; }}
+.pv-bteam .nm {{ white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 135px; }}
+.pv-bteam.tbd .nm {{ color: #9ca3af; font-style: italic; }}
+.pv-bteam .sc {{ font-weight: 700; color: #111827; font-size: .76rem; white-space: nowrap; }}
+/* Conectores: stub horizontal + media-vertical por pareja, se unen en el centro */
+.pv-bcol:not(:last-child) .pv-bmatch::after {{
+    content: ''; position: absolute; top: 50%; right: .7rem; width: .7rem; height: 2px; background: #cbd5e1;
+}}
+.pv-bcol:not(:last-child) .pv-bmatch:nth-child(odd)::before {{
+    content: ''; position: absolute; right: .7rem; top: 50%; width: 2px; height: 50%; background: #cbd5e1;
+}}
+.pv-bcol:not(:last-child) .pv-bmatch:nth-child(even)::before {{
+    content: ''; position: absolute; right: .7rem; bottom: 50%; width: 2px; height: 50%; background: #cbd5e1;
+}}
+/* Partido 3er/4º puesto (suelto, fuera del árbol) */
+.pv-third {{ margin: .6rem 0 0; }}
+
 /* ── Footer ── */
 .pv-foot {{
     text-align: center; color: #9ca3af; font-size: .78rem;
@@ -518,6 +559,60 @@ def render_public_tournament(tournament_id: str) -> None:
                 unsafe_allow_html=True,
             )
 
+    def _bteam_html(pair, label, is_winner, score) -> str:
+        is_tbd = pair is None and not label
+        cls = "pv-bteam"
+        if is_winner:
+            cls += " win"
+        if is_tbd:
+            cls += " tbd"
+        nm = escape(_short_slot(pair, label))
+        sc = escape(score) if (is_winner and score) else ("✓" if is_winner else "")
+        return f'<div class="{cls}"><span class="nm">{nm}</span><span class="sc">{sc}</span></div>'
+
+    def _bmatch_html(m) -> str:
+        win1 = bool(m.winner_id and m.pair_1 and m.winner_id == m.pair_1.id)
+        win2 = bool(m.winner_id and m.pair_2 and m.winner_id == m.pair_2.id)
+        return (
+            '<div class="pv-bmatch"><div class="pv-bcard">'
+            + _bteam_html(m.pair_1, m.pair_1_label, win1, m.score)
+            + _bteam_html(m.pair_2, m.pair_2_label, win2, m.score)
+            + "</div></div>"
+        )
+
+    def _render_bracket(dms):
+        """Cuadro eliminatorio como árbol. Devuelve True si dibujó algo."""
+        tree_rounds = [r for r in [_MR.ROUND_OF_16, _MR.QUARTERFINAL,
+                                   _MR.SEMIFINAL, _MR.FINAL]
+                       if any(m.round == r for m in dms)]
+        cols = []
+        for rnd in tree_rounds:
+            ms = sorted([m for m in dms if m.round == rnd
+                         and (m.pair_1 or m.pair_2 or m.pair_1_label or m.pair_2_label)],
+                        key=lambda x: x.match_number)
+            if not ms:
+                continue
+            body = "".join(_bmatch_html(m) for m in ms)
+            cols.append(
+                f'<div class="pv-bcol"><div class="pv-bcol-title">{escape(rnd.display)}</div>'
+                f'<div class="pv-bcol-body">{body}</div></div>'
+            )
+        if not cols:
+            return False
+        st.markdown('<div class="pv-section-title">Cuadro final</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="pv-bracket-scroll"><div class="pv-bracket">{"".join(cols)}</div></div>',
+            unsafe_allow_html=True,
+        )
+        # 3er/4º puesto: suelto, debajo del árbol
+        third = [m for m in dms if m.round == _MR.THIRD_PLACE
+                 and (m.pair_1 or m.pair_2)]
+        if third:
+            st.markdown(f'<div class="pv-round">{escape(_MR.THIRD_PLACE.display)}</div>',
+                        unsafe_allow_html=True)
+            _render_match_rows(third)
+        return True
+
     def _render_division(div_key):
         nonlocal _standings
         champ = champs.get(div_key or "_")
@@ -554,24 +649,12 @@ def render_public_tournament(tournament_id: str) -> None:
                 unsafe_allow_html=True,
             )
 
-        # ── Cuadro eliminatorio ──
-        bracket_rounds = [r for r in sorted(
-            {m.round for m in dms if m.round != _MR.GROUP}, key=lambda r: r.order)]
-        bracket_html_shown = False
-        for rnd in bracket_rounds:
-            visible = [m for m in dms if m.round == rnd and (m.pair_1 or m.pair_2)]
-            if not visible:
-                continue
-            if not bracket_html_shown:
-                st.markdown('<div class="pv-section-title">Cuadro final</div>',
-                            unsafe_allow_html=True)
-                bracket_html_shown = True
-            st.markdown(f'<div class="pv-round">{escape(rnd.display)}</div>',
-                        unsafe_allow_html=True)
-            _render_match_rows(visible)
+        # ── Cuadro eliminatorio (árbol) ──
+        has_bracket = any(m.round != _MR.GROUP for m in dms)
+        bracket_drawn = _render_bracket(dms) if has_bracket else False
 
         # ── Estado vacío ──
-        if not group_matches and not bracket_rounds:
+        if not group_matches and not bracket_drawn:
             st.markdown(
                 '<div class="pv-empty">Todavía no hay partidos publicados. '
                 'Vuelve cuando empiece el torneo.</div>',
