@@ -2307,6 +2307,125 @@ def _tournament_matches_excel_bytes(t_obj) -> bytes:
     return buf.getvalue()
 
 
+def _tournament_groups_excel_bytes(t_obj) -> bytes:
+    """
+    Excel de los GRUPOS del torneo organizado por NIVELES (categorías).
+
+    Un único archivo con una hoja por nivel (Masculino 3ª, Femenino 3.5…),
+    y dentro de cada hoja la lista de grupos con sus parejas. Si el torneo no
+    tiene categorías, genera una sola hoja "Grupos".
+    """
+    import openpyxl
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+
+    navy = "0B1F33"
+    header_fill = PatternFill("solid", fgColor=navy)
+    group_fill = PatternFill("solid", fgColor="E8F7EF")
+    odd_fill = PatternFill("solid", fgColor="F8FAFC")
+    even_fill = PatternFill("solid", fgColor="FFFFFF")
+    thin = Side(style="thin", color="D9E2EC")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    used_sheets: set[str] = set()
+
+    def _division_label(key):
+        if not key:
+            return "General"
+        cat, sub = _parse_division_key(key)
+        if cat and sub:
+            return f"{cat.label} {sub.label}"
+        return str(key)
+
+    groups = list(getattr(t_obj, "groups", []) or [])
+
+    def _group_division(grp):
+        for _p in getattr(grp, "pairs", []) or []:
+            if getattr(_p, "division", None):
+                return _p.division
+        return None
+
+    # Agrupar los grupos por división (nivel)
+    by_div: dict = {}
+    for g in groups:
+        by_div.setdefault(_group_division(g), []).append(g)
+
+    # Orden de niveles: el de t.divisions; los None/extra al final
+    _div_order = list(getattr(t_obj, "divisions", []) or [])
+    ordered_keys = [k for k in _div_order if k in by_div] + [
+        k for k in by_div if k not in _div_order
+    ]
+    if not ordered_keys:
+        ordered_keys = [None]
+
+    headers = ["Grupo", "Pareja", "Jugador 1", "Jugador 2", "Cabeza de serie"]
+
+    def _title(ws, title, subtitle=""):
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
+        c = ws.cell(1, 1, title)
+        c.font = Font(bold=True, size=16, color="FFFFFF")
+        c.fill = header_fill
+        c.alignment = Alignment(horizontal="left", vertical="center")
+        ws.row_dimensions[1].height = 28
+        if subtitle:
+            ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(headers))
+            sc = ws.cell(2, 1, subtitle)
+            sc.font = Font(size=10, color="46627A")
+            sc.fill = group_fill
+            sc.alignment = Alignment(horizontal="left", vertical="center")
+
+    for _key in ordered_keys:
+        _label = _division_label(_key)
+        _grps = by_div.get(_key, [])
+        ws = wb.create_sheet(_safe_excel_sheet_name(_label or "Grupos", used_sheets))
+        _title(ws, _label, f"{len(_grps)} grupos · "
+                           f"{sum(len(getattr(g, 'pairs', []) or []) for g in _grps)} parejas")
+        # Cabecera de tabla
+        _row = 4
+        for ci, h in enumerate(headers, 1):
+            cell = ws.cell(_row, ci, h)
+            cell.font = Font(bold=True, color="FFFFFF", size=10)
+            cell.fill = header_fill
+            cell.border = border
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+        _row += 1
+        _zebra = 0
+        for g in _grps:
+            _pairs = list(getattr(g, "pairs", []) or [])
+            for _p in _pairs:
+                _vals = [
+                    g.name,
+                    _p.display_name,
+                    _p.player_1.full_name if getattr(_p, "player_1", None) else "",
+                    _p.player_2.full_name if getattr(_p, "player_2", None) else "",
+                    f"#{_p.seed}" if getattr(_p, "seed", None) else "",
+                ]
+                fill = group_fill if _zebra % 2 == 0 else even_fill
+                for ci, v in enumerate(_vals, 1):
+                    cell = ws.cell(_row, ci, v)
+                    cell.fill = odd_fill if (ci == 1) else fill
+                    cell.border = border
+                    cell.font = Font(size=10, color="102A43", bold=(ci == 1))
+                    cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+                _row += 1
+            _zebra += 1
+        # Anchos de columna
+        ws.freeze_panes = "A5"
+        for ci in range(1, len(headers) + 1):
+            _maxw = len(headers[ci - 1])
+            for _r in range(5, _row):
+                _v = ws.cell(_r, ci).value
+                if _v:
+                    _maxw = max(_maxw, len(str(_v)))
+            ws.column_dimensions[get_column_letter(ci)].width = min(_maxw + 3, 40)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 def _tournament_schedule_excel_bytes(t_obj) -> bytes:
     """Excel visual para imprimir/compartir horarios del torneo."""
     import openpyxl
@@ -6840,10 +6959,12 @@ elif page == "t_pairs":
             _stat_chips(*[(f"{v} · {k}", "green" if "sin asignar" not in k else "red", "🎾") for k, v in _cnt.items()])
 
         # ── Tabla editable: editar categoría + eliminar pareja ──────────────
-        _pairs_sorted = sorted(enumerate(t.pairs), key=lambda x: (x[1].division or "zzz")) if _t_multi else list(enumerate(t.pairs))
+        # Cuando hay varias categorías, las parejas se muestran agrupadas por
+        # nivel en desplegables (más limpio y fácil de revisar).
         _pair_id_to_idx = {p.id: i for i, p in enumerate(t.pairs)}
-        _changed = False
-        for _orig_idx, _pp in _pairs_sorted:
+        _changed_flag = {"v": False}
+
+        def _render_pair_row(_pp):
             _c1, _c2, _c3, _c4 = st.columns([3, 2, 1, 1])
             with _c1:
                 st.markdown(f"**{escape(_pp.display_name)}**")
@@ -6858,7 +6979,7 @@ elif page == "t_pairs":
                     )
                     if _new_div != _pp.division:
                         t.pairs[_pair_id_to_idx[_pp.id]].division = _new_div
-                        _changed = True
+                        _changed_flag["v"] = True
                 else:
                     st.caption(f"Cabeza serie: {_pp.seed or '—'}")
             with _c3:
@@ -6869,7 +6990,7 @@ elif page == "t_pairs":
                 )
                 if (_new_seed or None) != _pp.seed:
                     t.pairs[_pair_id_to_idx[_pp.id]].seed = _new_seed if _new_seed > 0 else None
-                    _changed = True
+                    _changed_flag["v"] = True
             with _c4:
                 if st.button("🗑️", key=f"tdel_{_pp.id}", help=f"Eliminar {_pp.display_name}"):
                     t.pairs = [p for p in t.pairs if p.id != _pp.id]
@@ -6877,6 +6998,27 @@ elif page == "t_pairs":
                     _autosave_tournament(t)
                     st.rerun()
 
+        if _t_multi:
+            _pairs_by_div: dict = {}
+            for _pp in t.pairs:
+                _k = _pp.division if _pp.division in _t_div_keys else None
+                _pairs_by_div.setdefault(_k, []).append(_pp)
+            _order_p = [k for k in _t_div_keys if k in _pairs_by_div]
+            if None in _pairs_by_div:
+                _order_p.append(None)
+            for _k in _order_p:
+                _plist = _pairs_by_div.get(_k, [])
+                if not _plist:
+                    continue
+                _lbl_p = _div_label(_k) if _k else "⚠️ Sin categoría asignada"
+                with st.expander(f"🎾 {_lbl_p} — {len(_plist)} parejas", expanded=True):
+                    for _pp in _plist:
+                        _render_pair_row(_pp)
+        else:
+            for _pp in t.pairs:
+                _render_pair_row(_pp)
+
+        _changed = _changed_flag["v"]
         if _changed:
             # Cambio de categoría o seed: resetear cuadro y guardar
             t.groups = []; t.matches = []; t.division_draws = []
@@ -7263,13 +7405,51 @@ elif page == "t_generate":
     if t.groups:
         st.divider()
         _section_start("📋", "Grupos")
-        _gcols = st.columns(min(len(t.groups), 4))
-        for _gi, _grp in enumerate(t.groups):
-            with _gcols[_gi % 4]:
-                st.markdown(f"**{_grp.name}**")
-                for _pp in _grp.pairs:
-                    _seed_txt = f" 🏅#{_pp.seed}" if _pp.seed else ""
-                    st.markdown(f"• {_pp.display_name}{_seed_txt}")
+
+        # ── Exportar grupos a Excel (un archivo, una hoja por nivel) ──────────
+        _grp_slug = re.sub(r"[^A-Za-z0-9_-]+", "_", t.name.strip()).strip("_") or "torneo"
+        st.download_button(
+            "⬇️ Exportar grupos a Excel (por niveles)",
+            data=_tournament_groups_excel_bytes(t),
+            file_name=f"grupos_{_grp_slug}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="dl_t_groups_excel",
+            use_container_width=True,
+        )
+
+        # ── Mostrar los grupos agrupados por nivel ───────────────────────────
+        def _grp_div(_g):
+            for _p in (_g.pairs or []):
+                if getattr(_p, "division", None):
+                    return _p.division
+            return None
+
+        _groups_by_div: dict = {}
+        for _grp in t.groups:
+            _groups_by_div.setdefault(_grp_div(_grp), []).append(_grp)
+        _div_order_g = [k for k in (getattr(t, "divisions", []) or []) if k in _groups_by_div] + \
+                       [k for k in _groups_by_div if k not in (getattr(t, "divisions", []) or [])]
+        _multi_lvl = len([k for k in _groups_by_div if k is not None]) > 1
+
+        def _render_groups_cols(_grps):
+            _gcols = st.columns(min(len(_grps), 4) or 1)
+            for _gi, _grp in enumerate(_grps):
+                with _gcols[_gi % 4]:
+                    st.markdown(f"**{_grp.name}**")
+                    for _pp in _grp.pairs:
+                        _seed_txt = f" 🏅#{_pp.seed}" if _pp.seed else ""
+                        st.markdown(f"• {_pp.display_name}{_seed_txt}")
+
+        if _multi_lvl:
+            for _k in _div_order_g:
+                _grps = _groups_by_div.get(_k, [])
+                if not _grps:
+                    continue
+                _lvl_lbl = _tg_div_labels.get(_k, _k or "General")
+                with st.expander(f"🎾 {_lvl_lbl} — {len(_grps)} grupos", expanded=True):
+                    _render_groups_cols(_grps)
+        else:
+            _render_groups_cols(t.groups)
 
     if t.matches:
         st.divider()
