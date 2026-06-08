@@ -4935,9 +4935,12 @@ elif page == "generate":
                       delta_color="inverse")
 
             m4, m5, m6 = st.columns(3)
-            m4.metric("📌 En pista fija", len(_pf_ok),
-                      help=f"De {len(_pf_expected)} partidos con pareja de pista fija, "
-                           f"{len(_pf_ok)} cayeron en su franja preferida.")
+            m4.metric("📌 Pista fija", len(_pf_expected),
+                      delta=(f"{len(_pf_ok)} en su franja" if (_pf_expected and _sched_ms) else None),
+                      delta_color="off",
+                      help="Partidos que involucran una pareja con pista fija (PF). "
+                           f"De ellos, {len(_pf_ok)} ya están colocados en su día/hora "
+                           "preferido (el resto se colocará al asignar horarios).")
             m5.metric("📋 Manual", len(_manual_ms),
                       help="Parejas marcadas como asignación manual (p.ej. «MIRAR MAIL»).")
             if result:

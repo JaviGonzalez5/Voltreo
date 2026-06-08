@@ -96,33 +96,51 @@ def _booking_belongs_to_court(booking: Booking, court: Court) -> bool:
     return False
 
 
+def _coerce_time(v) -> "Optional[time]":
+    """Acepta un time o una cadena ISO ('20:30', '20:30:00') y devuelve time|None.
+
+    Necesario porque preferred_slots es list[dict]: al guardar/cargar de la BD,
+    su 'time' se serializa a string y NO se reconstruye a `time` (a diferencia de
+    los campos tipados preferred_time). Sin esto, las franjas PF multi-slot se
+    pierden tras recargar la fase y aparecen 0 partidos en pista fija.
+    """
+    if isinstance(v, time):
+        return v
+    if isinstance(v, str) and v.strip():
+        parts = v.strip().split(":")
+        try:
+            return time(int(parts[0]), int(parts[1]) if len(parts) > 1 else 0)
+        except (ValueError, IndexError):
+            return None
+    return None
+
+
 def _pair_pf_slots(pair) -> list[tuple[int, time]]:
     """
     Devuelve todas las franjas PF de una pareja como (weekday, time),
     soportando formato nuevo (preferred_slots) y legado (preferred_weekday/time).
+    Tolera horas en string (tras round-trip de BD).
     """
     slots: list[tuple[int, time]] = []
     seen: set[tuple[int, time]] = set()
 
     raw_slots = getattr(pair, "preferred_slots", None) or []
     for item in raw_slots:
-        wd = None
-        tt = None
         if isinstance(item, dict):
             wd = item.get("weekday")
-            tt = item.get("time")
+            tt = _coerce_time(item.get("time"))
         else:
             wd = getattr(item, "weekday", None)
-            tt = getattr(item, "time", None)
-        if isinstance(wd, int) and isinstance(tt, time):
+            tt = _coerce_time(getattr(item, "time", None))
+        if isinstance(wd, int) and tt is not None:
             key = (wd, tt)
             if key not in seen:
                 seen.add(key)
                 slots.append(key)
 
     pw = getattr(pair, "preferred_weekday", None)
-    pt = getattr(pair, "preferred_time", None)
-    if isinstance(pw, int) and isinstance(pt, time):
+    pt = _coerce_time(getattr(pair, "preferred_time", None))
+    if isinstance(pw, int) and pt is not None:
         key = (pw, pt)
         if key not in seen:
             seen.add(key)

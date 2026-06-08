@@ -214,3 +214,39 @@ class TestMidnightClose:
         assert len(result.scheduled) == 6  # todos caben en la franja 20:00–00:00
         # Alguno puede empezar a las 22:30 (termina justo a 00:00)
         assert all(m.suggested_end_time is not None for m in result.scheduled)
+
+
+# ---------------------------------------------------------------------------
+# Regresión: las franjas PF de preferred_slots sobreviven al round-trip de BD
+# (su 'time' se serializa a string; antes se perdían y salían 0 en pista fija).
+# ---------------------------------------------------------------------------
+
+def test_pf_slots_survive_db_round_trip():
+    from src.scheduler import _pair_pf_slots
+    import src.schedule_validator as _sv
+
+    p = _pair("multi",
+              preferred_weekday=2, preferred_time=time(20, 30),
+              preferred_slots=[{"weekday": 2, "time": time(20, 30)},
+                               {"weekday": 4, "time": time(19, 0)}])
+    g = Group(name="A", pairs=[p])
+
+    # Round-trip JSON como hace la base de datos
+    g2 = Group.model_validate(g.model_dump(mode="json"))
+    p2 = g2.pairs[0]
+
+    # preferred_slots['time'] vuelve como string tras el round-trip…
+    assert isinstance(p2.preferred_slots[0]["time"], str)
+    # …pero _pair_pf_slots debe reconstruir AMBAS franjas (scheduler y validador)
+    assert set(_pair_pf_slots(p2)) == {(2, time(20, 30)), (4, time(19, 0))}
+    assert set(_sv._pair_pf_slots(p2)) == {(2, time(20, 30)), (4, time(19, 0))}
+
+
+def test_coerce_time_accepts_str_and_time():
+    from src.scheduler import _coerce_time
+    assert _coerce_time(time(20, 30)) == time(20, 30)
+    assert _coerce_time("20:30") == time(20, 30)
+    assert _coerce_time("20:30:00") == time(20, 30)
+    assert _coerce_time("") is None
+    assert _coerce_time(None) is None
+    assert _coerce_time("nonsense") is None
