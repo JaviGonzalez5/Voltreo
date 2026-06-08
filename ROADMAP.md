@@ -97,7 +97,7 @@ Streamlit (admin privado)  ←→  Supabase (DB)  ←→  Next.js (vistas públi
 | Vista pública compartible | ✅ Funciona | `src/public_view.py` → `?t=<id>` |
 | Inscripción pública por URL | ✅ Funciona | `src/public_view.py` → `?join=<id>` |
 | Exportar Excel | ✅ Funciona | `page == "t_export"` |
-| **Filtros y búsqueda en listas** | ❌ No existe | st.multiselect por categoría/estado (QoL) |
+| Filtros y búsqueda en listas | ✅ Funciona | `src/list_filters.py` + UI en Mis Rankings, Mis Torneos, Admin Clubs/Usuarios (texto + estado/categoría/rol/club) |
 
 ---
 

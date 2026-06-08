@@ -2953,6 +2953,28 @@ if page == "rankings":
                      "Crea tu primera fase con el botón de arriba.")
         st.stop()
 
+    # ── Búsqueda y filtros ───────────────────────────────────────────────────
+    from src.list_filters import filter_phases as _filter_phases
+    _rk_total = len(_rk_phases)
+    if _rk_total > 1:
+        _fk1, _fk2 = st.columns([3, 1])
+        with _fk1:
+            _rk_query = st.text_input(
+                "Buscar fase", key="rk_search",
+                placeholder="Buscar por nombre…", label_visibility="collapsed",
+            )
+        with _fk2:
+            _rk_estado = st.selectbox(
+                "Estado", ["Todas", "Activa", "Inactiva"],
+                key="rk_estado", label_visibility="collapsed",
+            )
+        _rk_phases = _filter_phases(_rk_phases, _rk_query, _rk_estado)
+        st.caption(f"Mostrando {len(_rk_phases)} de {_rk_total} fases")
+        if not _rk_phases:
+            _empty_state("🔍", "Sin resultados",
+                         "Ninguna fase coincide con la búsqueda o el filtro.")
+            st.stop()
+
     _ES_MON_RK = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"]
     def _fmt_range_rk(s: str, e: str) -> str:
         try:
@@ -3131,6 +3153,53 @@ if page == "tournaments":
 
     _current_tid = _s.get("db_tournament_id")
 
+    # ── Búsqueda y filtros ───────────────────────────────────────────────────
+    from src.list_filters import filter_tournaments as _filter_tournaments, all_division_keys as _all_div_keys
+    _t_total = len(_all_t_rows)
+    if _t_total > 1:
+        # Etiqueta legible de una clave de división ("masculino:1a" → "Masculino 1ª")
+        from src.tournament_models import TournamentCategory as _TCat, TournamentSubcategory as _TSub
+        def _t_div_label(_k: str) -> str:
+            _cat, _, _sub = _k.partition(":")
+            _c = next((x for x in _TCat if x.value == _cat), None)
+            _s2 = next((x for x in _TSub if x.value == _sub), None)
+            return " ".join(p for p in [_c.label if _c else "", _s2.label if _s2 else ""] if p) or _k
+
+        _div_keys_all = _all_div_keys(_all_t_rows)
+        _status_labels = ["En juego", "Torneos activos", "Próximo", "Configurado", "Terminado"]
+
+        _tf1, _tf2 = st.columns([3, 2])
+        with _tf1:
+            _t_query = st.text_input(
+                "Buscar torneo", key="t_search",
+                placeholder="Buscar por nombre…", label_visibility="collapsed",
+            )
+        with _tf2:
+            _t_status_sel = st.multiselect(
+                "Estado", _status_labels, key="t_status_filter",
+                placeholder="Estado…", label_visibility="collapsed",
+            )
+        if _div_keys_all:
+            _t_cat_sel = st.multiselect(
+                "Categoría",
+                _div_keys_all, key="t_cat_filter",
+                format_func=_t_div_label,
+                placeholder="Categoría…", label_visibility="collapsed",
+            )
+        else:
+            _t_cat_sel = []
+
+        _all_t_rows = _filter_tournaments(
+            _all_t_rows, query=_t_query, categories=_t_cat_sel,
+            statuses=_t_status_sel, status_of=lambda r: _t_status(r)[0],
+        )
+        st.caption(f"Mostrando {len(_all_t_rows)} de {_t_total} torneos")
+        if not _all_t_rows:
+            _empty_state("🔍", "Sin resultados",
+                         "Ningún torneo coincide con la búsqueda o los filtros.")
+            _mobile_footer_now(page)
+            st.stop()
+
     # Agrupar por estado
     _groups_t = {"En juego": [], "Próximo": [], "Torneos activos": [], "Configurado": [], "Terminado": []}
     for _row in _all_t_rows:
@@ -3254,7 +3323,7 @@ if page == "tournaments":
                         st.rerun()
 
     st.divider()
-    st.caption(f"Total: {len(_all_t_rows)} torneo(s) guardado(s) en este club.")
+    st.caption(f"Total: {len(_all_t_rows)} torneo(s) mostrados en este club.")
 
 
 # ---------------------------------------------------------------------------
@@ -7708,9 +7777,24 @@ elif page == "admin":
         st.markdown("### Clubs registrados")
         _clubs_list = _db.list_clubs()
         if _clubs_list:
-            _df_clubs = pd.DataFrame(_clubs_list)[["id", "name", "slug", "created_at"]]
-            _df_clubs.columns = ["ID", "Nombre", "Slug", "Creado"]
-            st.dataframe(_df_clubs, use_container_width=True, hide_index=True)
+            from src.list_filters import filter_clubs as _filter_clubs
+            _clubs_total = len(_clubs_list)
+            if _clubs_total > 1:
+                _cl_query = st.text_input(
+                    "Buscar club", key="admin_clubs_search",
+                    placeholder="Buscar por nombre o slug…", label_visibility="collapsed",
+                )
+                _clubs_view = _filter_clubs(_clubs_list, _cl_query)
+                if _cl_query:
+                    st.caption(f"Mostrando {len(_clubs_view)} de {_clubs_total} clubs")
+            else:
+                _clubs_view = _clubs_list
+            if _clubs_view:
+                _df_clubs = pd.DataFrame(_clubs_view)[["id", "name", "slug", "created_at"]]
+                _df_clubs.columns = ["ID", "Nombre", "Slug", "Creado"]
+                st.dataframe(_df_clubs, use_container_width=True, hide_index=True)
+            else:
+                st.info("Ningún club coincide con la búsqueda.")
         else:
             st.info("No hay clubs registrados todavía.")
 
@@ -7744,9 +7828,37 @@ elif page == "admin":
         _clubs_for_select = _db.list_clubs()
         _club_id_to_name = {c["id"]: c["name"] for c in _clubs_for_select}
         if _users_list:
+            # ── Búsqueda y filtros (solo afectan a la tabla mostrada) ─────────
+            from src.list_filters import filter_users as _filter_users, ALL as _FILTER_ALL
+            _users_view = _users_list
+            if len(_users_list) > 1:
+                _uf1, _uf2, _uf3 = st.columns([3, 2, 2])
+                with _uf1:
+                    _u_query = st.text_input(
+                        "Buscar usuario", key="admin_users_search",
+                        placeholder="Usuario, nombre o email…", label_visibility="collapsed",
+                    )
+                with _uf2:
+                    _u_role_lbl = st.selectbox(
+                        "Rol", ["Todos los roles", "Admin de club", "Super Admin"],
+                        key="admin_users_role", label_visibility="collapsed",
+                    )
+                _u_role = {"Admin de club": "club_admin", "Super Admin": "superadmin"}.get(_u_role_lbl, "Todos")
+                with _uf3:
+                    _u_club_map = {"Todos los clubs": _FILTER_ALL, "— Sin club —": None}
+                    _u_club_map.update({c["name"]: c["id"] for c in _clubs_for_select})
+                    _u_club_lbl = st.selectbox(
+                        "Club", list(_u_club_map.keys()),
+                        key="admin_users_club", label_visibility="collapsed",
+                    )
+                _u_club_id = _u_club_map[_u_club_lbl]
+                _users_view = _filter_users(_users_list, _u_query, _u_role, _u_club_id)
+                if len(_users_view) != len(_users_list):
+                    st.caption(f"Mostrando {len(_users_view)} de {len(_users_list)} usuarios")
+
             # Tabla legible: club por nombre, sin hash, columnas ordenadas
             _rows_u = []
-            for _u in _users_list:
+            for _u in _users_view:
                 _rows_u.append({
                     "Usuario":     _u.get("username", ""),
                     "Nombre":      _u.get("display_name", ""),
@@ -7755,7 +7867,10 @@ elif page == "admin":
                     "Email":       _u.get("email", "") or "—",
                     "Activo":      "✅" if _u.get("is_active", True) else "🚫",
                 })
-            st.dataframe(pd.DataFrame(_rows_u), use_container_width=True, hide_index=True)
+            if _rows_u:
+                st.dataframe(pd.DataFrame(_rows_u), use_container_width=True, hide_index=True)
+            else:
+                st.info("Ningún usuario coincide con la búsqueda o los filtros.")
         else:
             st.info("No hay usuarios registrados todavía.")
 
