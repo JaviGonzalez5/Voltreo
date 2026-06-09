@@ -4795,6 +4795,18 @@ elif page == "import":
                                 f"({_fd}{_more}). El total mostrado es **parcial** — vuelve a "
                                 "pulsar **Importar** para completar esos días."
                             )
+                            _reasons = getattr(conn_bk, "last_fail_reason", {}) or {}
+                            if _reasons:
+                                with st.expander("¿Por qué fallaron esos días?"):
+                                    for _d in _bk_failed:
+                                        st.markdown(
+                                            f"- **{_d.strftime('%d/%m/%Y')}**: "
+                                            f"{_reasons.get(_d, 'motivo desconocido')}"
+                                        )
+                                    st.caption(
+                                        "Suele ser por lentitud/saturación puntual de Syltek. "
+                                        "Reintentar casi siempre los completa."
+                                    )
 
                         if bookings:
                             st.success(

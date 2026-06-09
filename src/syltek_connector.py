@@ -28,6 +28,22 @@ from bs4 import BeautifulSoup
 from .config import settings
 from .models import Booking, Court, Group, Pair, Player
 
+
+def _short_fail_reason(e) -> str:
+    """Traduce la excepción de un día fallido a un motivo legible para el usuario."""
+    s = str(e).lower()
+    if "timeout" in s or "timed out" in s:
+        return "tiempo de espera agotado (día con muchas reservas o Syltek lento)"
+    if "max retries" in s or "connection" in s or "connectionerror" in s:
+        return "error de conexión con Syltek"
+    if any(code in s for code in ("500", "502", "503", "504", "server error")):
+        return "Syltek devolvió error de servidor (5xx)"
+    if "404" in s:
+        return "el día no existe en Syltek (404)"
+    if "timetable" in s or "parse" in s or "parseo" in s:
+        return "formato del calendario no reconocido ese día"
+    return (str(e)[:140] or "error desconocido")
+
 logger = logging.getLogger(__name__)
 
 PADELPLUS_BASE = "https://padelplus.syltek.com"
@@ -195,6 +211,7 @@ class SyltekConnector:
         # para avisar al usuario: si esta lista no está vacía el total es PARCIAL,
         # lo que explicaba que cada importación devolviera un número distinto.
         self.last_failed_days: list[date] = []
+        self.last_fail_reason: dict[date, str] = {}   # {día: motivo legible}
         current = from_date
         total_days = (to_date - from_date).days + 1
         day_num = 0
@@ -204,6 +221,7 @@ class SyltekConnector:
                 bookings.extend(self._get_bookings_for_day(current))
             except Exception as e:
                 self.last_failed_days.append(current)
+                self.last_fail_reason[current] = _short_fail_reason(e)
                 logger.warning("Día %s no leído (se omite del total): %s", current, e)
             day_num += 1
             if progress_callback:
@@ -231,7 +249,9 @@ class SyltekConnector:
         last_err = None
         for _attempt in range(max(1, _attempts)):
             try:
-                r = self._session.get(url, timeout=20)
+                # Timeout amplio: algunos días tienen muchísimas reservas y Syltek
+                # tarda en responder; 20s se quedaba corto y daba timeout.
+                r = self._session.get(url, timeout=40)
                 r.raise_for_status()
             except requests.RequestException as e:
                 last_err = e
