@@ -3295,7 +3295,7 @@ def _mobile_footer_now(current_page: str) -> None:
 # ---------------------------------------------------------------------------
 
 if page == "rankings":
-    _page_header("📊", "Mis Rankings", "Todas las fases de ranking del club — crea, carga, activa o elimina")
+    _page_header("📊", "Mis Rankings", "Las fases de ranking del club — abre una para trabajar, renómbrala o elimínala")
 
     _rk_cid = current_club_id() if _db_ok else None
 
@@ -3366,76 +3366,162 @@ if page == "rankings":
 
     _rk_current = st.session_state.get("db_phase_id")
 
-    for _ph in _rk_phases:
-        _ph_id   = _ph["id"]
-        _is_act  = bool(_ph.get("is_active"))
-        _is_load = (_ph_id == _rk_current)
-        with st.container(border=True):
-            _c1, _c2 = st.columns([3, 2])
-            with _c1:
-                _badge = ""
-                if _is_act:  _badge += " 🟢 Activa"
-                if _is_load: _badge += " · 📂 Cargada"
-                st.markdown(f"**{escape(_ph['name'])}**{_badge}")
-                st.caption(_fmt_range_rk(_ph["start_date"], _ph["end_date"]))
-            with _c2:
-                _b1, _b2, _b3 = st.columns(3)
-                with _b1:
-                    if st.button("📂 Cargar", key=f"rk_load_{_ph_id}", use_container_width=True):
-                        _row = _db.get_phase(_ph_id, _rk_cid)
-                        if _row:
-                            from src.db_converters import phase_from_db as _pfdb
-                            _lp, _lr = _pfdb(_row)
-                            if _lp:
-                                st.session_state.phase = _lp
-                                st.session_state["db_phase_id"] = _ph_id
-                                st.session_state.groups = list(_lp.groups or [])
-                                st.session_state.data_loaded = bool(_lp.groups)
-                                st.session_state.bookings = list(_lp.bookings or [])
-                                if _lr:
-                                    st.session_state.schedule_result = _lr
-                                    st.session_state.matches_scheduled = True
-                                    st.session_state.matches = _lr.scheduled + _lr.conflicts
-                                    st.session_state.matches_generated = True
-                                else:
-                                    st.session_state.schedule_result = None
-                                    st.session_state.matches_scheduled = False
-                                st.success(f"✅ '{_ph['name']}' cargada.")
-                                _nav_to("config")
-                with _b2:
-                    if st.button("🟢 Activar", key=f"rk_act_{_ph_id}",
-                                 use_container_width=True, disabled=_is_act):
-                        try:
-                            _db.set_phase_active(_ph_id, _rk_cid)
-                            st.success(f"✅ '{_ph['name']}' es ahora la fase activa.")
-                            st.rerun()
-                        except Exception as _e_act:
-                            st.error(f"No se pudo activar: {_e_act}")
-                with _b3:
-                    if st.button("🗑️", key=f"rk_del_{_ph_id}",
-                                 use_container_width=True, help="Eliminar fase"):
-                        st.session_state["_confirm_del_phase"] = _ph_id
-                        st.rerun()
+    st.markdown("""
+<style>
+.rkcard { background:linear-gradient(135deg,#0a1622,#0d2b37);
+  border:1px solid rgba(127,255,192,.14); border-radius:14px; padding:1rem 1.2rem .9rem;
+  box-shadow:0 6px 22px rgba(0,0,0,.18); margin-bottom:.25rem; }
+.rkcard.live { border-color:rgba(127,255,192,.45); }
+.rkcard-top { display:flex; align-items:center; justify-content:space-between; gap:.6rem; flex-wrap:wrap; }
+.rkcard-name { color:#fff; font-weight:800; font-size:1.06rem; letter-spacing:-.01em; }
+.rkcard-pill { font-size:.62rem; font-weight:800; letter-spacing:.09em; text-transform:uppercase;
+  padding:.22rem .6rem; border-radius:20px; white-space:nowrap; }
+.rkcard-pill.live { background:rgba(0,200,83,.18); color:#7fffc0; border:1px solid rgba(127,255,192,.45); }
+.rkcard-pill.off  { background:#13243a; color:#6b8bab; border:1px solid #1e3a58; }
+.rkcard-dates { color:#9ec0dc; font-size:.82rem; margin-top:.3rem; }
+.rkcard-prog { margin-top:.75rem; }
+.rkcard-prog-bar { height:8px; border-radius:6px; background:#13243a; overflow:hidden; }
+.rkcard-prog-bar > span { display:block; height:100%; background:linear-gradient(90deg,#00c853,#00897b); }
+.rkcard-prog-txt { color:#9ec0dc; font-size:.72rem; margin-top:.32rem; display:flex; justify-content:space-between; }
+.rkcard-prog-txt b { color:#7fffc0; }
+.rkcard-empty { color:#6b8bab; font-size:.76rem; margin-top:.6rem; font-style:italic; }
+</style>""", unsafe_allow_html=True)
 
-            if st.session_state.get("_confirm_del_phase") == _ph_id:
-                st.warning(f"⚠️ ¿Eliminar **{_ph['name']}**? No se puede deshacer.")
-                _dc1, _dc2 = st.columns(2)
-                with _dc1:
-                    if st.button("Sí, eliminar", key=f"rk_delyes_{_ph_id}", type="primary"):
+    from math import comb as _comb
+    def _phase_progress(ph: dict):
+        """(jugados, total) de una fase, cacheado por id+updated_at."""
+        _ck = f"_rkprog_{ph['id']}_{ph.get('updated_at') or ph.get('created_at') or ''}"
+        if _ck in st.session_state:
+            return st.session_state[_ck]
+        _played = _total = 0
+        try:
+            _full = _db.get_phase(ph["id"], _rk_cid)
+            if _full:
+                from src.db_converters import phase_from_db as _pf
+                _p, _ = _pf(_full)
+                if _p:
+                    _total  = sum(_comb(len(g.pairs), 2) for g in _p.groups)
+                    _played = sum(1 for r in getattr(_p, "match_results", []) if r.is_played)
+        except Exception:
+            pass
+        st.session_state[_ck] = (_played, _total)
+        return _played, _total
+
+    def _open_phase(ph_id: str, name: str):
+        """Abrir = cargar en sesión Y marcar como fase en curso del club."""
+        _row = _db.get_phase(ph_id, _rk_cid)
+        if not _row:
+            st.error("No se pudo abrir la fase."); return
+        from src.db_converters import phase_from_db as _pfdb
+        _lp, _lr = _pfdb(_row)
+        if not _lp:
+            st.error("No se pudo abrir la fase."); return
+        st.session_state.phase = _lp
+        st.session_state["db_phase_id"] = ph_id
+        st.session_state.groups = list(_lp.groups or [])
+        st.session_state.data_loaded = bool(_lp.groups)
+        st.session_state.bookings = list(_lp.bookings or [])
+        if _lr:
+            st.session_state.schedule_result = _lr
+            st.session_state.matches_scheduled = True
+            st.session_state.matches = _lr.scheduled + _lr.conflicts
+            st.session_state.matches_generated = True
+        else:
+            st.session_state.schedule_result = None
+            st.session_state.matches_scheduled = False
+            st.session_state.matches = []
+            st.session_state.matches_generated = False
+        try:
+            _db.set_phase_active(ph_id, _rk_cid)   # carga + activa de una vez
+        except Exception:
+            pass
+        _nav_to("config")
+
+    for _ph in _rk_phases:
+        _ph_id  = _ph["id"]
+        _is_act = bool(_ph.get("is_active"))
+        _played, _total = _phase_progress(_ph)
+        _pct = int(100 * _played / _total) if _total else 0
+        _pill = ('<span class="rkcard-pill live">● En curso</span>' if _is_act
+                 else '<span class="rkcard-pill off">Inactiva</span>')
+        if _total:
+            _prog_html = (
+                f'<div class="rkcard-prog"><div class="rkcard-prog-bar">'
+                f'<span style="width:{_pct}%"></span></div>'
+                f'<div class="rkcard-prog-txt"><span>Progreso · {_pct}%</span>'
+                f'<span><b>{_played}</b> / {_total} partidos jugados</span></div></div>'
+            )
+        else:
+            _prog_html = '<div class="rkcard-empty">Sin parejas todavía — importa datos para empezar.</div>'
+
+        st.markdown(
+            f'<div class="rkcard {"live" if _is_act else ""}">'
+            f'<div class="rkcard-top"><span class="rkcard-name">{escape(_ph["name"])}</span>{_pill}</div>'
+            f'<div class="rkcard-dates">📅 {_fmt_range_rk(_ph["start_date"], _ph["end_date"])}</div>'
+            f'{_prog_html}</div>',
+            unsafe_allow_html=True,
+        )
+
+        _b1, _b2, _b3 = st.columns([2, 1, 1])
+        with _b1:
+            if st.button("📂 Abrir", key=f"rk_open_{_ph_id}", type="primary",
+                         use_container_width=True):
+                _open_phase(_ph_id, _ph["name"])
+        with _b2:
+            if st.button("✏️ Renombrar", key=f"rk_ren_{_ph_id}", use_container_width=True):
+                st.session_state["_rename_phase"] = _ph_id
+                st.rerun()
+        with _b3:
+            if st.button("🗑️ Borrar", key=f"rk_del_{_ph_id}", use_container_width=True):
+                st.session_state["_confirm_del_phase"] = _ph_id
+                st.rerun()
+
+        # Renombrar inline
+        if st.session_state.get("_rename_phase") == _ph_id:
+            _rn1, _rn2, _rn3 = st.columns([3, 1, 1])
+            with _rn1:
+                _new_name = st.text_input("Nuevo nombre", value=_ph["name"],
+                                          key=f"rk_rename_input_{_ph_id}",
+                                          label_visibility="collapsed")
+            with _rn2:
+                if st.button("Guardar", key=f"rk_renok_{_ph_id}", type="primary", use_container_width=True):
+                    _nn = str(_new_name).strip()
+                    if _nn:
                         try:
-                            _db.delete_phase(_ph_id, _rk_cid)
-                            st.session_state.pop("_confirm_del_phase", None)
-                            if _ph_id == _rk_current:
-                                st.session_state.phase = None
-                                st.session_state["db_phase_id"] = None
-                            st.success(f"✅ '{_ph['name']}' eliminada.")
+                            _db.rename_phase(_ph_id, _rk_cid, _nn)
+                            if _ph_id == _rk_current and st.session_state.phase is not None:
+                                st.session_state.phase.name = _nn
+                            st.session_state.pop("_rename_phase", None)
                             st.rerun()
-                        except Exception as _e_dp:
-                            st.error(f"Error al eliminar: {_e_dp}")
-                with _dc2:
-                    if st.button("Cancelar", key=f"rk_delno_{_ph_id}"):
+                        except Exception as _e_rn:
+                            st.error(f"No se pudo renombrar: {_e_rn}")
+            with _rn3:
+                if st.button("Cancelar", key=f"rk_rencancel_{_ph_id}", use_container_width=True):
+                    st.session_state.pop("_rename_phase", None)
+                    st.rerun()
+
+        # Confirmar borrado
+        if st.session_state.get("_confirm_del_phase") == _ph_id:
+            st.warning(f"⚠️ ¿Eliminar **{escape(_ph['name'])}**? No se puede deshacer.")
+            _dc1, _dc2 = st.columns(2)
+            with _dc1:
+                if st.button("Sí, eliminar", key=f"rk_delyes_{_ph_id}", type="primary",
+                             use_container_width=True):
+                    try:
+                        _db.delete_phase(_ph_id, _rk_cid)
                         st.session_state.pop("_confirm_del_phase", None)
+                        if _ph_id == _rk_current:
+                            st.session_state.phase = None
+                            st.session_state["db_phase_id"] = None
                         st.rerun()
+                    except Exception as _e_dp:
+                        st.error(f"Error al eliminar: {_e_dp}")
+            with _dc2:
+                if st.button("Cancelar", key=f"rk_delno_{_ph_id}", use_container_width=True):
+                    st.session_state.pop("_confirm_del_phase", None)
+                    st.rerun()
+
+        st.markdown('<div style="height:.55rem"></div>', unsafe_allow_html=True)
 
     st.stop()
 

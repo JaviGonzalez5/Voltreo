@@ -309,6 +309,12 @@ class SupabaseDB:
     def delete_phase(self, phase_id: str, club_id: str) -> None:
         self._c.table("ranking_phases").delete().eq("id", phase_id).eq("club_id", club_id).execute()
 
+    def rename_phase(self, phase_id: str, club_id: str, name: str) -> None:
+        """Renombra una fase (solo el nombre, sin tocar el resto de datos)."""
+        self._c.table("ranking_phases").update({"name": name}).eq(
+            "id", phase_id
+        ).eq("club_id", club_id).execute()
+
     # ================================================================
     # TOURNAMENTS
     # ================================================================
