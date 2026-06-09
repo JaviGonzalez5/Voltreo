@@ -5523,19 +5523,26 @@ elif page == "results":
         return f"{gs.games_1}-{gs.games_2}" if (gs.games_1 or gs.games_2) else ""
 
     def _parse_set(text):
-        """'6-4' -> SetScore(6,4). Vacío, None o NaN -> None."""
+        """Marcador de un set, SIN exigir guion:
+          '6-4' / '6 4' / '6/4' / '64'  -> SetScore(6, 4)
+        El guion se añade solo al mostrar tras guardar. Vacío/None/NaN -> None.
+        """
         if text is None or (isinstance(text, float) and pd.isna(text)):
             return None
         text = str(text).strip()
         if not text:
             return None
-        for sep in ("-", "/", ":"):
+        # Con separador explícito (necesario para marcadores de 2 cifras, p.ej. 10-8)
+        for sep in ("-", "/", ":", " ", ","):
             if sep in text:
                 a, _, b = text.partition(sep)
                 try:
                     return SetScore(games_1=int(a.strip()), games_2=int(b.strip()))
                 except ValueError:
                     return None
+        # Sin separador: dos dígitos => un dígito por pareja ("64" -> 6-4)
+        if text.isdigit() and len(text) == 2:
+            return SetScore(games_1=int(text[0]), games_2=int(text[1]))
         return None
 
     # ── Navegación: Nivel → Grupo (ver y editar SOLO un grupo a la vez) ─────
@@ -5577,8 +5584,9 @@ elif page == "results":
         f'{_g_played}/{len(_gmatches)} partidos con resultado</div>',
         unsafe_allow_html=True,
     )
-    st.caption("Escribe los juegos de cada set como **6-4**. Deja en blanco los sets no jugados. "
-               "La columna **Ganador** se calcula con lo ya guardado. WO = victoria sin jugar.")
+    st.caption("Escribe el marcador **sin guion**: teclea **64** y al guardar se mostrará **6-4** "
+               "(también vale 6-4 o 6 4). Marcadores de 2 cifras usa guion: **10-8**. "
+               "Deja en blanco los sets no jugados. **Ganador** se calcula con lo guardado. WO = victoria sin jugar.")
 
     _rows = []
     for m in _gmatches:
