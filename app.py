@@ -4277,22 +4277,41 @@ elif page == "config":
 
             if _db_ok and _db is not None and _cfg_cid:
                 try:
-                    _payload = phase_to_db(_new_phase, _cfg_cid, st.session_state.get("db_phase_id"))
+                    # Identificador ESTABLE: reusar el id de la fase ya cargada o,
+                    # si es nueva, el UUID propio que _new_phase ya trae. Así el
+                    # upsert siempre escribe en una fila con id conocido (insert o
+                    # update deterministas) y no dependemos de resp.data para
+                    # fijar db_phase_id — antes podía quedar None y la fase nueva
+                    # no se persistía/encontraba al volver a «Mis Rankings».
+                    _pid = st.session_state.get("db_phase_id") or _new_phase.id
+                    st.session_state["db_phase_id"] = _pid
+                    _payload = phase_to_db(_new_phase, _cfg_cid, _pid)
                     _saved   = _db.upsert_phase(
                         club_id=_cfg_cid, name=_payload["name"],
                         start_date=_payload["start_date"], end_date=_payload["end_date"],
                         phase_config=_payload["phase_config"], groups_data=_payload["groups_data"],
                         bookings_data=_payload["bookings_data"], schedule_result=None,
-                        phase_id=_payload["phase_id"],
+                        phase_id=_pid,
                     )
-                    if _saved.get("id"):
+                    if isinstance(_saved, dict) and _saved.get("id"):
                         st.session_state["db_phase_id"] = _saved["id"]
-                    st.success(f"✅ Fase **{_cfg_phase_name_clean}** guardada correctamente.")
+                    # Verificar que quedó realmente en BD (evita falsos "guardado").
+                    try:
+                        _check = _db.get_phase(st.session_state["db_phase_id"], _cfg_cid)
+                    except Exception:
+                        _check = None
+                    if _check:
+                        st.success(f"✅ Fase **{_cfg_phase_name_clean}** guardada correctamente.")
+                    else:
+                        st.warning("⚠️ La fase se guardó pero no se pudo confirmar en la base de datos. Reinténtalo.")
                 except Exception as _exc_phase:
                     logging.exception("Error guardando fase en BD (club=%s)", _cfg_cid)
                     st.error(f"⚠️ No se pudo guardar la fase: {type(_exc_phase).__name__}: {_exc_phase}")
             else:
-                st.success(f"✅ Fase **{_cfg_phase_name_clean}** guardada en sesión.")
+                st.warning(
+                    "⚠️ No hay club activo / base de datos — la fase solo se ha guardado "
+                    "en esta sesión y NO aparecerá en «Mis Rankings». Selecciona un club activo."
+                )
             st.rerun()
 
 # ---------------------------------------------------------------------------
