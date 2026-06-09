@@ -4085,6 +4085,25 @@ elif page == "config":
                  "Define los parámetros de esta fase: fechas, pistas y horarios de juego")
     _ranking_stepper("config")
 
+    # Resultado del último guardado (sobrevive al st.rerun para que SÍ se vea).
+    _save_flash = st.session_state.pop("_phase_save_flash", None)
+    if _save_flash:
+        if _save_flash.get("error"):
+            st.error(f"⛔ No se pudo guardar la fase: {_save_flash['error']}")
+        elif _save_flash.get("no_club"):
+            st.warning("⚠️ No hay club activo / base de datos — la fase solo se guardó "
+                       "en esta sesión y NO aparecerá en «Mis Rankings». Selecciona un club activo.")
+        elif _save_flash.get("in_list"):
+            st.success(f"✅ Fase **{_save_flash['name']}** guardada y verificada. "
+                       f"Tienes **{_save_flash['count']}** fase(s) en «Mis Rankings».")
+        else:
+            st.error(
+                f"⛔ La fase se escribió pero NO aparece en la lista del club "
+                f"({_save_flash.get('count', 0)} fases visibles). Suele ser un problema de "
+                f"**permisos en Supabase (RLS)** o de la clave usada (debe ser *service_role*). "
+                f"club_id usado: `{_save_flash.get('cid')}`."
+            )
+
     # Leer datos del club para pre-rellenar valores
     _cfg_cid      = current_club_id() if _db_ok else None
     _cfg_club_row = _db.get_club_by_id(_cfg_cid) if (_db_ok and _db and _cfg_cid) else None
@@ -4278,11 +4297,7 @@ elif page == "config":
             if _db_ok and _db is not None and _cfg_cid:
                 try:
                     # Identificador ESTABLE: reusar el id de la fase ya cargada o,
-                    # si es nueva, el UUID propio que _new_phase ya trae. Así el
-                    # upsert siempre escribe en una fila con id conocido (insert o
-                    # update deterministas) y no dependemos de resp.data para
-                    # fijar db_phase_id — antes podía quedar None y la fase nueva
-                    # no se persistía/encontraba al volver a «Mis Rankings».
+                    # si es nueva, el UUID propio que _new_phase ya trae.
                     _pid = st.session_state.get("db_phase_id") or _new_phase.id
                     st.session_state["db_phase_id"] = _pid
                     _payload = phase_to_db(_new_phase, _cfg_cid, _pid)
@@ -4295,23 +4310,23 @@ elif page == "config":
                     )
                     if isinstance(_saved, dict) and _saved.get("id"):
                         st.session_state["db_phase_id"] = _saved["id"]
-                    # Verificar que quedó realmente en BD (evita falsos "guardado").
-                    try:
-                        _check = _db.get_phase(st.session_state["db_phase_id"], _cfg_cid)
-                    except Exception:
-                        _check = None
-                    if _check:
-                        st.success(f"✅ Fase **{_cfg_phase_name_clean}** guardada correctamente.")
-                    else:
-                        st.warning("⚠️ La fase se guardó pero no se pudo confirmar en la base de datos. Reinténtalo.")
+                    # Diagnóstico que SOBREVIVE al rerun: ¿aparece ya en la lista
+                    # del club? Si el upsert "no lanza" pero la fila no sale aquí,
+                    # el problema es permisos (RLS) o club_id, no la app.
+                    _after = _db.list_phases(_cfg_cid) or []
+                    _in_list = any(p.get("id") == st.session_state["db_phase_id"] for p in _after)
+                    st.session_state["_phase_save_flash"] = {
+                        "name": _cfg_phase_name_clean, "in_list": _in_list,
+                        "count": len(_after), "cid": str(_cfg_cid),
+                    }
                 except Exception as _exc_phase:
                     logging.exception("Error guardando fase en BD (club=%s)", _cfg_cid)
-                    st.error(f"⚠️ No se pudo guardar la fase: {type(_exc_phase).__name__}: {_exc_phase}")
+                    st.session_state["_phase_save_flash"] = {
+                        "name": _cfg_phase_name_clean,
+                        "error": f"{type(_exc_phase).__name__}: {_exc_phase}",
+                    }
             else:
-                st.warning(
-                    "⚠️ No hay club activo / base de datos — la fase solo se ha guardado "
-                    "en esta sesión y NO aparecerá en «Mis Rankings». Selecciona un club activo."
-                )
+                st.session_state["_phase_save_flash"] = {"no_club": True}
             st.rerun()
 
 # ---------------------------------------------------------------------------
