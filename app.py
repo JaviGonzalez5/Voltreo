@@ -3127,64 +3127,57 @@ _R_STEPS_VIS = [
 
 _RK_STEPPER_CSS = """
 <style>
-.rk-stepper {
-  display:flex; align-items:center; gap:0;
-  background:linear-gradient(135deg,#0a1622,#0d2b37);
-  border:1px solid rgba(127,255,192,.14); border-radius:14px;
-  padding:.85rem 1.1rem; margin:0 0 1.4rem; overflow-x:auto;
-  box-shadow:0 6px 22px rgba(0,0,0,.18);
+/* Stepper CLICABLE de ranking: fila de chips oscuros (cada uno navega a su paso).
+   Se targetea por data-key y por clase st-key- para cubrir versiones de Streamlit. */
+div[data-key^="rkstep_"] button,
+[class*="st-key-rkstep_"] button {
+  background:#0d2b37 !important; color:#9ec0dc !important;
+  border:1px solid #1e3a58 !important; border-radius:30px !important;
+  font-weight:700 !important; font-size:.8rem !important;
+  padding:.45rem .35rem !important; min-height:0 !important; box-shadow:none !important;
 }
-.rk-step { display:flex; align-items:center; gap:.55rem; flex:0 0 auto; }
-.rk-dot {
-  width:30px; height:30px; border-radius:50%; display:flex; align-items:center;
-  justify-content:center; font-weight:800; font-size:.85rem; flex-shrink:0;
+div[data-key^="rkstep_"] button:hover,
+[class*="st-key-rkstep_"] button:hover {
+  border-color:#7fffc0 !important; color:#eaf6ff !important; background:#10344a !important;
 }
-.rk-step.todo   .rk-dot { background:#13243a; color:#4a6a8a; border:1px solid #1e3a58; }
-.rk-step.done   .rk-dot { background:linear-gradient(135deg,#00c853,#00897b); color:#fff;
-                          box-shadow:0 3px 10px rgba(0,200,83,.35); }
-.rk-step.active .rk-dot { background:#0a1622; color:#7fffc0; border:2px solid #7fffc0;
-                          box-shadow:0 0 0 4px rgba(127,255,192,.16); }
-.rk-txt { display:flex; flex-direction:column; line-height:1.12; }
-.rk-num  { font-size:.58rem; letter-spacing:.1em; text-transform:uppercase; color:#4a6a8a; font-weight:800; }
-.rk-name { font-size:.84rem; font-weight:700; color:#9ec0dc; white-space:nowrap; }
-.rk-step.active .rk-name { color:#fff; }
-.rk-step.done   .rk-name { color:#7fffc0; }
-.rk-line { flex:1 1 auto; min-width:14px; height:2px; background:#1e3a58; margin:0 .5rem; border-radius:2px; }
-.rk-line.done { background:linear-gradient(90deg,#00c853,#00897b); }
-@media (max-width:760px){ .rk-name{ display:none; } .rk-line{ min-width:8px; margin:0 .3rem; } }
+div[data-key^="rkstep_"] button[kind="primary"],
+[class*="st-key-rkstep_"] button[kind="primary"] {
+  background:linear-gradient(135deg,#00c853,#00897b) !important; color:#fff !important;
+  border:none !important; box-shadow:0 0 0 3px rgba(127,255,192,.18) !important;
+}
+.rk-stepper-wrap { margin:.1rem 0 1.1rem; }
+.rk-stepper-cap { font-size:.62rem; letter-spacing:.12em; text-transform:uppercase;
+  color:#00897b; font-weight:800; margin:0 0 .35rem .2rem; }
 </style>
 """
 
 _RK_CORE_STEPS = ["config", "import", "generate", "results", "standings", "export"]
-# Etiquetas cortas para que las 6 quepan sin scroll en pantallas medianas.
 _RK_SHORT = {
     "config": "Configurar", "import": "Importar", "generate": "Generar",
     "results": "Resultados", "standings": "Clasificación", "export": "Exportar",
 }
+_RK_KEYCAP = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣"]
 
 def _ranking_stepper(active: str) -> None:
-    """Barra de progreso horizontal (estilo oscuro deportivo) del flujo de ranking."""
+    """Stepper clicable del flujo de ranking: cada paso es un botón que navega.
+    Sustituye a la navegación duplicada del sidebar."""
     _done = {k: d for (k, _t, _d, d) in _R_STEPS}
-    _names = _RK_SHORT
-    parts = []
-    for _i, _k in enumerate(_RK_CORE_STEPS):
-        if _k == active:
-            _state = "active"
-        elif _done.get(_k):
-            _state = "done"
-        else:
-            _state = "todo"
-        _dot = "✓" if (_state == "done") else str(_i + 1)
-        parts.append(
-            f'<div class="rk-step {_state}"><div class="rk-dot">{_dot}</div>'
-            f'<div class="rk-txt"><span class="rk-num">Paso {_i+1}</span>'
-            f'<span class="rk-name">{escape(_names.get(_k, _k))}</span></div></div>'
-        )
-        if _i < len(_RK_CORE_STEPS) - 1:
-            _ldone = "done" if (_done.get(_k) and _k != active) else ""
-            parts.append(f'<div class="rk-line {_ldone}"></div>')
-    st.markdown(_RK_STEPPER_CSS + f'<div class="rk-stepper">{"".join(parts)}</div>',
+    st.markdown(_RK_STEPPER_CSS
+                + '<div class="rk-stepper-cap">Flujo del ranking · pulsa un paso</div>',
                 unsafe_allow_html=True)
+    _cols = st.columns(len(_RK_CORE_STEPS))
+    for _i, _k in enumerate(_RK_CORE_STEPS):
+        _short = _RK_SHORT.get(_k, _k)
+        if _k == active:
+            _label, _type = f"{_RK_KEYCAP[_i]} {_short}", "primary"
+        elif _done.get(_k):
+            _label, _type = f"✅ {_short}", "secondary"
+        else:
+            _label, _type = f"{_RK_KEYCAP[_i]} {_short}", "secondary"
+        with _cols[_i]:
+            if st.button(_label, key=f"rkstep_{_k}", use_container_width=True, type=_type):
+                _nav_to(_k)
+    st.markdown('<div class="rk-stepper-wrap"></div>', unsafe_allow_html=True)
 
 
 _T_OBJ   = _s.get("tournament")
@@ -3201,7 +3194,9 @@ _T_STEPS = [
 _IS_TOURNAMENT = page in {k for k, *_ in _T_STEPS}
 
 st.sidebar.markdown('<div class="pp-nav-section"><span>Herramientas</span><span class="pp-nav-badge">2</span></div>', unsafe_allow_html=True)
-_sidebar_workflow("📊  Ranking",  _R_STEPS_VIS, page, "nav_r", expanded=_IS_RANKING)
+# Ranking: la navegación por pasos vive ahora en el stepper clicable de la página
+# (_ranking_stepper), no en el sidebar — evita duplicar la navegación. El acceso
+# de entrada es «Mis Rankings» (sección Principal).
 _sidebar_workflow("🏆  Torneos",  _T_STEPS, page, "nav_t", expanded=_IS_TOURNAMENT)
 
 if _db_ok and is_superadmin():
