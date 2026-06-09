@@ -3125,6 +3125,68 @@ _R_STEPS_VIS = [
     and not (s[0] == "syltek" and not _s.get("syltek_url"))
 ]
 
+_RK_STEPPER_CSS = """
+<style>
+.rk-stepper {
+  display:flex; align-items:center; gap:0;
+  background:linear-gradient(135deg,#0a1622,#0d2b37);
+  border:1px solid rgba(127,255,192,.14); border-radius:14px;
+  padding:.85rem 1.1rem; margin:0 0 1.4rem; overflow-x:auto;
+  box-shadow:0 6px 22px rgba(0,0,0,.18);
+}
+.rk-step { display:flex; align-items:center; gap:.55rem; flex:0 0 auto; }
+.rk-dot {
+  width:30px; height:30px; border-radius:50%; display:flex; align-items:center;
+  justify-content:center; font-weight:800; font-size:.85rem; flex-shrink:0;
+}
+.rk-step.todo   .rk-dot { background:#13243a; color:#4a6a8a; border:1px solid #1e3a58; }
+.rk-step.done   .rk-dot { background:linear-gradient(135deg,#00c853,#00897b); color:#fff;
+                          box-shadow:0 3px 10px rgba(0,200,83,.35); }
+.rk-step.active .rk-dot { background:#0a1622; color:#7fffc0; border:2px solid #7fffc0;
+                          box-shadow:0 0 0 4px rgba(127,255,192,.16); }
+.rk-txt { display:flex; flex-direction:column; line-height:1.12; }
+.rk-num  { font-size:.58rem; letter-spacing:.1em; text-transform:uppercase; color:#4a6a8a; font-weight:800; }
+.rk-name { font-size:.84rem; font-weight:700; color:#9ec0dc; white-space:nowrap; }
+.rk-step.active .rk-name { color:#fff; }
+.rk-step.done   .rk-name { color:#7fffc0; }
+.rk-line { flex:1 1 auto; min-width:14px; height:2px; background:#1e3a58; margin:0 .5rem; border-radius:2px; }
+.rk-line.done { background:linear-gradient(90deg,#00c853,#00897b); }
+@media (max-width:760px){ .rk-name{ display:none; } .rk-line{ min-width:8px; margin:0 .3rem; } }
+</style>
+"""
+
+_RK_CORE_STEPS = ["config", "import", "generate", "results", "standings", "export"]
+# Etiquetas cortas para que las 6 quepan sin scroll en pantallas medianas.
+_RK_SHORT = {
+    "config": "Configurar", "import": "Importar", "generate": "Generar",
+    "results": "Resultados", "standings": "Clasificación", "export": "Exportar",
+}
+
+def _ranking_stepper(active: str) -> None:
+    """Barra de progreso horizontal (estilo oscuro deportivo) del flujo de ranking."""
+    _done = {k: d for (k, _t, _d, d) in _R_STEPS}
+    _names = _RK_SHORT
+    parts = []
+    for _i, _k in enumerate(_RK_CORE_STEPS):
+        if _k == active:
+            _state = "active"
+        elif _done.get(_k):
+            _state = "done"
+        else:
+            _state = "todo"
+        _dot = "✓" if (_state == "done") else str(_i + 1)
+        parts.append(
+            f'<div class="rk-step {_state}"><div class="rk-dot">{_dot}</div>'
+            f'<div class="rk-txt"><span class="rk-num">Paso {_i+1}</span>'
+            f'<span class="rk-name">{escape(_names.get(_k, _k))}</span></div></div>'
+        )
+        if _i < len(_RK_CORE_STEPS) - 1:
+            _ldone = "done" if (_done.get(_k) and _k != active) else ""
+            parts.append(f'<div class="rk-line {_ldone}"></div>')
+    st.markdown(_RK_STEPPER_CSS + f'<div class="rk-stepper">{"".join(parts)}</div>',
+                unsafe_allow_html=True)
+
+
 _T_OBJ   = _s.get("tournament")
 _T_SCHED = getattr(_T_OBJ, "scheduled_count", 0) if _T_OBJ is not None else 0
 _t_has_results = any(getattr(m, "is_played", False) for m in getattr(_T_OBJ, "matches", [])) if _T_OBJ else False
@@ -4026,6 +4088,7 @@ elif page == "club_config":
 elif page == "config":
     _page_header("⚙️", "Configurar fase de ranking",
                  "Define los parámetros de esta fase: fechas, pistas y horarios de juego")
+    _ranking_stepper("config")
 
     # Leer datos del club para pre-rellenar valores
     _cfg_cid      = current_club_id() if _db_ok else None
@@ -4243,6 +4306,7 @@ elif page == "config":
 
 elif page == "import":
     _page_header("📥", "Importar datos", "Carga grupos, parejas y reservas desde CSV o directamente desde Syltek")
+    _ranking_stepper("import")
     st.info("Carga grupos y parejas desde CSV. También puedes importar reservas existentes.")
 
     tab1, tab2, tab3 = st.tabs(["👥 Grupos y parejas", "📋 Reservas existentes", "🔌 Desde Syltek"])
@@ -4778,6 +4842,7 @@ elif page == "import":
 
 elif page == "generate":
     _page_header("📅", "Generar calendario", "Crea los enfrentamientos round-robin y asigna horarios automáticamente")
+    _ranking_stepper("generate")
 
     if not st.session_state.data_loaded or not st.session_state.groups:
         _empty_state("📥", "Sin datos cargados",
@@ -5293,6 +5358,7 @@ elif page == "generate":
 elif page == "results":
     from src.ranking_scorer import MatchResult, SetScore
     _page_header("📝", "Registrar resultados", "Introduce el marcador de cada partido (formato set: 6-4)")
+    _ranking_stepper("results")
 
     _rphase = st.session_state.phase
     _rmatches = st.session_state.get("matches") or []
@@ -5484,6 +5550,7 @@ elif page == "results":
 elif page == "standings":
     from src.ranking_scorer import compute_standings, standings_by_group, ScoringRules
     _page_header("🏅", "Clasificación", "Ranking automático calculado a partir de los resultados")
+    _ranking_stepper("standings")
 
     _sphase = st.session_state.phase
     if _sphase is None:
@@ -5556,6 +5623,7 @@ elif page == "standings":
 
 elif page == "export":
     _page_header("📤", "Exportar", "Descarga el calendario en Excel o genera mensajes para los jugadores")
+    _ranking_stepper("export")
 
     if not st.session_state.matches_scheduled:
         _empty_state("📅", "Calendario no generado",
