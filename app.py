@@ -5497,6 +5497,9 @@ elif page == "results":
     from src.ranking_scorer import MatchResult, SetScore
     _page_header("📝", "Registrar resultados", "Introduce el marcador de cada partido (formato set: 6-4)")
     _ranking_stepper("results")
+    _res_flash = st.session_state.pop("_results_saved_flash", None)
+    if _res_flash:
+        st.success(_res_flash)
 
     _rphase = st.session_state.phase
     _rmatches = st.session_state.get("matches") or []
@@ -5535,60 +5538,101 @@ elif page == "results":
                     return None
         return None
 
-    # Construir filas para el editor agrupadas por grupo
-    _groups_order = {}
+    # ── Navegación: Nivel → Grupo (ver y editar SOLO un grupo a la vez) ─────
+    import re as _re_res
+    def _parse_lvl_grp(gname: str):
+        g = gname or "Sin grupo"
+        _ml = _re_res.search(r"nivel\s*([0-9]+)", g, _re_res.I)
+        _lvl_num = int(_ml.group(1)) if _ml else 9999
+        _lvl_lbl = f"Nivel {_lvl_num}" if _ml else g
+        _mg = _re_res.search(r"grupo\s*([0-9A-Za-z]+)", g, _re_res.I)
+        _grp_lbl = f"Grupo {_mg.group(1)}" if _mg else "Único"
+        return _lvl_num, _lvl_lbl, _grp_lbl
+
+    _levels: dict = {}
     for m in _rmatches:
-        _groups_order.setdefault(m.group_name or "Sin grupo", []).append(m)
+        _n, _ll, _gl = _parse_lvl_grp(m.group_name)
+        _levels.setdefault(_ll, {"num": _n, "groups": {}})
+        _levels[_ll]["groups"].setdefault(_gl, []).append(m)
+    _level_labels = sorted(_levels, key=lambda L: (_levels[L]["num"], L))
 
-    st.caption("Introduce los sets como **6-4**. Deja en blanco los no jugados. WO = walkover (victoria sin jugar).")
+    def _grp_key(gl: str):
+        _mm = _re_res.search(r"(\d+)", gl)
+        return (int(_mm.group(1)) if _mm else 9999, gl)
 
-    _edited_results = {}
-    for _gname, _gmatches in _groups_order.items():
-        _section_start("🎾", _gname)
-        _rows = []
-        for m in _gmatches:
-            _ex = _existing.get(m.id)
-            _s1 = _set_to_str(_ex.sets[0]) if _ex and len(_ex.sets) > 0 else ""
-            _s2 = _set_to_str(_ex.sets[1]) if _ex and len(_ex.sets) > 1 else ""
-            _s3 = _set_to_str(_ex.sets[2]) if _ex and len(_ex.sets) > 2 else ""
-            _wo = ""
-            if _ex and _ex.walkover_winner_id == m.pair_1.id:
-                _wo = m.pair_1.display_name
-            elif _ex and _ex.walkover_winner_id == m.pair_2.id:
-                _wo = m.pair_2.display_name
-            _rows.append({
-                "_match_id": m.id,
-                "Partido": f"{m.pair_1.display_name}  vs  {m.pair_2.display_name}",
-                "Set 1": _s1, "Set 2": _s2, "Set 3": _s3,
-                "WO": _wo,
-            })
-        _df = pd.DataFrame(_rows)
-        _wo_opts = [""]
-        for m in _gmatches:
-            _wo_opts.extend([m.pair_1.display_name, m.pair_2.display_name])
-        _edited = st.data_editor(
-            _df,
-            key=f"results_editor_{_gname}",
-            hide_index=True,
-            use_container_width=True,
-            column_config={
-                "_match_id": None,  # oculta
-                "Partido":   st.column_config.TextColumn(disabled=True, width="large"),
-                "Set 1":     st.column_config.TextColumn(width="small", help="ej. 6-4"),
-                "Set 2":     st.column_config.TextColumn(width="small"),
-                "Set 3":     st.column_config.TextColumn(width="small", help="solo si hubo tercer set"),
-                "WO":        st.column_config.SelectboxColumn(options=sorted(set(_wo_opts)), width="medium"),
-            },
-        )
-        # Mapear ediciones de vuelta a los match objects
-        _match_by_id = {m.id: m for m in _gmatches}
-        for _, _row in _edited.iterrows():
-            _edited_results[_row["_match_id"]] = (_row, _match_by_id[_row["_match_id"]])
+    _sc1, _sc2 = st.columns(2)
+    with _sc1:
+        _sel_level = st.selectbox("Nivel", _level_labels, key="res_level")
+    with _sc2:
+        _grp_labels = sorted(_levels[_sel_level]["groups"], key=_grp_key)
+        _sel_group = st.selectbox("Grupo", _grp_labels, key="res_group")
+
+    _gmatches = _levels[_sel_level]["groups"][_sel_group]
+    _match_by_id = {m.id: m for m in _gmatches}
+
+    _g_played = sum(1 for m in _gmatches if _existing.get(m.id) and _existing[m.id].is_played)
+    st.markdown(
+        f'<div style="margin:.2rem 0 .55rem;color:#334155;font-size:.95rem">'
+        f'<b>{escape(_sel_level)} · {escape(_sel_group)}</b> — '
+        f'{_g_played}/{len(_gmatches)} partidos con resultado</div>',
+        unsafe_allow_html=True,
+    )
+    st.caption("Escribe los juegos de cada set como **6-4**. Deja en blanco los sets no jugados. "
+               "La columna **Ganador** se calcula con lo ya guardado. WO = victoria sin jugar.")
+
+    _rows = []
+    for m in _gmatches:
+        _ex = _existing.get(m.id)
+        _s1 = _set_to_str(_ex.sets[0]) if _ex and len(_ex.sets) > 0 else ""
+        _s2 = _set_to_str(_ex.sets[1]) if _ex and len(_ex.sets) > 1 else ""
+        _s3 = _set_to_str(_ex.sets[2]) if _ex and len(_ex.sets) > 2 else ""
+        _wo = ""
+        if _ex and _ex.walkover_winner_id == m.pair_1.id:
+            _wo = m.pair_1.display_name
+        elif _ex and _ex.walkover_winner_id == m.pair_2.id:
+            _wo = m.pair_2.display_name
+        _win = "—"
+        if _ex:
+            if _ex.winner_id == m.pair_1.id:   _win = "🏆 " + m.pair_1.display_name
+            elif _ex.winner_id == m.pair_2.id: _win = "🏆 " + m.pair_2.display_name
+        _rows.append({
+            "_match_id": m.id,
+            "Partido": f"{m.pair_1.display_name}  vs  {m.pair_2.display_name}",
+            "Set 1": _s1, "Set 2": _s2, "Set 3": _s3,
+            "WO": _wo,
+            "Ganador": _win,
+        })
+    _df = pd.DataFrame(_rows)
+    _wo_opts = [""]
+    for m in _gmatches:
+        _wo_opts.extend([m.pair_1.display_name, m.pair_2.display_name])
+    _edited = st.data_editor(
+        _df,
+        key=f"results_editor_{_sel_level}_{_sel_group}",
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "_match_id": None,
+            "Partido":   st.column_config.TextColumn(disabled=True, width="large"),
+            "Set 1":     st.column_config.TextColumn(width="small", help="juegos, ej. 6-4"),
+            "Set 2":     st.column_config.TextColumn(width="small"),
+            "Set 3":     st.column_config.TextColumn(width="small", help="solo si hubo 3er set"),
+            "WO":        st.column_config.SelectboxColumn(options=sorted(set(_wo_opts)), width="medium",
+                                                         help="walkover: gana sin jugar"),
+            "Ganador":   st.column_config.TextColumn(disabled=True, width="medium",
+                                                     help="se calcula con lo guardado"),
+        },
+    )
 
     st.divider()
-    if st.button("💾 Guardar resultados", type="primary", use_container_width=True):
-        _new_results = []
-        for _mid, (_row, _m) in _edited_results.items():
+    if st.button(f"💾 Guardar resultados · {_sel_level} {_sel_group}",
+                 type="primary", use_container_width=True):
+        _new_results = []   # solo los de ESTE grupo (para el email)
+        for _, _row in _edited.iterrows():
+            _mid = _row["_match_id"]
+            _m = _match_by_id.get(_mid)
+            if _m is None:
+                continue
             _wo_raw = _row.get("WO")
             _wo_name = "" if (_wo_raw is None or (isinstance(_wo_raw, float) and pd.isna(_wo_raw))) else str(_wo_raw).strip()
             _wo_id = None
@@ -5604,12 +5648,17 @@ elif page == "results":
                     _sets.append(_ss)
 
             if _sets or _wo_id:
-                _new_results.append(MatchResult(
+                _mr = MatchResult(
                     match_id=_mid, pair_1_id=_m.pair_1.id, pair_2_id=_m.pair_2.id,
                     group_id=_m.group_id, sets=_sets, walkover_winner_id=_wo_id,
-                ))
+                )
+                _existing[_mid] = _mr        # MERGE: actualiza solo este partido
+                _new_results.append(_mr)
+            else:
+                _existing.pop(_mid, None)     # vaciado → quita su resultado
 
-        _rphase.match_results = _new_results
+        # Conserva los resultados de los OTROS grupos/niveles (no los pisa).
+        _rphase.match_results = list(_existing.values())
         st.session_state.phase = _rphase
 
         # Persistir en Supabase
@@ -5631,7 +5680,9 @@ elif page == "results":
                     logging.exception("Error persistiendo resultados en BD (phase=%s)", _pid)
                     st.warning("⚠️ Guardado local OK, pero falló la conexión a la base de datos.")
 
-        st.success(f"✅ {len(_new_results)} resultados guardados.")
+        st.session_state["_results_saved_flash"] = (
+            f"✅ {len(_new_results)} resultado(s) guardados en {_sel_level} · {_sel_group}."
+        )
 
         # Notificaciones de email (solo si Resend está configurado)
         try:
@@ -5677,7 +5728,6 @@ elif page == "results":
             logging.exception("Error enviando notificaciones de email tras guardar resultados")
             # email es opcional — nunca bloqueamos el flujo principal
 
-        st.session_state["_nav_page"] = "standings"
         st.rerun()
 
 
