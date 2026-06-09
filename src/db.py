@@ -12,6 +12,7 @@ Configuración necesaria (en .streamlit/secrets.toml o variables de entorno):
   SUPABASE_KEY = "eyJ..."   ← service role key (para operaciones server-side)
 """
 
+import copy as _copy
 import logging
 import os
 from datetime import datetime
@@ -62,6 +63,50 @@ def is_db_configured() -> bool:
         url = os.environ.get("SUPABASE_URL")
         key = os.environ.get("SUPABASE_KEY")
         return bool(url and key)
+
+
+# ---------------------------------------------------------------------------
+# Caché de lecturas frecuentes (TTL corto) para no ir a Supabase en cada rerun.
+#
+# · El primer parámetro `_db` lleva guion bajo => Streamlit NO lo hashea
+#   (sería la propia instancia de SupabaseDB). Se cachea por los args escalares.
+# · Las lecturas se devuelven con deepcopy en los métodos públicos para que el
+#   código que consuma el resultado pueda ordenarlo/mutarlo sin corromper la caché.
+# · La invalidación es CENTRAL: los métodos de escritura (upsert/delete/rename/
+#   set_active) llaman a _invalidate_*_cache(), así ningún punto de llamada de la
+#   app puede quedar con datos obsoletos tras un guardado.
+# · NO se cachea get_tournament: solo se usa en botones (carga puntual) y
+#   tournament_from_db muta el dict devuelto.
+# ---------------------------------------------------------------------------
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _cq_list_phases(_db, club_id):
+    return _db._list_phases_impl(club_id)
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _cq_get_phase(_db, phase_id, club_id):
+    return _db._get_phase_impl(phase_id, club_id)
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _cq_list_tournaments(_db, club_id):
+    return _db._list_tournaments_impl(club_id)
+
+
+def _invalidate_phase_cache() -> None:
+    try:
+        _cq_list_phases.clear()
+        _cq_get_phase.clear()
+    except Exception:
+        pass
+
+
+def _invalidate_tournament_cache() -> None:
+    try:
+        _cq_list_tournaments.clear()
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -194,11 +239,12 @@ class SupabaseDB:
     # ================================================================
 
     def list_phases(self, club_id: str) -> list[dict]:
-        """Lista fases de un club ordenadas por fecha de creación (más reciente primero).
+        """Lista fases de un club (cacheada, TTL 60s). Copia para mutación segura."""
+        return _copy.deepcopy(_cq_list_phases(self, club_id))
 
-        Ordena en Python (no en el servidor) para no fallar si la tabla no tiene
-        created_at/updated_at en algún entorno — mismo criterio que list_tournaments.
-        """
+    def _list_phases_impl(self, club_id: str) -> list[dict]:
+        """Ordena en Python (no en el servidor) para no fallar si la tabla no tiene
+        created_at/updated_at en algún entorno — mismo criterio que list_tournaments."""
         resp = (
             self._c.table("ranking_phases")
             .select("id, name, start_date, end_date, is_active, created_at, updated_at")
@@ -213,7 +259,10 @@ class SupabaseDB:
         return rows
 
     def get_phase(self, phase_id: str, club_id: str) -> Optional[dict]:
-        """Carga una fase completa (con todos sus JSONB)."""
+        """Carga una fase completa (con todos sus JSONB). Cacheada (TTL 60s)."""
+        return _copy.deepcopy(_cq_get_phase(self, phase_id, club_id))
+
+    def _get_phase_impl(self, phase_id: str, club_id: str) -> Optional[dict]:
         resp = (
             self._c.table("ranking_phases")
             .select("*")
@@ -296,6 +345,7 @@ class SupabaseDB:
             resource_id=_saved_id,
             details={"name": name},
         )
+        _invalidate_phase_cache()
         return saved
 
     def set_phase_active(self, phase_id: str, club_id: str) -> None:
@@ -305,21 +355,28 @@ class SupabaseDB:
         self._c.table("ranking_phases").update({"is_active": False}).eq(
             "club_id", club_id
         ).neq("id", phase_id).execute()
+        _invalidate_phase_cache()
 
     def delete_phase(self, phase_id: str, club_id: str) -> None:
         self._c.table("ranking_phases").delete().eq("id", phase_id).eq("club_id", club_id).execute()
+        _invalidate_phase_cache()
 
     def rename_phase(self, phase_id: str, club_id: str, name: str) -> None:
         """Renombra una fase (solo el nombre, sin tocar el resto de datos)."""
         self._c.table("ranking_phases").update({"name": name}).eq(
             "id", phase_id
         ).eq("club_id", club_id).execute()
+        _invalidate_phase_cache()
 
     # ================================================================
     # TOURNAMENTS
     # ================================================================
 
     def list_tournaments(self, club_id: str) -> list[dict]:
+        """Lista torneos del club (cacheada, TTL 60s). Copia para mutación segura."""
+        return _copy.deepcopy(_cq_list_tournaments(self, club_id))
+
+    def _list_tournaments_impl(self, club_id: str) -> list[dict]:
         # select * para no fallar si la tabla no tiene created_at/updated_at,
         # e incluir tournament_data (lo usa la vista «Mis Torneos» para estado).
         resp = (
@@ -401,6 +458,7 @@ class SupabaseDB:
             payload["id"] = tournament_id
 
         resp = self._c.table("tournaments").upsert(payload).execute()
+        _invalidate_tournament_cache()
         # Algunos proyectos no devuelven la fila tras el upsert (RLS / return=minimal).
         # No fallar por ello: devolver lo guardado o el propio payload.
         if resp.data:
@@ -409,6 +467,7 @@ class SupabaseDB:
 
     def delete_tournament(self, tournament_id: str, club_id: str) -> None:
         self._c.table("tournaments").delete().eq("id", tournament_id).eq("club_id", club_id).execute()
+        _invalidate_tournament_cache()
 
     # ================================================================
     # AUDIT LOG
