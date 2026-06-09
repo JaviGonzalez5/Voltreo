@@ -4,6 +4,7 @@ Vista pública (solo lectura) de un torneo, compartible por enlace.
 No requiere login. Renderiza, por categoría: campeón, cuadro por rondas con
 resultados, y calendario. Usa el id (UUID) del torneo como "enlace secreto".
 """
+import logging
 from html import escape
 
 import streamlit as st
@@ -453,7 +454,29 @@ def _short_slot(pair, label: str) -> str:
     return label or "Por determinar"
 
 
+def _public_safe(_impl, *args) -> None:
+    """Boundary de error para vistas públicas: si el render falla por datos
+    inesperados, muestra un mensaje amable en vez de un traceback al visitante.
+    Re-lanza las excepciones de control de Streamlit (stop/rerun)."""
+    try:
+        _impl(*args)
+    except Exception as _e:
+        if type(_e).__name__ in ("StopException", "RerunException"):
+            raise
+        logging.exception("Error renderizando vista pública")
+        try:
+            st.error("No se pudo mostrar esta página. Comprueba que el enlace sea "
+                     "correcto o vuelve a intentarlo.")
+        except Exception:
+            pass
+        st.stop()
+
+
 def render_public_tournament(tournament_id: str) -> None:
+    _public_safe(_render_public_tournament_impl, tournament_id)
+
+
+def _render_public_tournament_impl(tournament_id: str) -> None:
     """Renderiza la vista pública de un torneo y llama a st.stop()."""
     st.markdown(_PUBLIC_CSS, unsafe_allow_html=True)
     st.markdown(_topbar("Resultados en directo"), unsafe_allow_html=True)
@@ -694,6 +717,10 @@ def render_public_tournament(tournament_id: str) -> None:
 
 
 def render_public_registration(tournament_id: str) -> None:
+    _public_safe(_render_public_registration_impl, tournament_id)
+
+
+def _render_public_registration_impl(tournament_id: str) -> None:
     """
     Página pública de inscripción — flujo en 2 pasos:
       Paso 1: info del torneo + grid de categorías

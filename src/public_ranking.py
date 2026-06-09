@@ -3,6 +3,7 @@ Vista pública (solo lectura) de la clasificación de una fase de ranking.
 
 No requiere login. Se accede mediante ?r=<phase_id>.
 """
+import logging
 from html import escape
 
 import streamlit as st
@@ -68,6 +69,21 @@ header[data-testid="stHeader"] {{ display: none !important; }}
 
 
 def render_public_ranking(phase_id: str) -> None:
+    """Boundary de error: ante datos inesperados muestra aviso, no un traceback."""
+    try:
+        _render_public_ranking_impl(phase_id)
+    except Exception as _e:
+        if type(_e).__name__ in ("StopException", "RerunException"):
+            raise
+        logging.exception("Error renderizando ranking público")
+        try:
+            st.error("No se pudo mostrar la clasificación. Comprueba el enlace o reinténtalo.")
+        except Exception:
+            pass
+        st.stop()
+
+
+def _render_public_ranking_impl(phase_id: str) -> None:
     """Renderiza la clasificación pública de una fase y llama a st.stop()."""
     st.markdown(_PUBLIC_CSS, unsafe_allow_html=True)
     st.markdown(
