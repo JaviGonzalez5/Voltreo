@@ -4785,6 +4785,17 @@ elif page == "import":
                         if st.session_state.phase:
                             st.session_state.phase.bookings = bookings
 
+                        # Aviso si algún día no se pudo leer → el total es parcial.
+                        _bk_failed = getattr(conn_bk, "last_failed_days", []) or []
+                        if _bk_failed:
+                            _fd = ", ".join(d.strftime("%d/%m") for d in _bk_failed[:8])
+                            _more = f" (+{len(_bk_failed) - 8} más)" if len(_bk_failed) > 8 else ""
+                            st.warning(
+                                f"⚠️ {len(_bk_failed)} día(s) no se pudieron leer de Syltek "
+                                f"({_fd}{_more}). El total mostrado es **parcial** — vuelve a "
+                                "pulsar **Importar** para completar esos días."
+                            )
+
                         if bookings:
                             st.success(
                                 f"✅ {len(bookings)} reservas existentes importadas. El planificador las respetará."

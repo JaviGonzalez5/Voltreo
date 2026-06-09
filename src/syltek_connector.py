@@ -17,6 +17,7 @@ Seguridad:
 import base64
 import logging
 import re
+import time
 import uuid as _uuid_mod
 from datetime import date, datetime
 from typing import Optional
@@ -190,44 +191,63 @@ class SyltekConnector:
 
         from datetime import timedelta
         bookings: list[Booking] = []
+        # Días que NO se pudieron leer (red/parseo) tras los reintentos. Se exponen
+        # para avisar al usuario: si esta lista no está vacía el total es PARCIAL,
+        # lo que explicaba que cada importación devolviera un número distinto.
+        self.last_failed_days: list[date] = []
         current = from_date
         total_days = (to_date - from_date).days + 1
         day_num = 0
 
         while current <= to_date:
-            day_bookings = self._get_bookings_for_day(current)
-            bookings.extend(day_bookings)
+            try:
+                bookings.extend(self._get_bookings_for_day(current))
+            except Exception as e:
+                self.last_failed_days.append(current)
+                logger.warning("Día %s no leído (se omite del total): %s", current, e)
             day_num += 1
             if progress_callback:
                 progress_callback(day_num, total_days)
             current += timedelta(days=1)
 
         logger.info(
-            "Leídas %d reservas existentes entre %s y %s",
-            len(bookings), from_date, to_date,
+            "Leídas %d reservas entre %s y %s (%d día(s) fallidos)",
+            len(bookings), from_date, to_date, len(self.last_failed_days),
         )
         return bookings
 
-    def _get_bookings_for_day(self, day: date) -> list[Booking]:
+    def _get_bookings_for_day(self, day: date, _attempts: int = 3) -> list[Booking]:
         """
         Lee el calendario de un día concreto y devuelve las reservas ocupadas.
+
+        Reintenta ante errores de red (timeout, conexión, 5xx) para que un fallo
+        intermitente no haga desaparecer las reservas de ese día — la causa de que
+        el total variara entre importaciones. Si tras los reintentos sigue fallando,
+        lanza SyltekError para que el día se registre como fallido (no como 0).
         """
         encoded = base64.b64encode(day.strftime("%d/%m/%Y").encode()).decode()
         url = f"{self.base}{CALENDAR_PATH}?encodedDate={encoded}&type=56"
 
-        try:
-            r = self._session.get(url, timeout=20)
-        except requests.RequestException as e:
-            logger.warning("Error al leer el calendario del %s: %s", day, e)
-            return []
+        last_err = None
+        for _attempt in range(max(1, _attempts)):
+            try:
+                r = self._session.get(url, timeout=20)
+                r.raise_for_status()
+            except requests.RequestException as e:
+                last_err = e
+                time.sleep(0.5 * (_attempt + 1))  # backoff progresivo
+                continue
+            # Pasamos el HTML crudo (no soup) para no alterar los <script>.
+            # Un error de parseo no se arregla reintentando → no reintentar.
+            try:
+                return _parse_occupied_slots(r.text, day)
+            except Exception as e:
+                last_err = e
+                break
 
-        # Pasamos el HTML crudo (no soup) para evitar que BeautifulSoup
-        # altere el contenido de los tags <script>
-        try:
-            return _parse_occupied_slots(r.text, day)
-        except Exception as e:
-            logger.warning("Error al parsear reservas del %s: %s", day, e)
-            return []
+        raise SyltekError(
+            f"No se pudo leer el calendario del {day} tras {_attempts} intento(s): {last_err}"
+        )
 
     # ------------------------------------------------------------------
     # Descubrimiento de pistas
