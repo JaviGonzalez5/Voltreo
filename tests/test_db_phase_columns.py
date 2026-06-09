@@ -98,3 +98,23 @@ def test_schema_sql_matches_code_columns():
     create_block = schema.split("CREATE TABLE IF NOT EXISTS ranking_phases")[1].split(");")[0]
     for old in ("phase_config", "groups_data", "bookings_data", "schedule_result"):
         assert old not in create_block, f"CREATE TABLE aún usa la columna antigua {old}"
+
+
+def test_create_club_survives_empty_insert_response():
+    # Con return=minimal / RLS el insert puede devolver data vacía; create_club
+    # NO debe lanzar IndexError, sino devolver un dict utilizable.
+    client = _FakeClient()
+    db = SupabaseDB(client)
+    out = db.create_club("Mi Club", "mi-club")
+    assert isinstance(out, dict)
+    assert out.get("name") == "Mi Club" and out.get("slug") == "mi-club"
+
+
+def test_create_user_survives_empty_insert_response():
+    client = _FakeClient()
+    db = SupabaseDB(client)
+    out = db.create_user(
+        username="Nuevo", password_hash="x", role="club_admin", club_id="c1",
+    )
+    assert isinstance(out, dict)
+    assert out.get("username") == "nuevo"  # normalizado a minúsculas

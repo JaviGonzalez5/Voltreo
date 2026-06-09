@@ -92,7 +92,10 @@ class SupabaseDB:
 
     def create_club(self, name: str, slug: str) -> dict:
         resp = self._c.table("clubs").insert({"name": name, "slug": slug}).execute()
-        return resp.data[0]
+        if resp.data:
+            return resp.data[0]
+        # return=minimal / RLS: la fila no vuelve en el insert → recuperarla por slug
+        return self.get_club_by_slug(slug) or {"name": name, "slug": slug}
 
     def delete_club(self, club_id: str) -> None:
         self._c.table("clubs").delete().eq("id", club_id).execute()
@@ -144,7 +147,10 @@ class SupabaseDB:
             resp = self._c.table("users").insert({**payload, "is_active": True}).execute()
         except Exception:
             resp = self._c.table("users").insert(payload).execute()
-        return resp.data[0]
+        if resp.data:
+            return resp.data[0]
+        # return=minimal / RLS: recuperar el usuario recién creado por su username
+        return self.get_user_by_username(payload["username"]) or dict(payload)
 
     def update_user_password(self, user_id: str, new_hash: str) -> None:
         self._c.table("users").update({"password_hash": new_hash}).eq("id", user_id).execute()
