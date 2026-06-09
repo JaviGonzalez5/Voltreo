@@ -268,7 +268,9 @@ class SupabaseDB:
             "config_json":     phase_config,
             "groups_json":     groups_data,
             "bookings_json":   bookings_data,
-            "matches_json":    schedule_result,
+            # matches_json es NOT NULL en algunas instalaciones: nunca enviar None.
+            # {} (sin calendario) se lee como "sin schedule_result" en phase_from_db.
+            "matches_json":    schedule_result if schedule_result is not None else {},
             "is_active":       True,
         }
         if phase_id:

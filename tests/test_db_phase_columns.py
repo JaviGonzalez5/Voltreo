@@ -74,6 +74,21 @@ def test_upsert_phase_uses_json_column_names():
     assert not ({"phase_config", "groups_data", "bookings_data", "schedule_result"} & keys)
 
 
+def test_upsert_phase_never_sends_null_matches_json():
+    # matches_json es NOT NULL en algunas tablas: una fase sin calendario debe
+    # enviarse como {} (no None) o el INSERT falla con violación de not-null.
+    client = _FakeClient()
+    db = SupabaseDB(client)
+    db.upsert_phase(
+        club_id="club1", name="Fase", start_date="2026-06-01", end_date="2026-07-01",
+        phase_config={}, groups_data=[], bookings_data=[],
+        schedule_result=None, phase_id="phase1",
+    )
+    payload = client.rec["upsert"]["ranking_phases"][0]
+    assert payload["matches_json"] is not None
+    assert payload["matches_json"] == {}
+
+
 def test_schema_sql_matches_code_columns():
     schema = (Path(__file__).resolve().parents[1] / "src" / "db_schema.sql").read_text(encoding="utf-8")
     # La definición de la tabla usa los nombres json

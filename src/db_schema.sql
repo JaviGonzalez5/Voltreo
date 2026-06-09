@@ -97,6 +97,10 @@ ALTER TABLE public.ranking_phases ADD COLUMN IF NOT EXISTS config_json   JSONB N
 ALTER TABLE public.ranking_phases ADD COLUMN IF NOT EXISTS groups_json   JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE public.ranking_phases ADD COLUMN IF NOT EXISTS bookings_json JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE public.ranking_phases ADD COLUMN IF NOT EXISTS matches_json  JSONB;
+-- matches_json puede ser NULL (una fase nueva todavía no tiene calendario).
+-- Si una instalación lo creó como NOT NULL, el INSERT de una fase nueva fallaba
+-- con "null value in column matches_json ... violates not-null constraint".
+ALTER TABLE public.ranking_phases ALTER COLUMN matches_json DROP NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_phases_club    ON ranking_phases(club_id);
 CREATE INDEX IF NOT EXISTS idx_phases_active  ON ranking_phases(club_id, is_active);
