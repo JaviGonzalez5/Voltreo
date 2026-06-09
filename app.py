@@ -2075,6 +2075,10 @@ def _save_syltek_settings_for_club(
     if courts is not None:
         _settings["syltek_courts"] = dict(courts)
     db_obj._c.table("clubs").update({"settings": _settings}).eq("id", club_id).execute()
+    try:
+        _cached_club_row.clear()  # invalidar caché tras escribir settings
+    except Exception:
+        pass
 
 
 def _club_sport() -> str:
@@ -2882,6 +2886,19 @@ _init_cookie_mgr()   # registra el CookieManager en session_state de forma estab
 
 _db_ok = is_db_configured()
 _db = get_db() if _db_ok else None
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def _cached_club_row(club_id, _db_ref):
+    """Fila del club cacheada (TTL 30s) para no ir a Supabase en CADA rerun.
+    El parámetro _db_ref lleva guion bajo para que Streamlit no lo hashee.
+    Se invalida con _cached_club_row.clear() al guardar configuración del club."""
+    if _db_ref is None or not club_id:
+        return None
+    try:
+        return _db_ref.get_club_by_id(club_id)
+    except Exception:
+        return None
 
 # ── Vistas públicas compartibles y health-check — sin login ──────────────────
 try:
@@ -4060,7 +4077,7 @@ elif page == "club_config":
     _page_header("🏢", "Configuración del club", "Datos del club que se guardan automáticamente")
 
     _cid = current_club_id() if _db_ok else None
-    _club_row = _db.get_club_by_id(_cid) if (_db_ok and _db and _cid) else None
+    _club_row = _cached_club_row(_cid, _db) if (_db_ok and _db and _cid) else None
 
     # Leer settings guardados
     _settings = _club_settings_dict(_club_row)
@@ -4132,6 +4149,10 @@ elif page == "club_config":
             _new_settings.pop("syltek_password", None)
         st.session_state["club_name"] = _cc_name
         st.session_state.pop("_club_sport_cache", None)  # refrescar deporte cacheado
+        try:
+            _cached_club_row.clear()  # invalidar caché de la fila del club
+        except Exception:
+            pass
         for _k in ("syl_url", "syl_user", "syl_pass", "syl_imp_url", "syl_imp_user", "syl_imp_pass"):
             st.session_state.pop(_k, None)
         if _db_ok and _db and _cid:
@@ -4192,7 +4213,7 @@ elif page == "config":
 
     # Leer datos del club para pre-rellenar valores
     _cfg_cid      = current_club_id() if _db_ok else None
-    _cfg_club_row = _db.get_club_by_id(_cfg_cid) if (_db_ok and _db and _cfg_cid) else None
+    _cfg_club_row = _cached_club_row(_cfg_cid, _db) if (_db_ok and _db and _cfg_cid) else None
     _cfg_settings = (_cfg_club_row.get("settings") or {}) if _cfg_club_row else {}
     _cfg_club_name = (_cfg_club_row["name"] if _cfg_club_row else _s.get("club_name", "Mi Club"))
     _cfg_n_courts_default = _safe_int(_cfg_settings.get("num_courts"), 4)
@@ -4544,7 +4565,7 @@ elif page == "import":
     with tab3:
         st.markdown("### Conectar con Syltek")
         _imp_cid = current_club_id() if _db_ok else None
-        _imp_club_row = _db.get_club_by_id(_imp_cid) if (_db_ok and _db and _imp_cid) else None
+        _imp_club_row = _cached_club_row(_imp_cid, _db) if (_db_ok and _db and _imp_cid) else None
         _imp_url_default, _imp_user_default, _imp_pass_default = _syltek_defaults_for_club(_imp_club_row)
 
         col_c1, col_c2 = st.columns(2)
@@ -6230,7 +6251,7 @@ elif page == "syltek":
     _page_header("🔗", "Publicar en Syltek", "Crea las reservas del ranking directamente en el sistema Syltek")
 
     _syl_cid = current_club_id() if _db_ok else None
-    _syl_club_row = _db.get_club_by_id(_syl_cid) if (_db_ok and _db and _syl_cid) else None
+    _syl_club_row = _cached_club_row(_syl_cid, _db) if (_db_ok and _db and _syl_cid) else None
     _syl_settings = _club_settings_dict(_syl_club_row)
     _syl_url_default, _syl_user_default, _syl_pass_default = _syltek_defaults_for_club(_syl_club_row)
 
