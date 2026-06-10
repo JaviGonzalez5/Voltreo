@@ -82,7 +82,9 @@ class TestValidateGroupSize:
 # ---------------------------------------------------------------------------
 
 class TestValidateDuplicatePlayers:
-    def test_duplicate_player_in_group_is_error(self):
+    def test_duplicate_player_in_group_is_warning_not_error(self):
+        # Caso VÁLIDO en algunos clubs: un jugador compite con dos parejas del
+        # mismo grupo. Debe avisarse (warning) pero NUNCA bloquear como error.
         alice = make_player("Alice", email="a@x.com")
         bob   = make_player("Bob",   email="b@x.com")
         carol = make_player("Carol", email="c@x.com")
@@ -92,8 +94,9 @@ class TestValidateDuplicatePlayers:
         ]
         g = Group(id="g1", name="G1", pairs=pairs)
         issues = validate_groups([g])
-        errors = [i for i in issues if i["severity"] == "error" and "Alice" in i["message"]]
-        assert len(errors) == 1
+        alice_issues = [i for i in issues if "Alice" in i["message"] and "pareja" in i["message"]]
+        assert len(alice_issues) == 1
+        assert alice_issues[0]["severity"] == "warning"
 
     def test_same_player_name_different_groups_no_error(self):
         """El mismo nombre en grupos distintos no debe ser error (puede ser homónimo)."""

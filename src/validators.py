@@ -108,7 +108,8 @@ def validate_groups(groups: list[Group]) -> ValidationIssues:
 
     Comprueba:
     1. Tamaño del grupo (error si < 2, aviso si != 6).
-    2. Jugadores duplicados dentro del mismo grupo (un jugador en dos parejas).
+    2. Jugador en dos parejas del mismo grupo (aviso: es válido, el planificador
+       evita que sus partidos coincidan en hora).
     3. Parejas con el mismo ID en distintos grupos.
     4. Parejas sin ningún dato de contacto (email ni teléfono) en ninguno de sus jugadores.
     5. Nombres de pareja repetidos dentro del grupo (rompe el selector de WO en
@@ -152,11 +153,15 @@ def validate_groups(groups: list[Group]) -> ValidationIssues:
                 if not key:
                     continue
                 if key in player_seen:
+                    # AVISO, no error: en algunos clubs un jugador compite con dos
+                    # parejas del mismo grupo. El planificador no le pondrá dos
+                    # partidos a la vez, pero conviene saberlo.
                     issues.append({
-                        "severity": "error",
+                        "severity": "warning",
                         "message": (
-                            f"Grupo '{g.name}': el jugador '{player.full_name}' aparece "
-                            f"en más de una pareja ('{player_seen[key]}' y '{pair.display_name}')."
+                            f"Grupo '{g.name}': el jugador '{player.full_name}' juega "
+                            f"en más de una pareja ('{player_seen[key]}' y "
+                            f"'{pair.display_name}'). Sus partidos no coincidirán en hora."
                         ),
                     })
                 else:
