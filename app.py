@@ -93,12 +93,12 @@ h1, h2, h3, h4, h5, h6, p, span, label, div {
 /* Logout */
 [data-testid="stSidebar"] [data-key="btn_logout"] button {
     background: rgba(239,68,68,.10) !important;
-    color: #fca5a5 !important;
+    color: rgba(255,138,128,.55) !important;
     border-color: rgba(239,68,68,.22) !important;
 }
 [data-testid="stSidebar"] [data-key="btn_logout"] button:hover {
     background: rgba(239,68,68,.22) !important;
-    color: #fecaca !important;
+    color: rgba(255,138,128,.4) !important;
     border-color: rgba(239,68,68,.45) !important;
 }
 
@@ -180,12 +180,12 @@ h1, h2, h3, h4, h5, h6, p, span, label, div {
     align-items: center;
     gap: 1rem;
     padding: .2rem 0 1.4rem 0;
-    border-bottom: 2px solid #e8f0f8;
+    border-bottom: 2px solid #1d3a52;
     margin-bottom: 2rem;
 }
 .pp-page-title .pp-icon {
     width: 52px; height: 52px;
-    background: linear-gradient(135deg, #e8f8f0, #d0f2e4);
+    background: linear-gradient(135deg, #0e3328, #14453a);
     border-radius: 14px;
     display: flex; align-items: center; justify-content: center;
     font-size: 1.6rem; flex-shrink: 0;
@@ -195,21 +195,21 @@ h1, h2, h3, h4, h5, h6, p, span, label, div {
     margin: 0;
     font-size: 1.7rem;
     font-weight: 800;
-    color: #07111d;
+    color: #f2f8ff;
     line-height: 1.15;
     letter-spacing: -.03em;
 }
 .pp-page-title .pp-text p {
     margin: .2rem 0 0 0;
     font-size: .87rem;
-    color: #7f9ab5;
+    color: #8fb0cc;
     font-weight: 400;
 }
 
 /* ── Tarjeta de sección ─────────────────────────────────────────── */
 .pp-section {
-    background: #fff;
-    border: 1px solid #edf2fa;
+    background: #0f2231;
+    border: 1px solid #1d3a52;
     border-radius: 16px;
     padding: 1.5rem 1.8rem 1.3rem;
     margin-bottom: 1.2rem;
@@ -223,17 +223,17 @@ h1, h2, h3, h4, h5, h6, p, span, label, div {
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: .14em;
-    color: #00843d;
+    color: #7fffc0;
     margin-bottom: 1.1rem;
     padding-bottom: .65rem;
-    border-bottom: 1px solid #edf4ea;
+    border-bottom: 1px solid #1d3a52;
 }
 .pp-section-title span { font-size: .95rem; }
 
 /* ── Métricas ───────────────────────────────────────────────────── */
 [data-testid="metric-container"] {
-    background: #fff !important;
-    border: 1px solid #edf2fa !important;
+    background: #0f2231 !important;
+    border: 1px solid #1d3a52 !important;
     border-radius: 14px !important;
     padding: 18px 22px !important;
     box-shadow: 0 1px 3px rgba(11,26,43,.04) !important;
@@ -246,12 +246,12 @@ h1, h2, h3, h4, h5, h6, p, span, label, div {
 [data-testid="metric-container"] [data-testid="stMetricValue"] {
     font-size: 2.1rem !important;
     font-weight: 800 !important;
-    color: #07111d !important;
+    color: #f2f8ff !important;
     letter-spacing: -.03em !important;
 }
 [data-testid="metric-container"] [data-testid="stMetricLabel"] {
     font-size: .68rem !important;
-    color: #7f9ab5 !important;
+    color: #8fb0cc !important;
     font-weight: 700 !important;
     text-transform: uppercase !important;
     letter-spacing: .1em !important;
@@ -278,20 +278,20 @@ h1, h2, h3, h4, h5, h6, p, span, label, div {
 }
 .stButton > button[kind="primary"]:active { transform: translateY(0) !important; }
 .stButton > button[kind="secondary"] {
-    border: 1.5px solid #dce8f5 !important;
-    color: #1b3a58 !important;
-    background: #fff !important;
+    border: 1.5px solid #24486a !important;
+    color: #cfe2f2 !important;
+    background: #0f2231 !important;
 }
 .stButton > button[kind="secondary"]:hover {
     border-color: #00c853 !important;
-    color: #005a29 !important;
+    color: #7fffc0 !important;
     background: rgba(0,200,83,.04) !important;
     transform: translateY(-1px) !important;
 }
 [data-testid="stDownloadButton"] button {
     border-radius: 10px !important;
     font-weight: 700 !important;
-    background: linear-gradient(135deg, #1565c0, #0d47a1) !important;
+    background: linear-gradient(135deg, #74b6ff, #0d47a1) !important;
     color: #fff !important;
     border: none !important;
     box-shadow: 0 3px 12px rgba(21,101,192,.32) !important;
@@ -305,7 +305,7 @@ h1, h2, h3, h4, h5, h6, p, span, label, div {
 /* ── Tabs ───────────────────────────────────────────────────────── */
 [data-testid="stTabs"] [role="tablist"] {
     gap: 0;
-    border-bottom: 2px solid #edf2fa;
+    border-bottom: 2px solid #1d3a52;
     background: transparent;
     padding: 0 0 0 4px;
 }
@@ -314,16 +314,16 @@ h1, h2, h3, h4, h5, h6, p, span, label, div {
     padding: 9px 22px !important;
     font-weight: 600 !important;
     font-size: .87rem !important;
-    color: #7f9ab5 !important;
+    color: #8fb0cc !important;
     background: transparent !important;
     border: none !important;
     border-bottom: 2px solid transparent !important;
     transition: all .15s !important;
     margin-bottom: -2px !important;
 }
-[data-testid="stTabs"] button[role="tab"]:hover { color: #1b3a58 !important; }
+[data-testid="stTabs"] button[role="tab"]:hover { color: #eaf6ff !important; }
 [data-testid="stTabs"] button[aria-selected="true"] {
-    color: #00843d !important;
+    color: #7fffc0 !important;
     background: transparent !important;
     border-bottom: 2px solid #00c853 !important;
     font-weight: 700 !important;
@@ -331,7 +331,7 @@ h1, h2, h3, h4, h5, h6, p, span, label, div {
 
 /* ── Expanders (contenido) ──────────────────────────────────────── */
 [data-testid="stExpander"] {
-    border: 1px solid #edf2fa !important;
+    border: 1px solid #1d3a52 !important;
     border-radius: 12px !important;
     overflow: hidden !important;
     box-shadow: none !important;
@@ -343,9 +343,9 @@ h1, h2, h3, h4, h5, h6, p, span, label, div {
     color: #2d4a6a !important;
     font-size: .9rem !important;
     padding: .8rem 1.1rem !important;
-    background: #fafcff !important;
+    background: #11293c !important;
 }
-[data-testid="stExpander"] summary:hover { background: #f0f6ff !important; }
+[data-testid="stExpander"] summary:hover { background: #13283a !important; }
 
 /* ── Alertas ─────────────────────────────────────────────────────── */
 [data-testid="stAlert"] {
@@ -359,7 +359,7 @@ h1, h2, h3, h4, h5, h6, p, span, label, div {
     border-radius: 12px !important;
     overflow: hidden !important;
     box-shadow: 0 1px 8px rgba(11,26,43,.07) !important;
-    border: 1px solid #edf2fa !important;
+    border: 1px solid #1d3a52 !important;
 }
 
 /* ── Inputs ─────────────────────────────────────────────────────── */
@@ -367,8 +367,8 @@ h1, h2, h3, h4, h5, h6, p, span, label, div {
 [data-testid="stNumberInput"] input,
 [data-testid="stTextArea"] textarea {
     border-radius: 10px !important;
-    border-color: #dce8f5 !important;
-    background: #fafcff !important;
+    border-color: #24486a !important;
+    background: #11293c !important;
     font-size: .9rem !important;
     transition: border-color .15s, box-shadow .15s !important;
 }
@@ -376,7 +376,7 @@ h1, h2, h3, h4, h5, h6, p, span, label, div {
 [data-testid="stNumberInput"] input:focus,
 [data-testid="stTextArea"] textarea:focus {
     border-color: #00c853 !important;
-    background: #fff !important;
+    background: #0f2231 !important;
     box-shadow: 0 0 0 3px rgba(0,200,83,.12) !important;
 }
 /* Labels */
@@ -395,8 +395,8 @@ h1, h2, h3, h4, h5, h6, p, span, label, div {
 /* Select/Dropdown */
 [data-testid="stSelectbox"] > div > div {
     border-radius: 10px !important;
-    border-color: #dce8f5 !important;
-    background: #fafcff !important;
+    border-color: #24486a !important;
+    background: #11293c !important;
 }
 /* Number input */
 [data-testid="stNumberInput"] button {
@@ -423,7 +423,7 @@ h1, h2, h3, h4, h5, h6, p, span, label, div {
 [data-testid="stFileUploaderDropzone"] {
     border: 2px dashed #c8dff5 !important;
     border-radius: 14px !important;
-    background: #f5f9ff !important;
+    background: #13283a !important;
     transition: all .2s !important;
 }
 [data-testid="stFileUploaderDropzone"]:hover {
@@ -440,13 +440,13 @@ h1, h2, h3, h4, h5, h6, p, span, label, div {
 }
 
 /* ── Divider ─────────────────────────────────────────────────────── */
-hr { border-color: #edf2fa !important; }
+hr { border-color: #1d3a52 !important; }
 
 /* ── BADGES ─────────────────────────────────────────────────────── */
 .pp-badge-safe {
     display: inline-flex; align-items: center; gap: 5px;
     background: rgba(0,200,83,.12);
-    color: #005a29 !important;
+    color: #7fffc0 !important;
     border: 1px solid rgba(0,200,83,.28);
     border-radius: 20px;
     padding: 3px 12px;
@@ -473,7 +473,7 @@ hr { border-color: #edf2fa !important; }
 
 /* ── TORNEOS — Tarjeta TOP ──────────────────────────────────────── */
 .t-top-banner {
-    background: linear-gradient(135deg, #1a0533 0%, #3b0f6e 40%, #6a1b9a 100%);
+    background: linear-gradient(135deg, #1a0533 0%, #3b0f6e 40%, #d39bf0 100%);
     border: 2px solid #ffd700;
     border-radius: 20px;
     padding: 1.4rem 2rem;
@@ -509,14 +509,14 @@ hr { border-color: #edf2fa !important; }
     margin-top: .5rem;
 }
 /* Badge de categoría */
-.t-cat-masc  { background:#1565c0; color:#fff; padding:3px 12px; border-radius:20px; font-size:.78rem; font-weight:700; display:inline-block; }
+.t-cat-masc  { background:#74b6ff; color:#fff; padding:3px 12px; border-radius:20px; font-size:.78rem; font-weight:700; display:inline-block; }
 .t-cat-fem   { background:#c2185b; color:#fff; padding:3px 12px; border-radius:20px; font-size:.78rem; font-weight:700; display:inline-block; }
-.t-cat-mix   { background:#6a1b9a; color:#fff; padding:3px 12px; border-radius:20px; font-size:.78rem; font-weight:700; display:inline-block; }
+.t-cat-mix   { background:#d39bf0; color:#fff; padding:3px 12px; border-radius:20px; font-size:.78rem; font-weight:700; display:inline-block; }
 .t-subcat    { background:#263238; color:#90caf9; border:1px solid #37474f; padding:3px 10px; border-radius:20px; font-size:.78rem; font-weight:700; display:inline-block; margin-left:6px; }
 /* Tarjeta torneo normal */
 .t-card {
-    background: #fff;
-    border: 1.5px solid #e4edf8;
+    background: #0f2231;
+    border: 1.5px solid #1d3a52;
     border-radius: 16px;
     padding: 1.2rem 1.4rem;
     margin-bottom: .9rem;
@@ -524,14 +524,14 @@ hr { border-color: #edf2fa !important; }
     transition: box-shadow .15s, transform .15s;
 }
 .t-card:hover { box-shadow: 0 4px 18px rgba(11,26,43,.12); transform: translateY(-1px); }
-.t-card-name { font-size: 1.05rem; font-weight: 800; color: #07111d; }
+.t-card-name { font-size: 1.05rem; font-weight: 800; color: #f2f8ff; }
 .t-card-meta { font-size: .82rem; color: #6b82a0; margin-top: .2rem; }
 
 /* ── ESTADO VACÍO ───────────────────────────────────────────────── */
 .pp-empty {
     text-align: center;
     padding: 3.5rem 1.5rem;
-    background: #f5f8fc;
+    background: #0d2030;
     border-radius: 16px;
     border: 2px dashed #d0e0f0;
     margin: 1rem 0;
@@ -539,23 +539,23 @@ hr { border-color: #edf2fa !important; }
 .pp-empty .pp-empty-icon { font-size: 3.2rem; margin-bottom: .6rem; }
 .pp-empty .pp-empty-title {
     font-size: 1.15rem; font-weight: 700;
-    color: #1b3a58; margin-bottom: .4rem;
+    color: #cfe2f2; margin-bottom: .4rem;
 }
-.pp-empty .pp-empty-text { font-size: .9rem; color: #7f9ab5; }
+.pp-empty .pp-empty-text { font-size: .9rem; color: #8fb0cc; }
 
 /* ── STAT CHIPS (resumen rápido) ────────────────────────────────── */
 .pp-chips { display: flex; flex-wrap: wrap; gap: .5rem; margin: .8rem 0; }
 .pp-chip {
     display: inline-flex; align-items: center; gap: .3rem;
-    background: #f0f6ff;
+    background: #13283a;
     border: 1px solid #dce8f8;
     border-radius: 20px;
     padding: 4px 12px;
-    font-size: .82rem; font-weight: 600; color: #1b3a58;
+    font-size: .82rem; font-weight: 600; color: #cfe2f2;
 }
-.pp-chip.green  { background:#e8faf0; border-color:#a8e6c0; color:#005a29; }
-.pp-chip.red    { background:#fef0f0; border-color:#f5c0c0; color:#8b0000; }
-.pp-chip.orange { background:#fff5e8; border-color:#f5d9a8; color:#7a4000; }
+.pp-chip.green  { background:rgba(0,200,83,.16); border-color:rgba(127,255,192,.45); color:#7fffc0; }
+.pp-chip.red    { background:rgba(244,67,54,.16); border-color:rgba(255,138,128,.45); color:#ff9d96; }
+.pp-chip.orange { background:rgba(255,167,38,.16); border-color:rgba(255,204,128,.45); color:#ffcc80; }
 
 /* ── CÓDIGO / FORMATO CSV ───────────────────────────────────────── */
 [data-testid="stCode"] {
@@ -570,7 +570,7 @@ hr { border-color: #edf2fa !important; }
 }
 [data-testid="stExpander"] summary::before {
     content: ">";
-    color: #7f9ab5;
+    color: #8fb0cc;
     font-weight: 900;
     font-size: .78rem;
     margin-right: .5rem;
@@ -605,7 +605,7 @@ header[data-testid="stHeader"] * {
     visibility: hidden !important;
 }
 .stApp {
-    background: #f0f4f8 !important;
+    background: #0a1622 !important;
 }
 .main .block-container {
     max-width: 1480px !important;
@@ -676,7 +676,7 @@ header[data-testid="stHeader"] * {
     padding-left: calc(.9rem - 3px) !important;
 }
 [data-testid="stSidebar"] [data-testid="stSelectbox"] label {
-    color: #7f9ab5 !important;
+    color: #8fb0cc !important;
     font-size: .72rem !important;
     text-transform: uppercase !important;
     letter-spacing: .08em !important;
@@ -937,8 +937,8 @@ header[data-testid="stHeader"] * {
     margin: 0 0 1.4rem;
 }
 .pp-kpi-card {
-    background: #fff;
-    border: 1px solid #e2eaf4;
+    background: #0f2231;
+    border: 1px solid #1d3a52;
     border-radius: 12px;
     padding: 1.1rem 1.2rem;
     box-shadow: 0 1px 3px rgba(11,26,43,.05), 0 4px 16px rgba(11,26,43,.04);
@@ -957,7 +957,7 @@ header[data-testid="stHeader"] * {
     margin-bottom: .4rem;
 }
 .pp-kpi-value {
-    color: #07111d;
+    color: #f2f8ff;
     font-size: 2rem;
     font-weight: 800;
     line-height: 1;
@@ -970,22 +970,22 @@ header[data-testid="stHeader"] * {
 }
 
 .pp-next-step {
-    background: #ffffff;
-    border: 1px solid #dfe7f1;
-    border-left: 4px solid #0f9b57;
+    background: #0f2231;
+    border: 1px solid #1d3a52;
+    border-left: 4px solid #36e29a;
     border-radius: 12px;
     padding: 1rem 1.15rem;
     margin: 0 0 1.2rem;
     box-shadow: 0 1px 2px rgba(15, 23, 42, .05);
 }
 .pp-next-step-title {
-    color: #0f172a;
+    color: #e9f3fc;
     font-size: .92rem;
     font-weight: 800;
     margin-bottom: .25rem;
 }
 .pp-next-step-text {
-    color: #64748b;
+    color: #93b3cf;
     font-size: .86rem;
     line-height: 1.45;
 }
@@ -999,8 +999,8 @@ header[data-testid="stHeader"] * {
 }
 .pp-action-card,
 .pp-onboarding-card {
-    background: #fff;
-    border: 1px solid #e2eaf4;
+    background: #0f2231;
+    border: 1px solid #1d3a52;
     border-radius: 12px;
     padding: 1.2rem 1.3rem;
     box-shadow: 0 1px 3px rgba(11,26,43,.04);
@@ -1013,7 +1013,7 @@ header[data-testid="stHeader"] * {
     border-color: #c5d8ed;
 }
 .pp-card-title {
-    color: #07111d;
+    color: #f2f8ff;
     font-weight: 700;
     font-size: .95rem;
     margin-bottom: .4rem;
@@ -1029,14 +1029,14 @@ header[data-testid="stHeader"] * {
 
 /* Modern UI refresh (2026-05) */
 :root {
-    --pp-bg: #f4f7fb;
-    --pp-surface: #ffffff;
-    --pp-surface-soft: #f8fafc;
-    --pp-border: #dfe7f1;
-    --pp-text: #0f172a;
-    --pp-muted: #64748b;
-    --pp-accent: #0f9b57;
-    --pp-accent-hover: #0a7f46;
+    --pp-bg: #0a1622;
+    --pp-surface: #0f2231;
+    --pp-surface-soft: #0d2030;
+    --pp-border: #1d3a52;
+    --pp-text: #e9f3fc;
+    --pp-muted: #93b3cf;
+    --pp-accent: #36e29a;
+    --pp-accent-hover: #00c853;
     --pp-shadow-sm: 0 1px 2px rgba(15, 23, 42, .06);
     --pp-shadow-md: 0 8px 24px rgba(15, 23, 42, .08);
     --pp-radius-sm: 8px;
@@ -1136,7 +1136,7 @@ header[data-testid="stHeader"] * {
 }
 
 .t-top-banner::before {
-    color: #64748b !important;
+    color: #93b3cf !important;
     text-shadow: none !important;
 }
 
@@ -1502,7 +1502,7 @@ def _dashboard_hero(title: str, subtitle: str, eyebrow: str = "Panel del club") 
     )
 
 
-_KPI_COLORS = ["#00c853", "#1565c0", "#7b1fa2", "#e65100"]
+_KPI_COLORS = ["#00c853", "#2e8bff", "#b45ce8", "#ff8a3d"]
 _KPI_BG     = ["rgba(0,200,83,.08)", "rgba(21,101,192,.08)", "rgba(123,31,162,.08)", "rgba(230,81,0,.08)"]
 
 def _kpi_grid(cards: list[tuple[str, str, str]]) -> None:
@@ -2822,7 +2822,7 @@ if _early_health:
     st.markdown(
         '<div style="text-align:center;padding:2rem">'
         '<div style="font-size:3rem">✅</div>'
-        '<div style="font-size:1.2rem;font-weight:700;color:#00843d">Voltreo está activo</div>'
+        '<div style="font-size:1.2rem;font-weight:700;color:#7fffc0">Voltreo está activo</div>'
         '</div>',
         unsafe_allow_html=True,
     )
@@ -3573,7 +3573,7 @@ if page == "tournaments":
         f'<div style="display:inline-flex;align-items:center;gap:.5rem;'
         f'background:rgba(0,200,83,.10);border:1px solid rgba(0,200,83,.3);'
         f'border-radius:20px;padding:.3rem .9rem;margin-bottom:1rem;'
-        f'color:#00843d;font-weight:700;font-size:.85rem">'
+        f'color:#7fffc0;font-weight:700;font-size:.85rem">'
         f'🏢 Club activo: {escape(_tr_club_name or "—")}</div>',
         unsafe_allow_html=True,
     )
@@ -3929,7 +3929,7 @@ if page == "home":
                 '<div style="background:#fff;border:1px solid #e2eaf4;border-radius:16px;'
                 'padding:1.4rem 1.6rem;margin:1.2rem 0;box-shadow:0 2px 12px rgba(11,26,43,.07)">'
                 '<div style="font-size:.68rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;'
-                'color:#00843d;margin-bottom:.8rem">🚀 Primeros pasos</div>'
+                'color:#7fffc0;margin-bottom:.8rem">🚀 Primeros pasos</div>'
                 '<div style="font-size:.95rem;font-weight:700;color:#07111d;margin-bottom:.9rem">'
                 'Empieza en menos de 5 minutos</div>',
                 unsafe_allow_html=True,
@@ -4232,7 +4232,7 @@ elif page == "config":
             f'background:rgba(0,200,83,.08);border:1px solid rgba(0,200,83,.25);'
             f'border-radius:10px;padding:.6rem 1rem;margin-bottom:1rem">'
             f'<span style="font-size:1.1rem">✅</span>'
-            f'<span style="font-size:.9rem;color:#00843d;font-weight:600">'
+            f'<span style="font-size:.9rem;color:#7fffc0;font-weight:600">'
             f'Fase activa: <strong>{_ep.name}</strong> · '
             f'{_ep.start_date} → {_ep.end_date} · '
             f'{len(_ep.courts)} pistas</span></div>',
@@ -5942,7 +5942,7 @@ elif page == "results":
 
     _g_played = sum(1 for m in _gmatches if _existing.get(m.id) and _existing[m.id].is_played)
     st.markdown(
-        f'<div style="margin:.2rem 0 .55rem;color:#334155;font-size:.95rem">'
+        f'<div style="margin:.2rem 0 .55rem;color:#cfe2f2;font-size:.95rem">'
         f'<b>{escape(_sel_level)} · {escape(_sel_group)}</b> — '
         f'{_g_played}/{len(_gmatches)} partidos con resultado</div>',
         unsafe_allow_html=True,
@@ -8736,7 +8736,7 @@ elif page == "t_results":
                     _label_b = _dl_b.get(_dk_b, _dk_b)
                 if _label_b:
                     st.markdown(f'<div style="font-size:.75rem;font-weight:800;letter-spacing:.1em;'
-                                f'text-transform:uppercase;color:#00843d;margin:.8rem 0 .3rem">'
+                                f'text-transform:uppercase;color:#7fffc0;margin:.8rem 0 .3rem">'
                                 f'🎾 {escape(_label_b)}</div>', unsafe_allow_html=True)
                 # Construir tabla visual por rondas de derecha a izquierda
                 _rounds_present = [r for r in _bracket_rounds if _div_ms.get(r)]
@@ -8751,7 +8751,7 @@ elif page == "t_results":
                             _w_id = getattr(_m_b, "winner_id", None)
                             def _pstyle(pid):
                                 if not _w_id: return "color:#0b1a2b;font-weight:500"
-                                return "color:#00843d;font-weight:700" if pid and pid==_w_id else "color:#94a8be"
+                                return "color:#7fffc0;font-weight:700" if pid and pid==_w_id else "color:#94a8be"
                             _p1_s = _pstyle(_m_b.pair_1.id if _m_b.pair_1 else None)
                             _p2_s = _pstyle(_m_b.pair_2.id if _m_b.pair_2 else None)
                             _score_b = escape(_m_b.score) if getattr(_m_b, "score", "") else ""
