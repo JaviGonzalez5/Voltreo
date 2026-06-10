@@ -1435,6 +1435,24 @@ header[data-testid="stHeader"] * {
 @media (max-width: 640px) {
     .mob-nav { display: flex !important; }
 }
+
+/* ── Steppers clicables (ranking rkstep_ y torneos t_bc_): chips oscuros ── */
+div[data-key^="rkstep_"] button, [class*="st-key-rkstep_"] button,
+div[data-key^="t_bc_"] button,   [class*="st-key-t_bc_"] button {
+  background:#0d2b37 !important; color:#9ec0dc !important;
+  border:1px solid #1e3a58 !important; border-radius:30px !important;
+  font-weight:700 !important; font-size:.8rem !important;
+  padding:.45rem .35rem !important; min-height:0 !important; box-shadow:none !important;
+}
+div[data-key^="rkstep_"] button:hover, [class*="st-key-rkstep_"] button:hover,
+div[data-key^="t_bc_"] button:hover,   [class*="st-key-t_bc_"] button:hover {
+  border-color:#7fffc0 !important; color:#eaf6ff !important; background:#10344a !important;
+}
+div[data-key^="rkstep_"] button[kind="primary"], [class*="st-key-rkstep_"] button[kind="primary"],
+div[data-key^="t_bc_"] button[kind="primary"],   [class*="st-key-t_bc_"] button[kind="primary"] {
+  background:linear-gradient(135deg,#00c853,#00897b) !important; color:#fff !important;
+  border:none !important; box-shadow:0 0 0 3px rgba(127,255,192,.18) !important;
+}
 </style>
 """
 
@@ -3058,28 +3076,6 @@ if _db_ok and is_authenticated():
         unsafe_allow_html=True,
     )
 
-    with st.sidebar.expander("⚙️ Acciones del club", expanded=False):
-        _act1, _act2 = st.columns(2)
-        with _act1:
-            if st.button("🧹 Ranking", key="club_action_reset_ranking", use_container_width=True):
-                _reset_ranking_runtime_state()
-                st.session_state["_nav_page"] = "config"
-                st.rerun()
-        with _act2:
-            if st.button("🧹 Torneo", key="club_action_reset_tournament", use_container_width=True):
-                _reset_tournament_runtime_state()
-                st.session_state["_nav_page"] = "t_config"
-                st.rerun()
-        if st.button("🔄 Recargar datos del club", key="club_action_reload", use_container_width=True):
-            _reset_club_runtime_state()
-            if is_superadmin():
-                st.session_state["_active_club_id"] = st.session_state.get("superadmin_selected_club_id")
-            else:
-                st.session_state["_active_club_id"] = current_club_id()
-            st.rerun()
-
-    if st.sidebar.button("↪  Cerrar sesión", use_container_width=True, key="btn_logout"):
-        logout()
 else:
     _club_name_sidebar = _s.get("club_name", "")
 
@@ -3212,15 +3208,36 @@ _T_STEPS = [
 ]
 _IS_TOURNAMENT = page in {k for k, *_ in _T_STEPS}
 
-st.sidebar.markdown('<div class="pp-nav-section"><span>Herramientas</span><span class="pp-nav-badge">2</span></div>', unsafe_allow_html=True)
-# Ranking: la navegación por pasos vive ahora en el stepper clicable de la página
-# (_ranking_stepper), no en el sidebar — evita duplicar la navegación. El acceso
-# de entrada es «Mis Rankings» (sección Principal).
-_sidebar_workflow("🏆  Torneos",  _T_STEPS, page, "nav_t", expanded=_IS_TOURNAMENT)
+# La navegación por pasos (ranking Y torneos) vive en los steppers clicables
+# dentro de cada página — el sidebar queda solo como navegación principal.
 
 if _db_ok and is_superadmin():
     st.sidebar.markdown('<div class="pp-nav-section"><span>Sistema</span></div>', unsafe_allow_html=True)
     _sidebar_button("⚙  Administración", "admin", page, "nav_admin")
+
+# ── Utilidades de cuenta al FINAL del sidebar (no estorban la navegación) ──
+if _db_ok and is_authenticated():
+    with st.sidebar.expander("⚙️ Acciones del club", expanded=False):
+        _act1, _act2 = st.columns(2)
+        with _act1:
+            if st.button("🧹 Ranking", key="club_action_reset_ranking", use_container_width=True):
+                _reset_ranking_runtime_state()
+                st.session_state["_nav_page"] = "config"
+                st.rerun()
+        with _act2:
+            if st.button("🧹 Torneo", key="club_action_reset_tournament", use_container_width=True):
+                _reset_tournament_runtime_state()
+                st.session_state["_nav_page"] = "t_config"
+                st.rerun()
+        if st.button("🔄 Recargar datos del club", key="club_action_reload", use_container_width=True):
+            _reset_club_runtime_state()
+            if is_superadmin():
+                st.session_state["_active_club_id"] = st.session_state.get("superadmin_selected_club_id")
+            else:
+                st.session_state["_active_club_id"] = current_club_id()
+            st.rerun()
+    if st.sidebar.button("↪  Cerrar sesión", use_container_width=True, key="btn_logout"):
+        logout()
 
 _dry = _s.get("dry_run", True)
 if is_superadmin():
