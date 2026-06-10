@@ -5529,6 +5529,40 @@ elif page == "generate":
             if result is None:
                 st.info("Pulsa **🗓️ Asignar horarios** para repartir los partidos entre pistas y horas.")
 
+            # ── Partidos SIN asignar: cuántos y por qué (desplegable) ──
+            _unassigned = [m for m in _all_ms if m.status != MatchStatus.SCHEDULED]
+            if result is not None and _unassigned:
+                with st.expander(
+                    f"⛔ {len(_unassigned)} partido(s) sin asignar — ver motivos",
+                    expanded=False,
+                ):
+                    from collections import Counter as _Cnt
+                    def _motivo(m):
+                        if m.status == MatchStatus.CONFLICT:
+                            return m.conflict_reason or "Sin hueco disponible"
+                        if (getattr(m.pair_1, "manual_only", False)
+                                or getattr(m.pair_2, "manual_only", False)):
+                            return "Asignación manual — ver Observaciones (MIRAR MAIL)"
+                        return m.conflict_reason or "Pendiente de asignar"
+                    _por_motivo = _Cnt(_motivo(m) for m in _unassigned)
+                    st.markdown("**Resumen por motivo:**")
+                    for _mo, _cnt in _por_motivo.most_common():
+                        st.markdown(f"- **{_cnt}** × {escape(str(_mo))}")
+                    st.markdown("**Detalle por partido:**")
+                    st.dataframe(
+                        pd.DataFrame([{
+                            "Grupo": m.group_name or "—",
+                            "Partido": f"{m.pair_1.display_name} vs {m.pair_2.display_name}",
+                            "Motivo": _motivo(m),
+                        } for m in sorted(_unassigned, key=lambda x: x.group_name or "")]),
+                        hide_index=True, use_container_width=True, height=300,
+                    )
+                    st.caption(
+                        "💡 Remedios típicos: ampliar fechas, más pistas, activar fin de "
+                        "semana, subir máx. partidos/semana o revisar la disponibilidad "
+                        "de las parejas implicadas."
+                    )
+
             # ── Desglose por grupo (total / asignados / conflicto) ──
             with st.expander("📊 Desglose por grupo", expanded=False):
                 from collections import defaultdict as _dd
