@@ -104,8 +104,11 @@ def tournament_to_db(config, club_id: str, tournament_id: Optional[str] = None) 
     """Serializa TournamentConfig al formato de upsert_tournament()."""
     from .tournament_models import TournamentConfig
     data = config.model_dump(mode="json")
+    # Id ESTABLE: si no se pasa uno, usar el UUID propio del torneo. Así el upsert
+    # siempre escribe con id conocido y el payload devuelto SIEMPRE incluye "id"
+    # (evita KeyError al hacer resultado["id"] cuando la BD no devuelve la fila).
     return {
-        "tournament_id":   tournament_id,
+        "tournament_id":   tournament_id or getattr(config, "id", None),
         "club_id":         club_id,
         "name":            config.name,
         "start_date":      config.start_date.isoformat(),

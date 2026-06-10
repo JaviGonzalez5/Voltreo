@@ -7039,8 +7039,13 @@ elif page == "t_config":
                             tournament_id=_t_payload["tournament_id"],
                         )
                         st.session_state["db_tournament_id"] = _t_saved["id"]
-                    except Exception as _te:
-                        st.warning("⚠️ No se pudo guardar la configuración del torneo. Inténtalo de nuevo.")
+                    except Exception:
+                        # Fallo REAL de guardado: avisar y NO navegar (antes mostraba
+                        # "✅ guardada" igualmente y el usuario creía que persistió).
+                        logging.exception("Error guardando configuración del torneo (club=%s)", _t_cid)
+                        st.error("⛔ No se pudo guardar la configuración del torneo en la base "
+                                 "de datos. Comprueba la conexión e inténtalo de nuevo.")
+                        st.stop()
             st.success("✅ Configuración guardada.")
             st.session_state["_nav_page"] = "t_pairs"
             st.rerun()
@@ -7293,8 +7298,18 @@ elif page == "t_pairs":
                         tournament_data=_p["tournament_data"], tournament_id=_p["tournament_id"],
                     )
                     st.session_state["db_tournament_id"] = _sv["id"]
+                    st.session_state.pop("_autosave_failed", None)
                 except Exception:
-                    pass
+                    # Autosave no debe romper el flujo, pero el fallo NO puede ser
+                    # invisible: log + aviso flotante para que el usuario sepa que
+                    # los últimos cambios no están en la nube.
+                    logging.exception("Autosave de torneo falló (club=%s)", _cid)
+                    st.session_state["_autosave_failed"] = True
+                    try:
+                        st.toast("⚠️ No se pudo autoguardar en la nube — los últimos "
+                                 "cambios solo están en esta sesión.", icon="⚠️")
+                    except Exception:
+                        pass
 
     from src.tournament_models import RegistrationStatus as _RegSt
 
