@@ -4449,31 +4449,61 @@ elif page == "import":
 
     tab1, tab2, tab3 = st.tabs(["👥 Grupos y parejas", "📋 Reservas existentes", "🔌 Desde Syltek"])
 
-    # --- Tab 1: Grupos desde CSV ---
+    # --- Tab 1: Grupos desde Excel o CSV ---
     with tab1:
-        st.markdown("**Formato esperado del CSV:**")
-        st.code(
-            "group_id, group_name, level, pair_name, player1_name, player1_email, "
-            "player1_phone, player2_name, player2_email, player2_phone",
-            language="text",
+        from src.import_file import (
+            read_groups_file, normalize_groups_df,
+            apply_observaciones_to_groups, build_template_xlsx,
         )
-        st.download_button(
-            "⬇️ Descargar CSV de ejemplo",
-            data=(_HERE / "sample_data" / "groups_example.csv").read_text(encoding="utf-8"),
-            file_name="groups_example.csv",
-            mime="text/csv",
+        st.markdown(
+            "Sube tu **Excel (.xlsx) o CSV** con los grupos. Las columnas se "
+            "reconocen automáticamente por su nombre habitual: *Grupo, Pareja, "
+            "Jugador 1, Jugador 2* (+ emails/teléfonos y **Observaciones** con "
+            "disponibilidad estilo Syltek: `L X +1930`, `PF X2030`…)."
         )
+        _dl1, _dl2 = st.columns(2)
+        with _dl1:
+            st.download_button(
+                "⬇️ Plantilla Excel de ejemplo",
+                data=build_template_xlsx(),
+                file_name="grupos_plantilla.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        with _dl2:
+            st.download_button(
+                "⬇️ CSV de ejemplo",
+                data=(_HERE / "sample_data" / "groups_example.csv").read_text(encoding="utf-8"),
+                file_name="groups_example.csv",
+                mime="text/csv",
+            )
 
-        uploaded = st.file_uploader("Sube tu CSV de grupos", type=["csv"])
+        uploaded = st.file_uploader("Sube tu Excel o CSV de grupos",
+                                    type=["csv", "xlsx", "xls"])
         if uploaded:
-            df = pd.read_csv(uploaded)
-            errs = validate_groups_df(df)
+            try:
+                _raw_df = read_groups_file(uploaded)
+            except ValueError as _e_read:
+                st.error(str(_e_read))
+                st.stop()
+            df, _norm_errs, _col_map = normalize_groups_df(_raw_df)
+            _hard_errs = [e for e in _norm_errs if not e.startswith("AVISO")]
+            for _e in _norm_errs:
+                (st.warning if _e.startswith("AVISO") else st.error)(_e)
+            if not _hard_errs and _col_map:
+                st.caption("Columnas reconocidas: "
+                           + " · ".join(f"`{o}` → {c}" for o, c in _col_map.items()))
+            errs = validate_groups_df(df) if not _hard_errs else _hard_errs
             if errs:
-                st.error("Errores en el CSV:")
-                for e in errs:
-                    st.write(f"- {e}")
+                if not _hard_errs:
+                    st.error("Errores en el fichero:")
+                    for e in errs:
+                        st.write(f"- {e}")
             else:
                 groups = _df_to_groups(df)
+                _n_avail = apply_observaciones_to_groups(groups, df)
+                if _n_avail:
+                    st.info(f"🗓️ Disponibilidad aplicada a {_n_avail} pareja(s) "
+                            "desde la columna Observaciones.")
                 st.session_state.groups = groups
                 st.session_state.data_loaded = True
                 # Al reimportar grupos los partidos anteriores quedan obsoletos — limpiar
