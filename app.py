@@ -340,7 +340,7 @@ h1, h2, h3, h4, h5, h6, p, span, label, div {
 [data-testid="stExpander"]:hover { box-shadow: 0 2px 12px rgba(11,26,43,.07) !important; }
 [data-testid="stExpander"] summary {
     font-weight: 600 !important;
-    color: #2d4a6a !important;
+    color: #cfe2f2 !important;
     font-size: .9rem !important;
     padding: .8rem 1.1rem !important;
     background: #11293c !important;
@@ -389,7 +389,7 @@ h1, h2, h3, h4, h5, h6, p, span, label, div {
 [data-testid="stDateInput"] label {
     font-size: .82rem !important;
     font-weight: 600 !important;
-    color: #3d5a78 !important;
+    color: #b9d3e9 !important;
     letter-spacing: .01em !important;
 }
 /* Select/Dropdown */
@@ -435,7 +435,7 @@ h1, h2, h3, h4, h5, h6, p, span, label, div {
 [data-testid="stCheckbox"] label,
 [data-testid="stToggle"] label {
     font-size: .88rem !important;
-    color: #2d4a6a !important;
+    color: #cfe2f2 !important;
     font-weight: 500 !important;
 }
 
