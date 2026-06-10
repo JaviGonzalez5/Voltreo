@@ -1561,7 +1561,7 @@ def _render_mobile_nav(current_page: str) -> None:
     Los botones son visualmente transparentes en desktop (ocultos por CSS)
     y aparecen como la barra inferior en móvil.
     """
-    _ranking_pages = {"config", "import", "generate", "export", "review",
+    _ranking_pages = {"config", "import", "pairs", "generate", "export", "review",
                       "results", "standings", "syltek"}
     _tournament_pages = {"t_config", "t_pairs", "t_generate", "t_schedule",
                          "t_results", "t_export"}
@@ -3128,6 +3128,7 @@ _has_results = bool(getattr(_s.phase, "match_results", []) if _s.phase else [])
 _R_STEPS = [
     ("config",    "Configurar fase",    "Define fechas, pistas y parámetros",  _phase_config_ready(_s.phase)),
     ("import",    "Importar datos",     "Sube grupos, parejas y reservas",      _s.data_loaded),
+    ("pairs",     "Parejas y grupos",   "Disponibilidad y subidas/bajadas",     _s.data_loaded),
     ("generate",  "Generar calendario", "Crea los partidos automáticamente",    _s.matches_generated),
     ("results",   "Registrar resultados", "Introduce los marcadores de cada partido", _has_results),
     ("standings", "Clasificación",      "Ranking automático por puntos",         _has_results),
@@ -3168,12 +3169,13 @@ div[data-key^="rkstep_"] button[kind="primary"],
 </style>
 """
 
-_RK_CORE_STEPS = ["config", "import", "generate", "results", "standings", "export"]
+_RK_CORE_STEPS = ["config", "import", "pairs", "generate", "results", "standings", "export"]
 _RK_SHORT = {
-    "config": "Configurar", "import": "Importar", "generate": "Generar",
-    "results": "Resultados", "standings": "Clasificación", "export": "Exportar",
+    "config": "Configurar", "import": "Importar", "pairs": "Parejas",
+    "generate": "Generar", "results": "Resultados", "standings": "Clasificación",
+    "export": "Exportar",
 }
-_RK_KEYCAP = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣"]
+_RK_KEYCAP = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣"]
 
 def _ranking_stepper(active: str) -> None:
     """Stepper clicable del flujo de ranking: cada paso es un botón que navega.
@@ -4998,6 +5000,253 @@ elif page == "import":
 # ---------------------------------------------------------------------------
 # PÁGINA 3: Generar calendario
 # ---------------------------------------------------------------------------
+
+elif page == "pairs":
+    from src.ranking_movements import (
+        build_movement_plan, apply_movement_plan, ordered_ladder,
+    )
+    from src.ranking_scorer import ScoringRules
+    _page_header("👥", "Parejas y grupos",
+                 "Censo por grupo, disponibilidad de cada pareja y subidas/bajadas de fase")
+    _ranking_stepper("pairs")
+
+    _pp_flash = st.session_state.pop("_pairs_flash", None)
+    if _pp_flash:
+        st.success(_pp_flash)
+
+    _pphase = st.session_state.phase
+    if _pphase is None or not _pphase.groups:
+        _empty_state("📥", "Sin grupos cargados",
+                     "Primero <strong>importa los grupos</strong> en el paso anterior.")
+        st.stop()
+
+    # ── Selector Nivel → Grupo ───────────────────────────────────────────────
+    import re as _re_pp
+    def _pp_parse(gname: str):
+        g = gname or "Sin grupo"
+        _ml = _re_pp.search(r"nivel\s*(\d+)", g, _re_pp.I)
+        _lvl = f"Nivel {int(_ml.group(1))}" if _ml else g
+        _mg = _re_pp.search(r"grupo\s*(\d+)", g, _re_pp.I)
+        _grp = f"Grupo {int(_mg.group(1))}" if _mg else "Único"
+        return _lvl, _grp
+
+    _pp_levels: dict = {}
+    for _g in _pphase.groups:
+        _lvl, _grp = _pp_parse(_g.name)
+        _pp_levels.setdefault(_lvl, {}).setdefault(_grp, _g)
+    _pp_lvl_labels = sorted(_pp_levels, key=lambda L: (
+        int(_re_pp.search(r"(\d+)", L).group(1)) if _re_pp.search(r"(\d+)", L) else 9999, L))
+
+    _ppc1, _ppc2 = st.columns(2)
+    with _ppc1:
+        _pp_sel_lvl = st.selectbox("Nivel", _pp_lvl_labels, key="pp_level")
+    with _ppc2:
+        _pp_grps = sorted(_pp_levels[_pp_sel_lvl], key=lambda G: (
+            int(_re_pp.search(r"(\d+)", G).group(1)) if _re_pp.search(r"(\d+)", G) else 9999, G))
+        _pp_sel_grp = st.selectbox("Grupo", _pp_grps, key="pp_group")
+    _pp_group = _pp_levels[_pp_sel_lvl][_pp_sel_grp]
+
+    # ── Disponibilidad por pareja ────────────────────────────────────────────
+    _section_start("🗓️", f"Disponibilidad — {_pp_sel_lvl} · {_pp_sel_grp}")
+    st.caption("Días en que la pareja **puede jugar** (vacío = cualquier día), franja "
+               "horaria y pista fija opcional. El planificador respeta esto al asignar.")
+
+    _DAYS_PP = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+    _pp_edits: list = []
+    for _pr in _pp_group.pairs:
+        with st.container(border=True):
+            st.markdown(f"**{escape(_pr.display_name)}**")
+            _pa, _pb, _pc = st.columns([2, 1, 1])
+            with _pa:
+                _sel_days = st.multiselect(
+                    "Días disponibles", _DAYS_PP,
+                    default=[_DAYS_PP[d] for d in (_pr.available_weekdays or []) if 0 <= d <= 6],
+                    key=f"pp_days_{_pr.id}",
+                )
+            with _pb:
+                _f_from = st.time_input(
+                    "Desde", value=_pr.available_from or time(16, 0),
+                    key=f"pp_from_{_pr.id}",
+                )
+            with _pc:
+                _f_until = st.time_input(
+                    "Última hora de inicio", value=_pr.available_until or time(22, 0),
+                    key=f"pp_until_{_pr.id}",
+                )
+            _pd, _pe = st.columns([1, 1])
+            with _pd:
+                _pf_opts = ["— Sin pista fija —"] + _DAYS_PP
+                _pf_cur = (_DAYS_PP[_pr.preferred_weekday]
+                           if isinstance(_pr.preferred_weekday, int) and 0 <= _pr.preferred_weekday <= 6
+                           else "— Sin pista fija —")
+                _pf_day = st.selectbox("Pista fija (día)", _pf_opts,
+                                       index=_pf_opts.index(_pf_cur),
+                                       key=f"pp_pfd_{_pr.id}")
+            with _pe:
+                _pf_time = st.time_input("Pista fija (hora)",
+                                         value=_pr.preferred_time or time(20, 0),
+                                         key=f"pp_pft_{_pr.id}")
+            _pp_edits.append((_pr, _sel_days, _f_from, _f_until, _pf_day, _pf_time))
+
+    if st.button(f"💾 Guardar disponibilidad · {_pp_sel_lvl} {_pp_sel_grp}",
+                 type="primary", use_container_width=True):
+        for _pr, _sel_days, _f_from, _f_until, _pf_day, _pf_time in _pp_edits:
+            _pr.available_weekdays = sorted(_DAYS_PP.index(d) for d in _sel_days)
+            _pr.available_from  = _f_from
+            _pr.available_until = _f_until
+            if _pf_day != "— Sin pista fija —":
+                _pr.preferred_weekday = _DAYS_PP.index(_pf_day)
+                _pr.preferred_time = _pf_time
+                _pr.preferred_slots = [{"weekday": _DAYS_PP.index(_pf_day), "time": _pf_time}]
+            else:
+                _pr.preferred_weekday = None
+                _pr.preferred_time = None
+                _pr.preferred_slots = []
+        st.session_state.phase = _pphase
+        st.session_state.groups = list(_pphase.groups)
+        if _db_ok and _db is not None:
+            _pp_cid = current_club_id()
+            _pp_pid = st.session_state.get("db_phase_id")
+            if _pp_cid and _pp_pid:
+                try:
+                    _pp_payload = phase_to_db(_pphase, _pp_cid, _pp_pid)
+                    _db.upsert_phase(
+                        club_id=_pp_cid, name=_pp_payload["name"],
+                        start_date=_pp_payload["start_date"], end_date=_pp_payload["end_date"],
+                        phase_config=_pp_payload["phase_config"],
+                        groups_data=_pp_payload["groups_data"],
+                        bookings_data=_pp_payload["bookings_data"],
+                        schedule_result=schedule_result_to_db(st.session_state.get("schedule_result")),
+                        phase_id=_pp_pid,
+                    )
+                except Exception:
+                    logging.exception("Error guardando disponibilidad (phase=%s)", _pp_pid)
+                    st.error("⛔ No se pudo guardar en la base de datos. Reinténtalo.")
+                    st.stop()
+        st.session_state["_pairs_flash"] = (
+            f"✅ Disponibilidad guardada · {_pp_sel_lvl} {_pp_sel_grp}."
+        )
+        st.rerun()
+
+    # ── Cierre de fase: subidas y bajadas automáticas ────────────────────────
+    st.divider()
+    _section_start("🔁", "Cerrar fase y crear la siguiente")
+    st.caption("Calcula quién **sube, se mantiene o baja** según la clasificación "
+               "final, y crea la fase siguiente con los grupos ya montados. "
+               "Revisa la propuesta y ajusta destinos antes de confirmar "
+               "(p. ej. bajas de parejas que dejan el ranking).")
+
+    with st.expander("Ver propuesta de movimientos", expanded=False):
+        _plan = build_movement_plan(_pphase)
+        for _w in _plan.warnings:
+            st.warning(f"⚠️ {_w}")
+
+        _ladder_names = [g.name for g in ordered_ladder(_pphase.groups)]
+        _BAJA = "— BAJA (sale del ranking) —"
+        _mv_label = {0: "= Se mantiene", -1: "⬆️ Sube 1", -2: "⬆️⬆️ Sube 2",
+                     1: "⬇️ Baja 1", 2: "⬇️⬇️ Baja 2"}
+        _mv_rows = [{
+            "_pid": m.pair_id,
+            "Grupo actual": m.from_group,
+            "Pos": m.position,
+            "Pareja": m.pair_name,
+            "Movimiento": _mv_label.get(m.delta, str(m.delta)),
+            "Destino": m.to_group,
+        } for m in _plan.movements]
+        _mv_edited = st.data_editor(
+            pd.DataFrame(_mv_rows),
+            key="pp_movements_editor",
+            hide_index=True, use_container_width=True, height=420,
+            column_config={
+                "_pid": None,
+                "Grupo actual": st.column_config.TextColumn(disabled=True),
+                "Pos": st.column_config.NumberColumn(disabled=True, width="small"),
+                "Pareja": st.column_config.TextColumn(disabled=True, width="medium"),
+                "Movimiento": st.column_config.TextColumn(disabled=True, width="small"),
+                "Destino": st.column_config.SelectboxColumn(
+                    options=_ladder_names + [_BAJA], width="medium",
+                    help="Cambia el grupo destino o marca BAJA si la pareja deja el ranking."),
+            },
+        )
+
+        _nf1, _nf2, _nf3 = st.columns([2, 1, 1])
+        with _nf1:
+            _nf_name = st.text_input("Nombre de la nueva fase",
+                                     value=f"{_pphase.name} → siguiente",
+                                     key="pp_newphase_name")
+        with _nf2:
+            _nf_start = st.date_input("Inicio", value=_pphase.end_date + timedelta(days=7),
+                                      key="pp_newphase_start")
+        with _nf3:
+            _nf_end = st.date_input("Fin", value=_pphase.end_date + timedelta(days=56),
+                                    key="pp_newphase_end")
+
+        if st.button("🔁 Crear fase siguiente con estos movimientos",
+                     type="primary", use_container_width=True, key="pp_close_phase"):
+            _nf_name_clean = str(_nf_name).strip()
+            if not _nf_name_clean:
+                st.error("Pon un nombre a la nueva fase.")
+            elif _nf_start >= _nf_end:
+                st.error("La fecha de inicio debe ser anterior a la de fin.")
+            else:
+                _overrides = {}
+                for _, _row in _mv_edited.iterrows():
+                    _dest = str(_row["Destino"]).strip()
+                    _overrides[_row["_pid"]] = "" if _dest == _BAJA else _dest
+                _new_groups = apply_movement_plan(_pphase, _plan, overrides=_overrides)
+                from uuid import uuid4 as _uuid4_pp
+                _next_phase = RankingPhase.model_construct(
+                    id=str(_uuid4_pp()),
+                    name=_nf_name_clean,
+                    start_date=_nf_start, end_date=_nf_end,
+                    groups=_new_groups, courts=list(_pphase.courts),
+                    bookings=[],
+                    match_duration_minutes=_pphase.match_duration_minutes,
+                    day_start_time=_pphase.day_start_time,
+                    day_end_time=_pphase.day_end_time,
+                    play_weekends=bool(getattr(_pphase, "play_weekends", False)),
+                    max_matches_per_week=_pphase.max_matches_per_week,
+                    min_days_between_matches=_pphase.min_days_between_matches,
+                    random_seed=_pphase.random_seed,
+                    balance_weights=_pphase.balance_weights,
+                    scoring_rules=getattr(_pphase, "scoring_rules", None) or ScoringRules(),
+                    match_results=[],
+                )
+                _ok_save = True
+                if _db_ok and _db is not None:
+                    _cp_cid = current_club_id()
+                    if _cp_cid:
+                        try:
+                            _np_payload = phase_to_db(_next_phase, _cp_cid, _next_phase.id)
+                            _db.upsert_phase(
+                                club_id=_cp_cid, name=_np_payload["name"],
+                                start_date=_np_payload["start_date"],
+                                end_date=_np_payload["end_date"],
+                                phase_config=_np_payload["phase_config"],
+                                groups_data=_np_payload["groups_data"],
+                                bookings_data=_np_payload["bookings_data"],
+                                schedule_result=None, phase_id=_next_phase.id,
+                            )
+                        except Exception:
+                            logging.exception("Error creando fase siguiente (club=%s)", _cp_cid)
+                            st.error("⛔ No se pudo crear la nueva fase en la base de datos.")
+                            _ok_save = False
+                if _ok_save:
+                    st.session_state.phase = _next_phase
+                    st.session_state["db_phase_id"] = _next_phase.id
+                    st.session_state.groups = list(_new_groups)
+                    st.session_state.data_loaded = True
+                    st.session_state.bookings = []
+                    st.session_state.matches = []
+                    st.session_state.matches_generated = False
+                    st.session_state.matches_scheduled = False
+                    st.session_state.schedule_result = None
+                    st.session_state["_pairs_flash"] = (
+                        f"✅ Fase **{_nf_name_clean}** creada con los grupos nuevos. "
+                        "Revisa las parejas y genera el calendario cuando quieras."
+                    )
+                    st.rerun()
+
 
 elif page == "generate":
     _page_header("📅", "Generar calendario", "Crea los enfrentamientos round-robin y asigna horarios automáticamente")
