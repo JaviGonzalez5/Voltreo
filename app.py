@@ -1084,14 +1084,16 @@ header[data-testid="stHeader"] * {
 }
 
 .stButton > button[kind="primary"] {
-    background: var(--pp-accent) !important;
-    border: 1px solid var(--pp-accent-hover) !important;
-    box-shadow: none !important;
+    background: linear-gradient(135deg, #00c853, #00897b) !important;
+    color: #ffffff !important;
+    border: none !important;
+    box-shadow: 0 3px 14px rgba(0,200,83,.30) !important;
 }
+.stButton > button[kind="primary"] p { color: #ffffff !important; }
 
 .stButton > button[kind="primary"]:hover {
-    background: var(--pp-accent-hover) !important;
-    border-color: var(--pp-accent-hover) !important;
+    background: linear-gradient(135deg, #00e676, #00a98f) !important;
+    color: #ffffff !important;
 }
 
 [data-testid="stTextInput"] input,
@@ -3752,13 +3754,13 @@ if page == "tournaments":
 
             _border_style = "border:1.5px solid #7fffc0;" if _is_active else "border:1px solid rgba(255,255,255,.08);"
             st.markdown(
-                f'<div style="background:#ffffff;{_border_style}'
+                f'<div style="background:#0f2231;{_border_style}'
                 f'border-radius:14px;padding:1rem 1.2rem;margin-bottom:.6rem">'
                 f'<div style="display:flex;align-items:center;justify-content:space-between;gap:1rem">'
                 f'<div>'
-                f'<div style="color:#0f172a;font-size:1.15rem;font-weight:900;letter-spacing:-.01em">'
+                f'<div style="color:#f2f8ff;font-size:1.15rem;font-weight:900;letter-spacing:-.01em">'
                 f'{"✅ " if _is_active else ""}{escape(_tname)}</div>'
-                f'<div style="color:#64748b;font-size:.82rem;margin-top:.25rem">📅 {_dates_str}'
+                f'<div style="color:#93b3cf;font-size:.82rem;margin-top:.25rem">📅 {_dates_str}'
                 f'{"  ·  🎾 " + str(_n_pairs) + " parejas" if _n_pairs else ""}'
                 f'{"  ·  📊 " + str(_played_n) + "/" + str(_n_matches) + " partidos jugados" if _n_matches else ""}'
                 f'</div>'
@@ -3943,7 +3945,7 @@ if page == "home":
                         st.session_state["_nav_page"] = nav_key; st.rerun()
 
             st.markdown(
-                '<div style="background:#fff;border:1px solid #e2eaf4;border-radius:16px;'
+                '<div style="background:#0f2231;border:1px solid #1d3a52;border-radius:16px;'
                 'padding:1.4rem 1.6rem;margin:1.2rem 0;box-shadow:0 2px 12px rgba(11,26,43,.07)">'
                 '<div style="font-size:.68rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;'
                 'color:#7fffc0;margin-bottom:.8rem">🚀 Primeros pasos</div>'
@@ -7701,7 +7703,7 @@ elif page == "t_pairs":
             # Mostrar primero las pendientes (aviso destacado)
             if _pending_regs:
                 st.markdown(
-                    f'<div style="background:#fff8e1;border:1.5px solid #ffc107;'
+                    f'<div style="background:rgba(255,193,7,.12);border:1.5px solid rgba(255,193,7,.5);'
                     f'border-radius:12px;padding:.8rem 1.1rem;margin-bottom:1rem">'
                     f'<span style="font-weight:800;color:#856404">📩 {len(_pending_regs)} solicitud(es) pendiente(s) de aprobación</span>'
                     f'</div>', unsafe_allow_html=True)
@@ -8290,7 +8292,7 @@ elif page == "t_generate":
                     _cap_note = (f' <span style="color:#7a4b00">— el cuadro de {_fp_sel} '
                                  f'se ajusta a {_pv["effective_bracket"]} por los clasificados disponibles</span>')
                 st.markdown(
-                    f'<div style="background:#f4f8ff;border:1px solid #d6e4f7;border-radius:8px;'
+                    f'<div style="background:#11293c;border:1px solid #24486a;border-radius:8px;'
                     f'padding:.55rem .8rem;margin-top:.45rem;font-size:.85rem;color:#234">'
                     f'📊 <strong>Partidos previstos:</strong> '
                     f'grupos <strong>{_pv["group_matches"]}</strong> (por grupo: {_pg_txt}) · '
@@ -8775,10 +8777,10 @@ elif page == "t_results":
                             _score_html_b = (f'<div style="font-size:.7rem;color:#7088a0;margin-top:.2rem">'
                                              f'{_score_b}</div>') if _score_b else ""
                             st.markdown(
-                                f'<div style="background:#fff;border:1px solid #e2eaf4;border-radius:8px;'
+                                f'<div style="background:#0f2231;border:1px solid #1d3a52;border-radius:8px;'
                                 f'padding:.45rem .6rem;margin-bottom:.35rem;font-size:.82rem">'
                                 f'<div style="{_p1_s}">{escape(_m_b.p1_display)}</div>'
-                                f'<div style="height:1px;background:#f0f4f8;margin:.2rem 0"></div>'
+                                f'<div style="height:1px;background:#1d3a52;margin:.2rem 0"></div>'
                                 f'<div style="{_p2_s}">{escape(_m_b.p2_display)}</div>'
                                 f'{_score_html_b}'
                                 f'</div>',
