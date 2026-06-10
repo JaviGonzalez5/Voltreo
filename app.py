@@ -5078,6 +5078,35 @@ elif page == "generate":
                 f"🗓️ {len(_diag_slots)} huecos en {len(_diag_days)} día(s) de juego "
                 f"({'L–D' if _play_we else 'L–V'}) · {len(phase.courts)} pista(s)."
             )
+            # ── Chequeo de capacidad: ¿caben todos los partidos esperados? ──
+            # Capacidad por (pista, día): los huecos van cada 30 min, así que la
+            # ventana útil ≈ (n_huecos-1)·30 + duración → partidos no solapados.
+            # Es una COTA SUPERIOR (descansos y máx/semana reducen más): si ya
+            # con esto no caben, seguro que habrá conflictos.
+            from math import comb as _comb_cap
+            _expected_matches = sum(_comb_cap(len(g.pairs), 2) for g in phase.groups)
+            _dur_cap = max(1, int(phase.match_duration_minutes))
+            from collections import defaultdict as _dd_cap
+            _slots_per_cd: dict = _dd_cap(int)
+            for _s_cap in _diag_slots:
+                _slots_per_cd[(_s_cap.court.id, _s_cap.date)] += 1
+            _capacity = sum(
+                max(0, ((_n_cap - 1) * 30 + _dur_cap) // _dur_cap)
+                for _n_cap in _slots_per_cd.values()
+            )
+            if _expected_matches > _capacity:
+                st.error(
+                    f"⛔ **No caben todos los partidos**: se esperan {_expected_matches} "
+                    f"y la capacidad máxima aproximada es {_capacity}. Amplía el rango de "
+                    "fechas, añade pistas, reduce la duración del partido o activa el "
+                    "fin de semana en **⚙️ Configuración**."
+                )
+            elif _expected_matches > int(_capacity * 0.8):
+                st.warning(
+                    f"⚠️ Calendario muy justo: {_expected_matches} partidos para una "
+                    f"capacidad aproximada de {_capacity}. Las restricciones (descansos, "
+                    "máx./semana, disponibilidad) pueden dejar partidos en conflicto."
+                )
 
         _had_schedule = st.session_state.matches_scheduled
         if _had_schedule:

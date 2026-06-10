@@ -223,3 +223,54 @@ class TestValidateRequiredText:
     def test_required_text_none(self):
         errs = validate_required_text(None, "Nombre")
         assert errs == ["Nombre es obligatorio."]
+
+
+# ---------------------------------------------------------------------------
+# validate_groups — nombres de pareja repetidos y jugador en varios grupos
+# ---------------------------------------------------------------------------
+
+def _mk_pair(name, p1, p2):
+    return Pair(name=name, player_1=Player(name=p1), player_2=Player(name=p2))
+
+
+class TestValidateGroupsNewChecks:
+    def test_duplicate_pair_names_in_group_is_error(self):
+        # Dos parejas con el mismo nombre visible → ambigüedad en el WO de Resultados
+        from src.validators import validate_groups
+        g = Group(name="Nivel 1", pairs=[
+            _mk_pair("García / López", "Ana", "Bea"),
+            _mk_pair("García / López", "Carla", "Diana"),
+            _mk_pair("Otra / Pareja", "Eva", "Fina"),
+        ])
+        issues = validate_groups([g])
+        dup = [i for i in issues if "parejas llamadas" in i["message"]]
+        assert len(dup) == 1                      # reportado una sola vez por nombre
+        assert dup[0]["severity"] == "error"
+
+    def test_same_player_in_two_groups_is_warning(self):
+        from src.validators import validate_groups
+        g1 = Group(name="Grupo A", pairs=[
+            _mk_pair("P1", "Juan Pérez", "Luis"),
+            _mk_pair("P2", "Marta", "Nora"),
+        ])
+        g2 = Group(name="Grupo B", pairs=[
+            _mk_pair("P3", "Juan Pérez", "Pablo"),   # Juan repetido cross-grupo
+            _mk_pair("P4", "Rosa", "Sara"),
+        ])
+        issues = validate_groups([g1, g2])
+        cross = [i for i in issues if "aparece en los grupos" in i["message"]]
+        assert len(cross) == 1
+        assert cross[0]["severity"] == "warning"
+        assert "Juan" in cross[0]["message"]
+
+    def test_clean_groups_have_no_new_issues(self):
+        from src.validators import validate_groups
+        g1 = Group(name="Grupo A", pairs=[
+            _mk_pair("P1", "A1", "A2"), _mk_pair("P2", "B1", "B2"),
+        ])
+        g2 = Group(name="Grupo B", pairs=[
+            _mk_pair("P3", "C1", "C2"), _mk_pair("P4", "D1", "D2"),
+        ])
+        issues = validate_groups([g1, g2])
+        assert not [i for i in issues if "parejas llamadas" in i["message"]]
+        assert not [i for i in issues if "aparece en los grupos" in i["message"]]

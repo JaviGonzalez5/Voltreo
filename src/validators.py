@@ -111,6 +111,10 @@ def validate_groups(groups: list[Group]) -> ValidationIssues:
     2. Jugadores duplicados dentro del mismo grupo (un jugador en dos parejas).
     3. Parejas con el mismo ID en distintos grupos.
     4. Parejas sin ningún dato de contacto (email ni teléfono) en ninguno de sus jugadores.
+    5. Nombres de pareja repetidos dentro del grupo (rompe el selector de WO en
+       Resultados, que identifica a la pareja por su nombre visible).
+    6. Mismo jugador en grupos distintos (aviso: limita los horarios posibles,
+       el planificador no le pondrá dos partidos a la vez).
 
     Devuelve una lista de dicts con claves:
       - severity : "error" | "warning" | "info"
@@ -118,6 +122,9 @@ def validate_groups(groups: list[Group]) -> ValidationIssues:
     """
     issues: ValidationIssues = []
     seen_pair_ids: set[str] = set()
+    # jugador (normalizado) → nombre del primer grupo donde apareció
+    player_group: dict[str, str] = {}
+    cross_reported: set[str] = set()
 
     for g in groups:
         n = len(g.pairs)
@@ -154,6 +161,42 @@ def validate_groups(groups: list[Group]) -> ValidationIssues:
                     })
                 else:
                     player_seen[key] = pair.display_name
+
+        # ── 6. Mismo jugador en varios grupos (aviso)
+        for pair in g.pairs:
+            for player in (pair.player_1, pair.player_2):
+                key = _normalize_name(player.full_name)
+                if not key:
+                    continue
+                if key in player_group and player_group[key] != g.name and key not in cross_reported:
+                    cross_reported.add(key)
+                    issues.append({
+                        "severity": "warning",
+                        "message": (
+                            f"El jugador '{player.full_name}' aparece en los grupos "
+                            f"'{player_group[key]}' y '{g.name}'. El planificador no le "
+                            "pondrá dos partidos a la vez, pero limita los horarios."
+                        ),
+                    })
+                player_group.setdefault(key, g.name)
+
+        # ── 5. Nombres de pareja repetidos dentro del grupo
+        name_counts: dict[str, int] = {}
+        for pair in g.pairs:
+            disp = _normalize_name(pair.display_name)
+            name_counts[disp] = name_counts.get(disp, 0) + 1
+        for pair in g.pairs:
+            disp = _normalize_name(pair.display_name)
+            if name_counts.get(disp, 0) > 1:
+                issues.append({
+                    "severity": "error",
+                    "message": (
+                        f"Grupo '{g.name}': hay {name_counts[disp]} parejas llamadas "
+                        f"'{pair.display_name}'. Renómbralas — con nombres repetidos no se "
+                        "puede registrar un walkover (WO) sin ambigüedad."
+                    ),
+                })
+                name_counts[disp] = 0  # reportar una sola vez por nombre
 
         # ── 3. IDs de pareja duplicados entre grupos
         for pair in g.pairs:
