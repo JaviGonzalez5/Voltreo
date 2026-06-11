@@ -2925,8 +2925,9 @@ try:
     _qp_tid    = st.query_params.get("t")
     _qp_rid    = st.query_params.get("r")
     _qp_join   = st.query_params.get("join")   # inscripción pública en torneo
+    _qp_portal = st.query_params.get("portal")  # portal del jugador
 except Exception:
-    _qp_tid = _qp_rid = _qp_join = None
+    _qp_tid = _qp_rid = _qp_join = _qp_portal = None
 if _qp_tid:
     from src.public_view import render_public_tournament
     render_public_tournament(_qp_tid)  # llama a st.stop() internamente
@@ -2936,6 +2937,9 @@ if _qp_join:
 if _qp_rid:
     from src.public_ranking import render_public_ranking
     render_public_ranking(_qp_rid)  # llama a st.stop() internamente
+if _qp_portal:
+    from src.player_portal import render_player_portal
+    render_player_portal()  # llama a st.stop() internamente
 
 if _db_ok:
     if not is_authenticated() and _db is not None:
