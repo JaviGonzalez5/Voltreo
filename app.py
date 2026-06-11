@@ -3097,6 +3097,7 @@ _sidebar_button("⌂  Inicio",                   "home",        page, "nav_home"
 _sidebar_button("◈  Configuración del club",   "club_config", page, "nav_club_config")
 _sidebar_button("📊  Mis Rankings",            "rankings",    page, "nav_rankings")
 _sidebar_button("🏆  Mis Torneos",             "tournaments", page, "nav_tournaments")
+_sidebar_button("🏅  Jugadores (ELO)",         "players",     page, "nav_players")
 
 def _phase_config_ready(phase_obj) -> bool:
     if phase_obj is None:
@@ -6051,6 +6052,40 @@ elif page == "results":
         _rphase.match_results = list(_existing.values())
         st.session_state.phase = _rphase
 
+        # 🏅 ELO de RANKING de los jugadores de este grupo (idempotente por
+        # match_id: re-guardar el grupo no infla el ELO; nunca rompe el flujo).
+        try:
+            from src.db_elo import get_or_create_player, record_match_result
+            _cid_elo = current_club_id() if _db_ok else None
+            if _cid_elo:
+                for _nr in _new_results:
+                    if not _nr.is_played or _nr.winner_id is None:
+                        continue
+                    _m_elo = _match_by_id.get(_nr.match_id)
+                    if _m_elo is None:
+                        continue
+                    _pl = lambda p: get_or_create_player(
+                        _cid_elo, getattr(p, "full_name", None) or p.name,
+                        getattr(p, "email", "") or "")
+                    _a1, _a2 = _pl(_m_elo.pair_1.player_1), _pl(_m_elo.pair_1.player_2)
+                    _b1, _b2 = _pl(_m_elo.pair_2.player_1), _pl(_m_elo.pair_2.player_2)
+                    if not all((_a1, _a2, _b1, _b2)):
+                        continue
+                    _score_elo = " ".join(f"{s.games_1}-{s.games_2}" for s in _nr.sets) \
+                                 if _nr.sets else "WO"
+                    record_match_result(
+                        club_id=_cid_elo, context="ranking",
+                        source_id=str(_nr.match_id), event_name=_rphase.name,
+                        pair_a_player_ids=(_a1["id"], _a2["id"]),
+                        pair_a_names=(_a1["full_name"], _a2["full_name"]),
+                        pair_b_player_ids=(_b1["id"], _b2["id"]),
+                        pair_b_names=(_b1["full_name"], _b2["full_name"]),
+                        winner_pair="A" if _nr.winner_id == _m_elo.pair_1.id else "B",
+                        score=_score_elo,
+                    )
+        except Exception:
+            logging.exception("Error actualizando ELO de ranking")
+
         # Persistir en Supabase
         if _db_ok and _db is not None:
             _cid = current_club_id()
@@ -8101,6 +8136,39 @@ elif page == "t_generate":
     from src.tournament_generator import recommend_structure as _recommend
     from src.tournament_models import TournamentDivision as _TDivG
 
+    # ── Cabezas de serie automáticas por ELO de torneos ─────────────────────
+    with st.expander("🏅 Cabezas de serie automáticas (por ELO de torneos)", expanded=False):
+        st.caption("Ordena las parejas por su **ELO de torneos** medio y asigna "
+                   "cabeza de serie a las N mejores. Jugadores sin historial "
+                   "cuentan con ELO inicial (1200).")
+        _seed_n = st.number_input(
+            "Nº de cabezas de serie", min_value=1, max_value=64,
+            value=max(1, len(getattr(t, "groups", []) or []) or 4),
+            key="t_seed_n_input",
+        )
+        if st.button("🏅 Asignar cabezas de serie", key="t_assign_seeds_elo",
+                     use_container_width=True):
+            try:
+                from src.tournament_seeding import auto_assign_seeds_from_elo
+                _cid_seed = current_club_id()
+                if not _cid_seed:
+                    st.error("No hay club activo.")
+                else:
+                    _stats_seed = auto_assign_seeds_from_elo(t.pairs, _cid_seed, int(_seed_n))
+                    st.session_state["tournament"] = t
+                    st.success(f"✅ {_stats_seed['assigned']} cabezas de serie asignadas por ELO.")
+                    if _stats_seed["default_elo_used"]:
+                        st.caption(f"ℹ️ {_stats_seed['default_elo_used']} jugador(es) sin "
+                                   "historial: usaron el ELO inicial.")
+                    _top5 = _stats_seed["pair_elos"][:int(_seed_n)]
+                    st.dataframe(pd.DataFrame(
+                        [{"Seed": i + 1, "Pareja": n, "ELO medio": e}
+                         for i, (n, e) in enumerate(_top5)]),
+                        hide_index=True, use_container_width=True)
+            except Exception as _e_seed:
+                logging.exception("Error asignando seeds por ELO")
+                st.error(f"No se pudieron asignar: {_e_seed}")
+
     # ── SELECTOR DE FORMATO — aquí es donde tiene sentido elegirlo ──────────
     # El admin ya sabe cuántas parejas hay en cada categoría.
     _section_start("🎯", "Elige el formato del torneo")
@@ -8926,6 +8994,29 @@ elif page == "t_results":
                     _treg(t, m.id, _new_winner_id, _score)
                     st.session_state["tournament"] = t
                     _persist_tournament(t)
+                    # 🏅 ELO de TORNEOS de los 4 jugadores (idempotente; nunca rompe el flujo)
+                    try:
+                        from src.db_elo import get_or_create_player, record_match_result
+                        _cid_elo = current_club_id()
+                        if _cid_elo and m.pair_1 and m.pair_2:
+                            _pl = lambda p: get_or_create_player(
+                                _cid_elo, getattr(p, "full_name", None) or p.name,
+                                getattr(p, "email", "") or "")
+                            _a1, _a2 = _pl(m.pair_1.player_1), _pl(m.pair_1.player_2)
+                            _b1, _b2 = _pl(m.pair_2.player_1), _pl(m.pair_2.player_2)
+                            if all((_a1, _a2, _b1, _b2)):
+                                record_match_result(
+                                    club_id=_cid_elo, context="tournament",
+                                    source_id=str(m.id), event_name=t.name,
+                                    pair_a_player_ids=(_a1["id"], _a2["id"]),
+                                    pair_a_names=(_a1["full_name"], _a2["full_name"]),
+                                    pair_b_player_ids=(_b1["id"], _b2["id"]),
+                                    pair_b_names=(_b1["full_name"], _b2["full_name"]),
+                                    winner_pair="A" if _new_winner_id == m.pair_1.id else "B",
+                                    score=_score or "",
+                                )
+                    except Exception:
+                        logging.exception("Error actualizando ELO de torneo")
                     st.rerun()
 
     if _tr_multi:
@@ -9084,6 +9175,141 @@ elif page == "t_export":
 # ---------------------------------------------------------------------------
 # PÁGINA: Administración (solo superadmin, requiere DB)
 # ---------------------------------------------------------------------------
+
+elif page == "players":
+    _page_header("🏅", "Jugadores del club",
+                 "ELO de ranking y ELO de torneos — históricos separados por contexto")
+    if not _db_ok or _db is None:
+        _empty_state("🔌", "Base de datos no conectada",
+                     "Configura Supabase para usar el sistema ELO.")
+        st.stop()
+    _cid_pl = current_club_id()
+    if not _cid_pl:
+        _empty_state("🏢", "Selecciona un club",
+                     "Elige un club activo en el menú lateral.")
+        st.stop()
+
+    from src.db_elo import (
+        get_club_ranking as _elo_rank, get_player_by_id as _elo_player,
+        get_player_history as _elo_hist,
+    )
+
+    _CTX_META = {
+        "ranking":    ("📊", "ELO Ranking", "elo_ranking",
+                       "matches_played_ranking", "matches_won_ranking"),
+        "tournament": ("🏆", "ELO Torneos", "elo_tournament",
+                       "matches_played_tournament", "matches_won_tournament"),
+    }
+
+    def _elo_hist_rows(player_id: str, ctx: str) -> list[dict]:
+        rows = []
+        for h in _elo_hist(player_id, ctx, limit=50):
+            _d = h.get("delta", 0)
+            rows.append({
+                "Fecha": (h.get("played_at") or "")[:10],
+                "Evento": h.get("tournament_name") or "—",
+                "Resultado": (h.get("result") or "").replace("won", "🏆 Ganó")
+                                                    .replace("lost", "❌ Perdió"),
+                "Rival": h.get("opponent_names", ""),
+                "ELO antes": h.get("elo_before"),
+                "Δ": f"+{_d}" if _d > 0 else str(_d),
+                "ELO después": h.get("elo_after"),
+            })
+        return rows
+
+    _sel_pid = st.session_state.get("_players_selected_id")
+    if _sel_pid:
+        # ── Perfil individual: ambos ELOs + históricos separados ─────────────
+        _pl = _elo_player(_sel_pid)
+        if not _pl or _pl.get("club_id") != _cid_pl:
+            st.session_state["_players_selected_id"] = None
+            st.rerun()
+        if st.button("← Volver al listado", key="players_back"):
+            st.session_state["_players_selected_id"] = None
+            st.rerun()
+
+        def _wr(played, won):
+            return round(won * 100 / played) if played else 0
+        _pr  = _pl.get("matches_played_ranking", 0);    _wr_r = _wr(_pr, _pl.get("matches_won_ranking", 0))
+        _pt  = _pl.get("matches_played_tournament", 0); _wr_t = _wr(_pt, _pl.get("matches_won_tournament", 0))
+        st.markdown(
+            f'<div style="background:linear-gradient(135deg,#0b1a2b,#0d2b37);'
+            f'border:1px solid rgba(127,255,192,.18);border-radius:18px;'
+            f'padding:1.6rem 2rem;margin:.6rem 0 1.4rem;color:#fff">'
+            f'<div style="display:flex;align-items:center;gap:1.2rem;flex-wrap:wrap">'
+            f'<div style="width:64px;height:64px;border-radius:50%;flex-shrink:0;'
+            f'background:linear-gradient(135deg,#00c853,#00897b);display:flex;'
+            f'align-items:center;justify-content:center;font-size:1.8rem;font-weight:900">'
+            f'{escape(_pl["full_name"][:1].upper())}</div>'
+            f'<div style="flex:1;min-width:180px">'
+            f'<div style="font-size:1.45rem;font-weight:850">{escape(_pl["full_name"])}</div>'
+            f'<div style="color:#9ec0dc;font-size:.85rem">{escape(_pl.get("email") or "Sin email")}</div></div>'
+            f'<div style="display:flex;gap:2.2rem;text-align:center">'
+            f'<div><div style="color:#7fffc0;font-size:.66rem;letter-spacing:.12em;'
+            f'text-transform:uppercase">📊 ELO Ranking</div>'
+            f'<div style="color:#ffd700;font-size:2rem;font-weight:900">{_pl.get("elo_ranking", 1200)}</div>'
+            f'<div style="color:#9ec0dc;font-size:.72rem">{_pr} PJ · {_wr_r}% vict.</div></div>'
+            f'<div><div style="color:#7fffc0;font-size:.66rem;letter-spacing:.12em;'
+            f'text-transform:uppercase">🏆 ELO Torneos</div>'
+            f'<div style="color:#ffd700;font-size:2rem;font-weight:900">{_pl.get("elo_tournament", 1200)}</div>'
+            f'<div style="color:#9ec0dc;font-size:.72rem">{_pt} PJ · {_wr_t}% vict.</div></div>'
+            f'</div></div></div>',
+            unsafe_allow_html=True,
+        )
+        _tab_hr, _tab_ht = st.tabs(["📊 Histórico Ranking", "🏆 Histórico Torneos"])
+        for _tab, _ctx in ((_tab_hr, "ranking"), (_tab_ht, "tournament")):
+            with _tab:
+                _rows_h = _elo_hist_rows(_sel_pid, _ctx)
+                if not _rows_h:
+                    st.info("Sin partidos en este contexto todavía.")
+                else:
+                    st.dataframe(pd.DataFrame(_rows_h), hide_index=True,
+                                 use_container_width=True)
+        st.stop()
+
+    # ── Listado: una pestaña por contexto ─────────────────────────────────────
+    _tab_r, _tab_t = st.tabs(["📊 ELO Ranking", "🏆 ELO Torneos"])
+    for _tab, _ctx in ((_tab_r, "ranking"), (_tab_t, "tournament")):
+        _icon, _label, _elo_col, _pj_col, _g_col = _CTX_META[_ctx]
+        with _tab:
+            try:
+                _players_ls = _elo_rank(_cid_pl, _ctx)
+            except Exception as _e_pl:
+                st.error(f"No se pudo cargar el listado: {_e_pl}. "
+                         "¿Has ejecutado `src/db_elo.sql` en Supabase?")
+                continue
+            # Solo jugadores con partidos en este contexto van arriba; resto debajo
+            _con_partidos = [p for p in _players_ls if p.get(_pj_col, 0) > 0]
+            _sin_partidos = [p for p in _players_ls if p.get(_pj_col, 0) == 0]
+            if not _players_ls:
+                st.info("Todavía no hay jugadores. Se crean automáticamente al "
+                        "registrar el primer resultado (de ranking o de torneo).")
+                continue
+            _medal = {1: "🥇", 2: "🥈", 3: "🥉"}
+            _rows_t = []
+            for _pos, _p in enumerate(_con_partidos + _sin_partidos, 1):
+                _pj = _p.get(_pj_col, 0); _g = _p.get(_g_col, 0)
+                _rows_t.append({
+                    "#": _medal.get(_pos, str(_pos)),
+                    "Jugador": _p["full_name"],
+                    "ELO": _p.get(_elo_col, 1200),
+                    "PJ": _pj, "G": _g,
+                    "% Vict.": f"{round(_g * 100 / _pj)}%" if _pj else "—",
+                })
+            st.dataframe(pd.DataFrame(_rows_t), hide_index=True,
+                         use_container_width=True, height=420)
+            _names = {f'{_p["full_name"]}': _p["id"]
+                      for _p in (_con_partidos + _sin_partidos)}
+            _sel_name = st.selectbox("Ver perfil de jugador", ["—"] + list(_names),
+                                     key=f"players_sel_{_ctx}")
+            if _sel_name != "—":
+                st.session_state["_players_selected_id"] = _names[_sel_name]
+                st.rerun()
+
+    st.caption("El ELO de ranking y el de torneos son independientes: cada partido "
+               "solo afecta al contexto en el que se jugó (K=32, inicial 1200).")
+    st.stop()
+
 
 elif page == "admin":
     # Gate de aislamiento ANTES de renderizar nada: solo superadmin.
