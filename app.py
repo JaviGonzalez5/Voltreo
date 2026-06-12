@@ -6267,6 +6267,7 @@ elif page == "results":
 
 elif page == "standings":
     from src.ranking_scorer import compute_standings, standings_by_group, ScoringRules
+    from src.cross_matrix import build_group_matrix
     _page_header("🏅", "Clasificación", "Ranking automático calculado a partir de los resultados")
     _ranking_stepper("standings")
 
@@ -6301,25 +6302,69 @@ elif page == "standings":
 
     _by_group = standings_by_group(_results, _pair_names, _rules, _pair_group)
 
+    # CSS de la planilla de cruces (una vez)
+    st.markdown(
+        """
+        <style>
+        .cm-wrap{overflow-x:auto;margin:.2rem 0 1rem;border-radius:10px;border:1px solid #1d3a52}
+        .cm-tab{border-collapse:collapse;width:100%;font-size:.82rem;color:#dbe8f5}
+        .cm-tab th,.cm-tab td{border:1px solid #16314733;padding:.32rem .45rem;text-align:center;white-space:nowrap}
+        .cm-tab thead th{background:#0f2231;color:#9fb3c9;font-weight:700}
+        .cm-tab td.cm-name,.cm-tab th.cm-name{text-align:left;font-weight:600;color:#eaf2fb;max-width:220px}
+        .cm-tab td.cm-clas{font-weight:800;color:#7fffc0}
+        .cm-tab td.cm-pts{font-weight:800;color:#ffd700}
+        .cm-tab td.cm-diag{background:#0b1a2b}
+        .cm-tab td.cm-win{color:#6ee7a8;background:rgba(0,200,83,.07)}
+        .cm-tab td.cm-loss{color:#f7a8a8;background:rgba(239,68,68,.05)}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    _group_by_id = {g.id: g for g in _sphase.groups}
+    _win_pts = _rules.points_win
+
+    def _cm_cell(_cell):
+        if not _cell:
+            return "", ""
+        _t = " ".join(f"{a}-{b}" for a, b in _cell["sets"])
+        _c = "cm-win" if _cell["pts"] == _win_pts else "cm-loss"
+        return _t, _c
+
     for _gid, _table in _by_group.items():
         _section_start("🏅", _group_label.get(_gid, "Clasificación"))
-        _rows = []
-        for _pos, _s in enumerate(_table, 1):
-            _medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(_pos, str(_pos))
-            _rows.append({
-                "#": _medal,
-                "Pareja": _s.pair_name,
-                "PJ": _s.played, "G": _s.won, "E": _s.drawn, "P": _s.lost,
-                "Sets": f"{_s.sets_for}-{_s.sets_against}",
-                "Juegos": f"{_s.games_for}-{_s.games_against}",
-                "Dif": f"{_s.game_diff:+d}",
-                "Pts": _s.points,
-            })
-        st.dataframe(pd.DataFrame(_rows), hide_index=True, use_container_width=True,
-                     column_config={"Pts": st.column_config.NumberColumn(width="small")})
+        _grp = _group_by_id.get(_gid)
+        if _grp and getattr(_grp, "pairs", None):
+            _mx = build_group_matrix(_grp.pairs, _results, _rules)
+            _order = sorted(_mx["pairs"], key=lambda p: _mx["rows"][p["id"]]["clas"])
 
-    st.caption("PJ=Jugados · G=Ganados · E=Empatados · P=Perdidos · Pts=Puntos. "
-               "Desempate: puntos → diferencia de sets → diferencia de juegos → victorias → cara a cara.")
+            _h = ['<div class="cm-wrap"><table class="cm-tab"><thead><tr>',
+                  '<th>#</th><th class="cm-name">Pareja</th>']
+            for _i, _p in enumerate(_order, 1):
+                _h.append(f'<th title="{escape(_p["name"])}">{_i}</th>')
+            _h.append('<th>PJ</th><th>Dif S</th><th>Dif J</th><th>Pts</th></tr></thead><tbody>')
+            for _p in _order:
+                _r = _mx["rows"][_p["id"]]
+                _h.append(f'<tr><td class="cm-clas">{_r["clas"]}</td>'
+                          f'<td class="cm-name">{escape(_p["name"])}</td>')
+                for _q in _order:
+                    if _q["id"] == _p["id"]:
+                        _h.append('<td class="cm-diag"></td>')
+                        continue
+                    _txt, _cls = _cm_cell(_mx["cells"].get((_p["id"], _q["id"])))
+                    _h.append(f'<td class="{_cls}">{_txt}</td>')
+                _h.append(f'<td>{_r["played"]}</td>'
+                          f'<td>{_r["set_diff"]:+d}</td>'
+                          f'<td>{_r["game_diff"]:+d}</td>'
+                          f'<td class="cm-pts">{_r["points"]}</td></tr>')
+            _h.append('</tbody></table></div>')
+            st.markdown("".join(_h), unsafe_allow_html=True)
+            st.caption("Las columnas 1…N son las parejas en el mismo orden que las filas "
+                       "(p. ej. la columna 2 es la pareja de la fila nº 2). Cada celda muestra "
+                       "el marcador de esa pareja contra la rival.")
+
+    st.caption("PJ=Jugados · Dif S=Diferencia de sets · Dif J=Diferencia de juegos · Pts=Puntos "
+               "(3 victoria / 1 derrota). Orden: puntos → dif. sets → dif. juegos → victorias → cara a cara.")
 
     # ── Enlace público compartible ───────────────────────────────────────────
     _share_pid = st.session_state.get("db_phase_id")
