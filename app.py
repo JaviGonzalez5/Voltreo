@@ -6310,6 +6310,7 @@ elif page == "standings":
         .cm-tab{border-collapse:collapse;width:100%;font-size:.82rem;color:#dbe8f5}
         .cm-tab th,.cm-tab td{border:1px solid #16314733;padding:.32rem .45rem;text-align:center;white-space:nowrap}
         .cm-tab thead th{background:#0f2231;color:#9fb3c9;font-weight:700}
+        .cm-tab th.cm-colhead{white-space:normal;min-width:104px;max-width:128px;font-weight:600;color:#cfe0f0;vertical-align:bottom;line-height:1.2}
         .cm-tab td.cm-name,.cm-tab th.cm-name{text-align:left;font-weight:600;color:#eaf2fb;max-width:220px}
         .cm-tab td.cm-clas{font-weight:800;color:#7fffc0}
         .cm-tab td.cm-pts{font-weight:800;color:#ffd700}
@@ -6340,8 +6341,8 @@ elif page == "standings":
 
             _h = ['<div class="cm-wrap"><table class="cm-tab"><thead><tr>',
                   '<th>#</th><th class="cm-name">Pareja</th>']
-            for _i, _p in enumerate(_order, 1):
-                _h.append(f'<th title="{escape(_p["name"])}">{_i}</th>')
+            for _p in _order:
+                _h.append(f'<th class="cm-colhead">{escape(_p["name"])}</th>')
             _h.append('<th>PJ</th><th>Dif S</th><th>Dif J</th><th>Pts</th></tr></thead><tbody>')
             for _p in _order:
                 _r = _mx["rows"][_p["id"]]
@@ -6359,9 +6360,6 @@ elif page == "standings":
                           f'<td class="cm-pts">{_r["points"]}</td></tr>')
             _h.append('</tbody></table></div>')
             st.markdown("".join(_h), unsafe_allow_html=True)
-            st.caption("Las columnas 1…N son las parejas en el mismo orden que las filas "
-                       "(p. ej. la columna 2 es la pareja de la fila nº 2). Cada celda muestra "
-                       "el marcador de esa pareja contra la rival.")
 
     st.caption("PJ=Jugados · Dif S=Diferencia de sets · Dif J=Diferencia de juegos · Pts=Puntos "
                "(3 victoria / 1 derrota). Orden: puntos → dif. sets → dif. juegos → victorias → cara a cara.")
