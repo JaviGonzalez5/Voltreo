@@ -1320,33 +1320,21 @@ header[data-testid="stHeader"] * {
     /* Métricas en 2 columnas */
     [data-testid="stMetricValue"] { font-size: 1.6rem !important; }
 
-    /* Sidebar: ancho completo en móvil */
+    /* Sidebar como CAJÓN accesible en móvil: el botón ☰ lo abre como overlay y
+       da acceso al selector de club activo y a toda la navegación. Streamlit lo
+       colapsa/expande de forma nativa (no lo forzamos a oculto). */
     [data-testid="stSidebar"] {
-        width: 0 !important;
-        min-width: 0 !important;
-        max-width: 0 !important;
-        flex: 0 0 0 !important;
-        transform: translateX(-120vw) !important;
-        overflow: hidden !important;
-        visibility: hidden !important;
-        pointer-events: none !important;
+        min-width: min(86vw, 320px) !important;
+        max-width: min(86vw, 320px) !important;
+        z-index: 100000 !important;
     }
-    [data-testid="stSidebar"] *,
-    [data-testid="stSidebarContent"] {
-        width: 0 !important;
-        min-width: 0 !important;
-        max-width: 0 !important;
-        overflow: hidden !important;
-        visibility: hidden !important;
-        pointer-events: none !important;
-    }
-
-    /* Ocultar sidebar colapsado para no ocupar espacio */
-    [data-testid="collapsedControl"] {
-        display: none !important;
-        visibility: hidden !important;
-        width: 0 !important;
-        min-width: 0 !important;
+    [data-testid="collapsedControl"],
+    [data-testid="stSidebarCollapsedControl"] {
+        display: flex !important;
+        visibility: visible !important;
+        top: .45rem !important;
+        left: .45rem !important;
+        z-index: 100001 !important;
     }
 
     /* Hero más compacto */
@@ -1574,6 +1562,16 @@ def _nav_to(target: str) -> None:
     st.rerun()
 
 
+def _nav_back() -> None:
+    """Vuelve a la página anterior del historial (o a Inicio si no hay)."""
+    _hist = st.session_state.get("_nav_history", [])
+    _target = _hist.pop() if _hist else "home"
+    st.session_state["_nav_history"] = _hist
+    st.session_state["_skip_history_once"] = True
+    st.session_state["_nav_page"] = _target
+    st.rerun()
+
+
 def _render_mobile_nav(current_page: str) -> None:
     """
     Barra de navegación inferior para móvil (< 640px).
@@ -1592,6 +1590,7 @@ def _render_mobile_nav(current_page: str) -> None:
     # Barra visual HTML (solo visible en móvil via CSS)
     st.markdown(
         f'<div class="mob-nav" id="mob-nav-bar">'
+        f'<span class="mob-nav-btn"><span class="mob-nav-icon">↩</span>Atrás</span>'
         f'<span class="mob-nav-btn {_active({"home"})}"><span class="mob-nav-icon">🏠</span>Inicio</span>'
         f'<span class="mob-nav-btn {_active(_ranking_pages)}"><span class="mob-nav-icon">📊</span>Ranking</span>'
         f'<span class="mob-nav-btn {_active(_tournament_pages)}"><span class="mob-nav-icon">🏆</span>Torneos</span>'
@@ -1612,7 +1611,10 @@ def _render_mobile_nav(current_page: str) -> None:
         '<div class="mob-nav-real">',
         unsafe_allow_html=True,
     )
-    _mn1, _mn2, _mn3, _mn4 = st.columns(4)
+    _mn0, _mn1, _mn2, _mn3, _mn4 = st.columns(5)
+    with _mn0:
+        if st.button("↩ Atrás", key="mob_back", use_container_width=True):
+            _nav_back()
     with _mn1:
         if st.button("🏠 Inicio", key="mob_home", use_container_width=True):
             _nav_to("home")
@@ -3020,6 +3022,19 @@ if _db_ok:
 
 _s = st.session_state
 page = _s.get("_nav_page", "home")
+
+# Historial de navegación (para el botón "← Atrás", sobre todo en móvil).
+# Se registra en CADA rerun comparando con la página anterior, así captura
+# cualquier cambio de página venga de donde venga (botones, steppers, etc.).
+_prev_page = _s.get("_last_page")
+if _s.pop("_skip_history_once", False):
+    pass  # venimos de pulsar "atrás": no re-apilar
+elif _prev_page is not None and _prev_page != page:
+    _hist = _s.get("_nav_history", [])
+    if not _hist or _hist[-1] != _prev_page:
+        _hist.append(_prev_page)
+    _s["_nav_history"] = _hist[-15:]
+_s["_last_page"] = page
 
 st.sidebar.markdown(
     '<div class="pp-brand">'
