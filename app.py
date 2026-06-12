@@ -6303,6 +6303,21 @@ elif page == "standings":
         (f"{len(_results)} partidos jugados", "green", "🎾"),
     )
 
+    # Descargar la planilla de resultados en Excel (formato del club)
+    try:
+        from src.excel_ranking_planilla import build_planilla_xlsx
+        _xlsx_bytes = build_planilla_xlsx(_sphase, _rules)
+        st.download_button(
+            "📥 Descargar planilla de resultados (Excel)",
+            data=_xlsx_bytes,
+            file_name="planilla_resultados_ranking.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="dl_planilla_ranking",
+        )
+    except Exception:
+        logging.exception("Error generando la planilla Excel del ranking")
+        st.caption("⚠️ No se pudo generar la planilla Excel.")
+
     _by_group = standings_by_group(_results, _pair_names, _rules, _pair_group)
 
     # CSS de la planilla de cruces (una vez)
