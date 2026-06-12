@@ -1422,8 +1422,87 @@ header[data-testid="stHeader"] * {
     color: #7fffc0 !important;
     background: rgba(0,200,83,.14) !important;
 }
+
+/* Controles Streamlit reales para móvil. En desktop no ocupan ni pintan nada. */
+.st-key-mobile_bottom_nav_real,
+.st-key-mobile_club_switcher,
+div[data-key="mobile_bottom_nav_real"],
+div[data-key="mobile_club_switcher"] {
+    display: none !important;
+}
 @media (max-width: 640px) {
     .mob-nav { display: flex !important; }
+    .st-key-mobile_club_switcher,
+    div[data-key="mobile_club_switcher"] {
+        display: block !important;
+        margin: 0 0 .85rem 0 !important;
+        padding: .75rem .85rem !important;
+        border: 1px solid rgba(127,255,192,.22) !important;
+        border-radius: 12px !important;
+        background: #0d2030 !important;
+    }
+    .st-key-mobile_club_switcher [data-testid="stMarkdownContainer"] p,
+    div[data-key="mobile_club_switcher"] [data-testid="stMarkdownContainer"] p {
+        margin: 0 0 .35rem 0 !important;
+        color: #7fffc0 !important;
+        font-size: .72rem !important;
+        font-weight: 800 !important;
+        letter-spacing: .08em !important;
+        text-transform: uppercase !important;
+    }
+    header[data-testid="stHeader"] {
+        display: block !important;
+        visibility: visible !important;
+        height: 3rem !important;
+        background: transparent !important;
+        pointer-events: none !important;
+    }
+    header[data-testid="stHeader"] [data-testid="collapsedControl"],
+    header[data-testid="stHeader"] [data-testid="stSidebarCollapsedControl"],
+    [data-testid="collapsedControl"],
+    [data-testid="stSidebarCollapsedControl"] {
+        display: flex !important;
+        visibility: visible !important;
+        pointer-events: auto !important;
+        top: .45rem !important;
+        left: .45rem !important;
+        z-index: 100001 !important;
+    }
+    header[data-testid="stHeader"] [data-testid="collapsedControl"] *,
+    header[data-testid="stHeader"] [data-testid="stSidebarCollapsedControl"] * {
+        display: initial !important;
+        visibility: visible !important;
+    }
+    .st-key-mobile_bottom_nav_real,
+    div[data-key="mobile_bottom_nav_real"] {
+        display: block !important;
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        z-index: 10000 !important;
+        padding: .35rem .25rem calc(.35rem + env(safe-area-inset-bottom, 0px)) !important;
+        background: transparent !important;
+    }
+    .st-key-mobile_bottom_nav_real [data-testid="stHorizontalBlock"],
+    div[data-key="mobile_bottom_nav_real"] [data-testid="stHorizontalBlock"] {
+        gap: 0 !important;
+    }
+    .st-key-mobile_bottom_nav_real [data-testid="column"],
+    div[data-key="mobile_bottom_nav_real"] [data-testid="column"] {
+        padding: 0 .05rem !important;
+    }
+    .st-key-mobile_bottom_nav_real .stButton > button,
+    div[data-key="mobile_bottom_nav_real"] .stButton > button {
+        height: 58px !important;
+        min-height: 58px !important;
+        padding: .25rem .05rem !important;
+        background: transparent !important;
+        border: none !important;
+        color: transparent !important;
+        box-shadow: none !important;
+        font-size: 0 !important;
+    }
 }
 
 /* ── Steppers clicables (ranking rkstep_ y torneos t_bc_): chips oscuros ── */
@@ -1598,36 +1677,25 @@ def _render_mobile_nav(current_page: str) -> None:
         f'</div>',
         unsafe_allow_html=True,
     )
-    # Botones reales de Streamlit posicionados encima de la barra (invisible en desktop)
-    st.markdown(
-        '<style>'
-        '.mob-nav-real{display:none;position:fixed;bottom:0;left:0;right:0;z-index:10000;'
-        'height:62px;background:transparent;pointer-events:none}'
-        '.mob-nav-real .stButton>button{'
-        'height:62px!important;background:transparent!important;border:none!important;'
-        'color:transparent!important;font-size:0!important;pointer-events:all}'
-        '@media(max-width:640px){.mob-nav-real{display:flex!important}}'
-        '</style>'
-        '<div class="mob-nav-real">',
-        unsafe_allow_html=True,
-    )
-    _mn0, _mn1, _mn2, _mn3, _mn4 = st.columns(5)
-    with _mn0:
-        if st.button("↩ Atrás", key="mob_back", use_container_width=True):
-            _nav_back()
-    with _mn1:
-        if st.button("🏠 Inicio", key="mob_home", use_container_width=True):
-            _nav_to("home")
-    with _mn2:
-        if st.button("📊 Ranking", key="mob_ranking", use_container_width=True):
-            _nav_to("config" if current_page not in _ranking_pages else current_page)
-    with _mn3:
-        if st.button("🏆 Torneos", key="mob_torneos", use_container_width=True):
-            _nav_to("t_config" if current_page not in _tournament_pages else current_page)
-    with _mn4:
-        if st.button("⚙️ Club", key="mob_club", use_container_width=True):
-            _nav_to("club_config")
-    st.markdown('</div>', unsafe_allow_html=True)
+    # Botones reales de Streamlit posicionados encima de la barra. CSS los oculta
+    # por completo en desktop y los activa solo bajo max-width: 640px.
+    with st.container(key="mobile_bottom_nav_real"):
+        _mn0, _mn1, _mn2, _mn3, _mn4 = st.columns(5)
+        with _mn0:
+            if st.button("↩ Atrás", key="mob_back", use_container_width=True):
+                _nav_back()
+        with _mn1:
+            if st.button("🏠 Inicio", key="mob_home", use_container_width=True):
+                _nav_to("home")
+        with _mn2:
+            if st.button("📊 Ranking", key="mob_ranking", use_container_width=True):
+                _nav_to("config" if current_page not in _ranking_pages else current_page)
+        with _mn3:
+            if st.button("🏆 Torneos", key="mob_torneos", use_container_width=True):
+                _nav_to("t_config" if current_page not in _tournament_pages else current_page)
+        with _mn4:
+            if st.button("⚙️ Club", key="mob_club", use_container_width=True):
+                _nav_to("club_config")
 
 
 def _sidebar_button(label: str, target: str, current_page: str, key: str) -> None:
@@ -3048,6 +3116,7 @@ st.sidebar.markdown(
 )
 
 _club_name_sidebar = ""
+_mobile_clubs: list[dict] = []
 if _db_ok and is_authenticated():
     _user = get_session_user()
 
@@ -3059,10 +3128,15 @@ if _db_ok and is_authenticated():
             except Exception:
                 st.session_state["_clubs_cache"] = []
         _clubs = st.session_state["_clubs_cache"]
+        _mobile_clubs = _clubs
         if _clubs:
             _club_options = {c["name"]: c["id"] for c in _clubs}
             _prev = st.session_state.get("superadmin_selected_club_id")
             _default_idx = list(_club_options.values()).index(_prev) if _prev in _club_options.values() else 0
+            _synced_name = list(_club_options.keys())[_default_idx]
+            if st.session_state.get("_sidebar_club_sync_id") != _prev:
+                st.session_state["superadmin_club_select"] = _synced_name
+                st.session_state["_sidebar_club_sync_id"] = _prev
             _sel_name = st.sidebar.selectbox(
                 "🏢 Club activo", options=list(_club_options.keys()),
                 index=_default_idx, key="superadmin_club_select",
@@ -3097,6 +3171,38 @@ if _db_ok and is_authenticated():
         f'</div>',
         unsafe_allow_html=True,
     )
+
+    if is_superadmin() and _mobile_clubs:
+        _mobile_options = {c["name"]: c["id"] for c in _mobile_clubs}
+        _current_mobile_id = st.session_state.get("superadmin_selected_club_id")
+        _current_mobile_name = next(
+            (name for name, cid in _mobile_options.items() if cid == _current_mobile_id),
+            next(iter(_mobile_options)),
+        )
+        if st.session_state.get("_mobile_club_sync_id") != _current_mobile_id:
+            st.session_state["mobile_superadmin_club_select"] = _current_mobile_name
+            st.session_state["_mobile_club_sync_id"] = _current_mobile_id
+
+        with st.container(key="mobile_club_switcher"):
+            st.markdown("Club activo")
+            _mobile_sel_name = st.selectbox(
+                "Club activo",
+                options=list(_mobile_options.keys()),
+                key="mobile_superadmin_club_select",
+                label_visibility="collapsed",
+            )
+        _mobile_selected_club_id = _mobile_options[_mobile_sel_name]
+        if _mobile_selected_club_id != _current_mobile_id:
+            st.session_state["superadmin_selected_club_id"] = _mobile_selected_club_id
+            st.session_state["superadmin_selected_club_name"] = _mobile_sel_name
+            st.session_state["_sidebar_club_sync_id"] = None
+            st.session_state["_active_club_id"] = _mobile_selected_club_id
+            st.session_state["_mobile_club_sync_id"] = _mobile_selected_club_id
+            st.session_state["_nav_page"] = "home"
+            st.session_state["_nav_history"] = []
+            st.session_state["_last_page"] = "home"
+            _reset_club_runtime_state()
+            st.rerun()
 
 else:
     _club_name_sidebar = _s.get("club_name", "")
@@ -3273,9 +3379,8 @@ if is_superadmin():
 # Falso => nav responsive (oculto en desktop por CSS) si, mobile_app import no.
 _is_mobile = False
 
-# Nav inferior movil: solo en modo movil dedicado (st.button no se oculta
-# bien en desktop por CSS, generaba botones sueltos). _is_mobile=False => off.
-if _is_mobile and _db_ok and is_authenticated():
+# Nav inferior móvil: se renderiza siempre y CSS la oculta por completo en desktop.
+if _db_ok and is_authenticated():
     _render_mobile_nav(page)
 
 # ---------------------------------------------------------------------------
