@@ -1344,8 +1344,8 @@ header[data-testid="stHeader"] * {
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   BARRA DE NAVEGACIÓN INFERIOR (solo móvil < 640px)
-   Muestra los accesos rápidos para no tener que abrir el sidebar.
+   CABECERA DE NAVEGACIÓN MÓVIL (< 640px)
+   Accesos rápidos siempre visibles sin depender del sidebar de Streamlit.
    ══════════════════════════════════════════════════════════════════ */
 /* Controles Streamlit reales para móvil. En desktop no ocupan ni pintan nada. */
 .st-key-mobile_bottom_nav_real,
@@ -1355,8 +1355,11 @@ div[data-key="mobile_club_switcher"] {
     display: none !important;
 }
 @media (max-width: 640px) {
+    :root {
+        --mobile-nav-h: 4.35rem;
+    }
     .main .block-container {
-        padding-top: .55rem !important;
+        padding-top: calc(var(--mobile-nav-h) + .7rem) !important;
         padding-bottom: 1.3rem !important;
         padding-left: .85rem !important;
         padding-right: .85rem !important;
@@ -1425,19 +1428,25 @@ div[data-key="mobile_club_switcher"] {
     .st-key-mobile_bottom_nav_real,
     div[data-key="mobile_bottom_nav_real"] {
         display: block !important;
-        position: sticky !important;
+        position: fixed !important;
         top: 0 !important;
-        z-index: 9000 !important;
-        margin: 0 0 .75rem 0 !important;
-        padding: .42rem !important;
+        left: 0 !important;
+        right: 0 !important;
+        z-index: 10000 !important;
+        margin: 0 !important;
+        min-height: var(--mobile-nav-h) !important;
+        padding: calc(.42rem + env(safe-area-inset-top, 0px)) .55rem .42rem !important;
         background: rgba(7,17,29,.96) !important;
-        border: 1px solid rgba(127,255,192,.16) !important;
-        border-radius: 14px !important;
+        border: none !important;
+        border-bottom: 1px solid rgba(127,255,192,.16) !important;
+        border-radius: 0 !important;
         box-shadow: 0 12px 30px rgba(0,0,0,.22) !important;
         backdrop-filter: blur(10px) !important;
     }
     .st-key-mobile_bottom_nav_real [data-testid="stHorizontalBlock"],
     div[data-key="mobile_bottom_nav_real"] [data-testid="stHorizontalBlock"] {
+        display: grid !important;
+        grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
         flex-wrap: nowrap !important;
         gap: .2rem !important;
     }
@@ -1449,8 +1458,8 @@ div[data-key="mobile_club_switcher"] {
     }
     .st-key-mobile_bottom_nav_real .stButton > button,
     div[data-key="mobile_bottom_nav_real"] .stButton > button {
-        height: 44px !important;
-        min-height: 44px !important;
+        height: 42px !important;
+        min-height: 42px !important;
         padding: .25rem .1rem !important;
         background: #0d2030 !important;
         border: 1px solid rgba(255,255,255,.08) !important;
@@ -1470,6 +1479,12 @@ div[data-key="mobile_club_switcher"] {
         background: linear-gradient(135deg,#00c853,#00897b) !important;
         color: #fff !important;
         border-color: rgba(127,255,192,.38) !important;
+    }
+    .st-key-mob_back button,
+    div[data-key="mob_back"] button {
+        background: #122a3a !important;
+        border-color: rgba(127,255,192,.28) !important;
+        color: #e9f3fc !important;
     }
     .pp-hero {
         padding: 1rem .95rem !important;
