@@ -1347,82 +1347,6 @@ header[data-testid="stHeader"] * {
    BARRA DE NAVEGACIÓN INFERIOR (solo móvil < 640px)
    Muestra los accesos rápidos para no tener que abrir el sidebar.
    ══════════════════════════════════════════════════════════════════ */
-.mob-nav {
-    display: none;
-    position: fixed; bottom: 0; left: 0; right: 0; z-index: 9999;
-    background: #07111d;
-    border-top: 1px solid rgba(255,255,255,.10);
-    padding: .45rem .3rem env(safe-area-inset-bottom, 0px);
-    justify-content: space-around; align-items: center;
-    box-shadow: 0 -4px 20px rgba(0,0,0,.35);
-}
-.mob-nav-btn {
-    display: flex; flex-direction: column; align-items: center; gap: .15rem;
-    background: none; border: none; cursor: pointer;
-    color: #4a7aa0; font-size: .6rem; font-weight: 700;
-    letter-spacing: .04em; text-transform: uppercase;
-    padding: .3rem .5rem; border-radius: 8px;
-    min-width: 52px; text-align: center;
-    transition: color .15s, background .15s;
-    text-decoration: none;
-}
-.mob-nav-btn .mob-nav-icon { font-size: 1.3rem; line-height: 1; }
-.mob-nav-btn:hover, .mob-nav-btn.active {
-    color: #7fffc0 !important;
-    background: rgba(0,200,83,.12);
-}
-.mob-bottom-nav {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 99999;
-    background: #07111d;
-    border-top: 1px solid rgba(255,255,255,.10);
-    display: flex;
-    justify-content: space-around;
-    align-items: center;
-    padding: .4rem .2rem env(safe-area-inset-bottom,.4rem);
-    box-shadow: 0 -4px 20px rgba(0,0,0,.4);
-}
-.mob-bottom-nav .stButton > button,
-.mob-bottom-link {
-    background: transparent !important;
-    border: none !important;
-    color: #4a7aa0 !important;
-    font-size: .58rem !important;
-    font-weight: 800 !important;
-    letter-spacing: .04em !important;
-    text-transform: uppercase !important;
-    padding: .3rem .2rem !important;
-    min-height: 50px !important;
-    box-shadow: none !important;
-    transform: none !important;
-    border-radius: 10px !important;
-    flex: 1 1 0;
-    display: inline-flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: .12rem;
-    text-align: center;
-    text-decoration: none !important;
-}
-.mob-bottom-icon {
-    font-size: 1.15rem;
-    line-height: 1;
-}
-.mob-bottom-nav .stButton > button:active,
-.mob-bottom-link:active {
-    opacity: .65 !important;
-    background: rgba(0,200,83,.12) !important;
-}
-.mob-bottom-nav .mob-btn-active > button,
-.mob-bottom-link.active {
-    color: #7fffc0 !important;
-    background: rgba(0,200,83,.14) !important;
-}
-
 /* Controles Streamlit reales para móvil. En desktop no ocupan ni pintan nada. */
 .st-key-mobile_bottom_nav_real,
 .st-key-mobile_club_switcher,
@@ -1431,21 +1355,24 @@ div[data-key="mobile_club_switcher"] {
     display: none !important;
 }
 @media (max-width: 640px) {
-    .mob-nav { display: flex !important; }
+    .main .block-container {
+        padding-top: .55rem !important;
+        padding-bottom: 1.3rem !important;
+    }
     .st-key-mobile_club_switcher,
     div[data-key="mobile_club_switcher"] {
         display: block !important;
-        margin: 0 0 .85rem 0 !important;
-        padding: .75rem .85rem !important;
+        margin: .15rem 0 .6rem 0 !important;
+        padding: .65rem .75rem !important;
         border: 1px solid rgba(127,255,192,.22) !important;
         border-radius: 12px !important;
-        background: #0d2030 !important;
+        background: linear-gradient(135deg,#0b1a2b,#0d2b37) !important;
     }
     .st-key-mobile_club_switcher [data-testid="stMarkdownContainer"] p,
     div[data-key="mobile_club_switcher"] [data-testid="stMarkdownContainer"] p {
-        margin: 0 0 .35rem 0 !important;
+        margin: 0 0 .3rem 0 !important;
         color: #7fffc0 !important;
-        font-size: .72rem !important;
+        font-size: .66rem !important;
         font-weight: 800 !important;
         letter-spacing: .08em !important;
         text-transform: uppercase !important;
@@ -1476,32 +1403,111 @@ div[data-key="mobile_club_switcher"] {
     .st-key-mobile_bottom_nav_real,
     div[data-key="mobile_bottom_nav_real"] {
         display: block !important;
-        position: fixed !important;
-        bottom: 0 !important;
-        left: 0 !important;
-        right: 0 !important;
-        z-index: 10000 !important;
-        padding: .35rem .25rem calc(.35rem + env(safe-area-inset-bottom, 0px)) !important;
-        background: transparent !important;
+        position: sticky !important;
+        top: 0 !important;
+        z-index: 9000 !important;
+        margin: 0 0 .75rem 0 !important;
+        padding: .42rem !important;
+        background: rgba(7,17,29,.96) !important;
+        border: 1px solid rgba(127,255,192,.16) !important;
+        border-radius: 14px !important;
+        box-shadow: 0 12px 30px rgba(0,0,0,.22) !important;
+        backdrop-filter: blur(10px) !important;
     }
     .st-key-mobile_bottom_nav_real [data-testid="stHorizontalBlock"],
     div[data-key="mobile_bottom_nav_real"] [data-testid="stHorizontalBlock"] {
-        gap: 0 !important;
+        gap: .2rem !important;
     }
     .st-key-mobile_bottom_nav_real [data-testid="column"],
     div[data-key="mobile_bottom_nav_real"] [data-testid="column"] {
-        padding: 0 .05rem !important;
+        padding: 0 !important;
     }
     .st-key-mobile_bottom_nav_real .stButton > button,
     div[data-key="mobile_bottom_nav_real"] .stButton > button {
-        height: 58px !important;
-        min-height: 58px !important;
-        padding: .25rem .05rem !important;
-        background: transparent !important;
-        border: none !important;
-        color: transparent !important;
+        height: 44px !important;
+        min-height: 44px !important;
+        padding: .25rem .1rem !important;
+        background: #0d2030 !important;
+        border: 1px solid rgba(255,255,255,.08) !important;
+        border-radius: 11px !important;
+        color: #9ec0dc !important;
         box-shadow: none !important;
-        font-size: 0 !important;
+        font-size: .62rem !important;
+        font-weight: 850 !important;
+        letter-spacing: .02em !important;
+        line-height: 1.05 !important;
+        white-space: normal !important;
+        text-align: center !important;
+        justify-content: center !important;
+    }
+    .st-key-mobile_bottom_nav_real .stButton > button[kind="primary"],
+    div[data-key="mobile_bottom_nav_real"] .stButton > button[kind="primary"] {
+        background: linear-gradient(135deg,#00c853,#00897b) !important;
+        color: #fff !important;
+        border-color: rgba(127,255,192,.38) !important;
+    }
+    .pp-hero {
+        padding: 1rem .95rem !important;
+        margin-bottom: .85rem !important;
+        border-radius: 14px !important;
+    }
+    .pp-eyebrow {
+        font-size: .58rem !important;
+        margin-bottom: .45rem !important;
+        padding: .16rem .55rem !important;
+    }
+    .pp-hero h1 {
+        font-size: 1.25rem !important;
+        line-height: 1.12 !important;
+    }
+    .pp-hero p {
+        font-size: .78rem !important;
+        line-height: 1.35 !important;
+        margin-top: .45rem !important;
+    }
+    .pp-kpi-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: .55rem !important;
+        margin-bottom: .85rem !important;
+    }
+    .pp-kpi-card {
+        min-height: 104px !important;
+        padding: .78rem .82rem !important;
+        border-radius: 12px !important;
+    }
+    .pp-kpi-label {
+        font-size: .6rem !important;
+        letter-spacing: .08em !important;
+        margin-bottom: .35rem !important;
+    }
+    .pp-kpi-value {
+        font-size: 1.7rem !important;
+    }
+    .pp-kpi-note {
+        font-size: .68rem !important;
+        line-height: 1.25 !important;
+        margin-top: .3rem !important;
+    }
+    .pp-next-step {
+        padding: .85rem .9rem !important;
+        margin-bottom: .75rem !important;
+        border-radius: 13px !important;
+    }
+    .pp-next-step-title {
+        font-size: .88rem !important;
+    }
+    .pp-next-step-text {
+        font-size: .78rem !important;
+        line-height: 1.35 !important;
+    }
+    .pp-two-grid {
+        grid-template-columns: 1fr !important;
+        gap: .65rem !important;
+    }
+    .pp-action-card,
+    .pp-onboarding-card {
+        padding: .9rem .95rem !important;
+        border-radius: 12px !important;
     }
 }
 
@@ -1653,48 +1659,34 @@ def _nav_back() -> None:
 
 def _render_mobile_nav(current_page: str) -> None:
     """
-    Barra de navegación inferior para móvil (< 640px).
-    Usa 4 st.button() en columnas estrechas superpuestos al HTML fijo.
-    Los botones son visualmente transparentes en desktop (ocultos por CSS)
-    y aparecen como la barra inferior en móvil.
+    Navegación móvil integrada arriba del contenido.
+    Se renderiza siempre, pero CSS la oculta por completo en desktop.
     """
     _ranking_pages = {"config", "import", "pairs", "generate", "export", "review",
                       "results", "standings", "syltek"}
     _tournament_pages = {"t_config", "t_pairs", "t_generate", "t_schedule",
                          "t_results", "t_export"}
 
-    def _active(pages):
-        return "active" if current_page in pages else ""
-
-    # Barra visual HTML (solo visible en móvil via CSS)
-    st.markdown(
-        f'<div class="mob-nav" id="mob-nav-bar">'
-        f'<span class="mob-nav-btn"><span class="mob-nav-icon">↩</span>Atrás</span>'
-        f'<span class="mob-nav-btn {_active({"home"})}"><span class="mob-nav-icon">🏠</span>Inicio</span>'
-        f'<span class="mob-nav-btn {_active(_ranking_pages)}"><span class="mob-nav-icon">📊</span>Ranking</span>'
-        f'<span class="mob-nav-btn {_active(_tournament_pages)}"><span class="mob-nav-icon">🏆</span>Torneos</span>'
-        f'<span class="mob-nav-btn {_active({"club_config"})}"><span class="mob-nav-icon">⚙️</span>Club</span>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-    # Botones reales de Streamlit posicionados encima de la barra. CSS los oculta
-    # por completo en desktop y los activa solo bajo max-width: 640px.
     with st.container(key="mobile_bottom_nav_real"):
         _mn0, _mn1, _mn2, _mn3, _mn4 = st.columns(5)
         with _mn0:
-            if st.button("↩ Atrás", key="mob_back", use_container_width=True):
+            if st.button("↩\nAtrás", key="mob_back", use_container_width=True):
                 _nav_back()
         with _mn1:
-            if st.button("🏠 Inicio", key="mob_home", use_container_width=True):
+            if st.button("⌂\nInicio", key="mob_home", use_container_width=True,
+                         type="primary" if current_page == "home" else "secondary"):
                 _nav_to("home")
         with _mn2:
-            if st.button("📊 Ranking", key="mob_ranking", use_container_width=True):
+            if st.button("▥\nRanking", key="mob_ranking", use_container_width=True,
+                         type="primary" if current_page in _ranking_pages else "secondary"):
                 _nav_to("config" if current_page not in _ranking_pages else current_page)
         with _mn3:
-            if st.button("🏆 Torneos", key="mob_torneos", use_container_width=True):
+            if st.button("🏆\nTorneos", key="mob_torneos", use_container_width=True,
+                         type="primary" if current_page in _tournament_pages else "secondary"):
                 _nav_to("t_config" if current_page not in _tournament_pages else current_page)
         with _mn4:
-            if st.button("⚙️ Club", key="mob_club", use_container_width=True):
+            if st.button("⚙\nClub", key="mob_club", use_container_width=True,
+                         type="primary" if current_page == "club_config" else "secondary"):
                 _nav_to("club_config")
 
 
