@@ -464,6 +464,21 @@ class SyltekConnector:
         soup = BeautifulSoup(r.text, "html.parser")
         return _parse_ranking_groups(soup, ranking_id)
 
+    def read_round_results(self, ranking_id: str, round_num: int) -> list[dict]:
+        """
+        Descarga /rankings/showtab/{ranking_id}/round{round_num} y devuelve, por
+        grupo, los resultados (marcadores) y horarios programados.
+        Ver `parse_round_results` para el formato de salida.
+        """
+        self._assert_logged_in()
+        url = f"{self.base}/rankings/showtab/{ranking_id}/round{round_num}"
+        try:
+            r = self._session.get(url, timeout=20)
+            r.raise_for_status()
+        except requests.RequestException as e:
+            raise SyltekError(f"Error al cargar la rotación {round_num}: {e}")
+        return parse_round_results(r.text)
+
     # ------------------------------------------------------------------
     # Crear reserva
     # ------------------------------------------------------------------
@@ -1586,6 +1601,117 @@ def _parse_group_table(table, group_name: str, ranking_id: str) -> Optional[Grou
         group.pairs.append(pair)
 
     return group
+
+
+def _clean_team(s: str) -> str:
+    """Normaliza un nombre de pareja/etiqueta: quita &nbsp;, tabs y espacios extra."""
+    s = (s or "").replace("\xa0", " ").replace("\t", " ")
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _parse_syltek_datetime(s: str) -> str:
+    """'06/07/2026 19:30:00' → '2026-07-06 19:30'. '' si no casa."""
+    m = re.search(r"(\d{1,2})/(\d{1,2})/(\d{4})\s+(\d{1,2}):(\d{2})", s)
+    if not m:
+        return ""
+    d, mo, y, h, mi = m.groups()
+    return f"{int(y):04d}-{int(mo):02d}-{int(d):02d} {int(h):02d}:{int(mi):02d}"
+
+
+def parse_round_results(raw_html: str) -> list[dict]:
+    """
+    Parsea la página /rankings/showtab/{id}/round{N} de Syltek (matriz round-robin).
+
+    Por cada grupo devuelve los partidos JUGADOS (con marcador) y los PROGRAMADOS
+    (con fecha/hora pero sin resultado todavía):
+
+        [{
+            "group_label": "Grupo 1",
+            "results":   [{"team_a","team_b","sets":[(a,b),...],"reservation_id"}, ...],
+            "schedules": [{"team_a","team_b","datetime":"YYYY-MM-DD HH:MM","reservation_id"}, ...],
+        }, ...]
+
+    Detalles del formato (Padelplus / SCL v10):
+      · La matriz es simétrica: cada partido aparece 2 veces. Se DEDUPLICA por el
+        id de reserva del enlace /Reservations/show/{id} (idéntico en ambas celdas).
+      · `sets` va SIEMPRE desde la perspectiva de `team_a` (la pareja de la fila):
+        "6-4 / 1-6 / 6-4" → [(6,4),(1,6),(6,4)].
+      · Celda gris (bgGray) = diagonal (pareja contra sí misma) → se ignora.
+      · Celda sin <a> = partido aún sin reserva → se ignora.
+    """
+    soup = BeautifulSoup(raw_html, "html.parser")
+    out: list[dict] = []
+
+    score_re = re.compile(r"\d+\s*-\s*\d+(?:\s*/\s*\d+\s*-\s*\d+)*")
+    date_re  = re.compile(r"\d{1,2}/\d{1,2}/\d{4}")
+
+    for table in soup.find_all("table", class_="listGrid"):
+        lbl_el = table.find_previous(
+            lambda t: t.name == "span"
+            and "bold" in (t.get("class") or [])
+            and t.get_text(strip=True).lower().startswith("grupo")
+        )
+        group_label = _clean_team(lbl_el.get_text()) if lbl_el else ""
+
+        thead = table.find("thead")
+        if not thead:
+            continue
+        opp_names = [
+            _clean_team(th.get_text())
+            for th in thead.find_all("th", class_="headerTeamCell")
+        ]
+
+        results: list[dict] = []
+        schedules: list[dict] = []
+        seen_res: set[str] = set()
+        seen_sch: set[str] = set()
+
+        for tr in table.find_all("tr", class_="contentRow"):
+            team_cell = tr.find("td", class_="rankingTeamCell")
+            if not team_cell:
+                continue
+            row_team = _clean_team(team_cell.get_text())
+
+            for idx, cell in enumerate(tr.find_all("td", class_="rankingMatchCell")):
+                if idx >= len(opp_names):
+                    break
+                a = cell.find("a")
+                if a is None:
+                    continue  # diagonal (bgGray) o partido sin reserva
+                txt = _clean_team(a.get_text())
+                if not txt:
+                    continue
+                col_team = opp_names[idx]
+
+                _m = re.search(r"/Reservations/show/(\d+)", a.get("href", "") or "")
+                res_id = _m.group(1) if _m else ""
+                _key = res_id or "|".join(sorted([row_team, col_team]))
+
+                if score_re.fullmatch(txt):
+                    if _key in seen_res:
+                        continue
+                    seen_res.add(_key)
+                    sets = [(int(x), int(y)) for x, y in re.findall(r"(\d+)\s*-\s*(\d+)", txt)]
+                    results.append({
+                        "team_a": row_team, "team_b": col_team,
+                        "sets": sets, "reservation_id": res_id,
+                    })
+                elif date_re.search(txt):
+                    if _key in seen_sch:
+                        continue
+                    seen_sch.add(_key)
+                    schedules.append({
+                        "team_a": row_team, "team_b": col_team,
+                        "datetime": _parse_syltek_datetime(txt), "reservation_id": res_id,
+                    })
+
+        out.append({
+            "group_label": group_label,
+            "results": results,
+            "schedules": schedules,
+        })
+
+    return out
 
 
 def _extract_error_message(soup: BeautifulSoup) -> str:
