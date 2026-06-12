@@ -87,7 +87,8 @@ def _fmt_range(s: str, e: str) -> str:
 
 
 def _base_url() -> str:
-    return f"https://{BRAND_NAME.lower()}.streamlit.app"
+    from .branding import public_base_url
+    return public_base_url()
 
 
 def _render_directory() -> None:

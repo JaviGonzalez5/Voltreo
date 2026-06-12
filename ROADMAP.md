@@ -1,5 +1,36 @@
 # Voltreo — Roadmap SaaS v1
 
+> **Para orientarte rápido en una conversación nueva:** lee `CLAUDE.md` (estructura, stack, tablas, routing) + esta sección **Estado actual**. No hace falta leer `app.py` entero (8.800 líneas).
+
+## Estado actual (act. 2026-06-12)
+
+App **en producción** en `https://voltreo.streamlit.app` (deploy desde `main`). Tras cada `git push` hay que hacer **Reboot app** manual en Streamlit Cloud para ver los cambios.
+
+**Qué funciona hoy (live):**
+- Multi-club con aislamiento por `club_id` · roles `superadmin` / `club_admin`
+- **Ranking** completo: fases, import CSV/Excel, calendario, resultados, clasificación, export Excel + mensajes WhatsApp, clasificación pública `?r=`
+- **Torneos** completos: config, parejas/inscripción, cuadro, horarios, resultados + avance, export, vista pública `?t=` e inscripción `?join=`
+- **ELO dual** (ranking vs torneos, históricos separados) — `src/elo_engine.py`, `src/db_elo.py`, página `players`. Requiere `src/db_elo.sql` ejecutado en Supabase
+- **Portal público de jugadores** — self-signup + directorio de competición entre clubs (`src/player_portal.py`)
+- **Tema oscuro** deportivo (base `#07111d`)
+- Emails transaccionales vía Resend · audit log · rate limiting login · RLS activo
+
+**URL pública centralizada:** `branding.public_base_url()` (override con secret `VOLTREO_PUBLIC_URL` para dominio propio). No hardcodear `streamlit.app`.
+
+**Pulido UX hecho 2026-06-12** (8 fixes, todos compilan):
+1. Contraste onboarding home (texto invisible sobre tarjeta oscura)
+2. 2× `st.error` crudos → mensaje humano + detalle técnico en expander
+3. Botón "Guardar" → "Guardar nombre" (renombrar fase)
+4. Export Excel ya no filtra ruta del sistema; confirma nº grupos/partidos
+5. Nombres de jugador duplicados ya no colisionan en selector de perfil (selectbox por `id` + `format_func`)
+6. Medallas 🥇🥈🥉 solo a jugadores con partidos (0 PJ → "–")
+7. Error de listado de jugadores ya no cita `db_elo.sql` al gestor
+8. URLs públicas centralizadas en `public_base_url()` (11 sitios)
+
+**Próximo candidato de trabajo:** seguir auditoría UX/UI por páginas (pendientes: `club_config`, `t_config`, `results`). Usar skill `voltreo-ux-ui-polisher`.
+
+---
+
 ## Evaluación arquitectural honesta
 
 ### Qué hace bien Streamlit (mantener)

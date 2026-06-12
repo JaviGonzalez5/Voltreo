@@ -1749,6 +1749,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from src.config import settings
 from src.branding import (
     BRAND_NAME, BRAND_MONOGRAM, BRAND_SUFFIX, BRAND_TAGLINE, BRAND_GRADIENT,
+    public_base_url,
 )
 from src.models import (
     Player, Pair, Group, Court, Booking, RankingPhase,
@@ -3527,7 +3528,7 @@ if page == "rankings":
                                           key=f"rk_rename_input_{_ph_id}",
                                           label_visibility="collapsed")
             with _rn2:
-                if st.button("Guardar", key=f"rk_renok_{_ph_id}", type="primary", use_container_width=True):
+                if st.button("Guardar nombre", key=f"rk_renok_{_ph_id}", type="primary", use_container_width=True):
                     _nn = str(_new_name).strip()
                     if _nn:
                         try:
@@ -3931,7 +3932,7 @@ if page == "home":
                 _dot_bg  = "#00c853" if done else ("#07111d" if active else "#e2eaf4")
                 _dot_col = "#fff" if (done or active) else "#94a8be"
                 _dot_txt = "✓" if done else str(n)
-                _txt_col = "#07111d" if active else ("#0b1a2b" if done else "#94a8be")
+                _txt_col = "#ffffff" if active else ("#dbe8f5" if done else "#6c8198")
                 _row_bg  = "rgba(0,200,83,.06)" if active else "transparent"
                 st.markdown(
                     f'<div style="display:flex;align-items:flex-start;gap:.75rem;'
@@ -3941,7 +3942,7 @@ if page == "home":
                     f'justify-content:center;font-size:.75rem;font-weight:800">{_dot_txt}</div>'
                     f'<div style="flex:1">'
                     f'<div style="font-weight:700;color:{_txt_col};font-size:.92rem">{title}</div>'
-                    f'<div style="font-size:.8rem;color:#7088a0;margin-top:.1rem">{desc}</div>'
+                    f'<div style="font-size:.8rem;color:#9fb3c9;margin-top:.1rem">{desc}</div>'
                     f'</div></div>',
                     unsafe_allow_html=True,
                 )
@@ -3954,7 +3955,7 @@ if page == "home":
                 'padding:1.4rem 1.6rem;margin:1.2rem 0;box-shadow:0 2px 12px rgba(11,26,43,.07)">'
                 '<div style="font-size:.68rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;'
                 'color:#7fffc0;margin-bottom:.8rem">🚀 Primeros pasos</div>'
-                '<div style="font-size:.95rem;font-weight:700;color:#07111d;margin-bottom:.9rem">'
+                '<div style="font-size:.95rem;font-weight:700;color:#eaf2fb;margin-bottom:.9rem">'
                 'Empieza en menos de 5 minutos</div>',
                 unsafe_allow_html=True,
             )
@@ -4944,7 +4945,9 @@ elif page == "import":
                                 else:
                                     st.warning("Parser devolvió 0 reservas — revisa el objeto JS de arriba.")
                             except Exception as ex:
-                                st.error(f"Error: {ex}")
+                                st.error("No se pudo analizar el HTML de Syltek. Comprueba que pegaste el código completo de la página de reservas.")
+                                with st.expander("Detalle técnico"):
+                                    st.code(str(ex))
 
             if st.button("📅 Importar disponibilidad desde Syltek", type="primary"):
                 if not syl_imp_url or not syl_imp_user or not syl_imp_pass:
@@ -6120,7 +6123,7 @@ elif page == "results":
                 _club_nm = st.session_state.get("club_name", "El Club")
                 _pid_for_url = st.session_state.get("db_phase_id")
                 _pub_url = (
-                    f"https://{BRAND_NAME.lower()}.streamlit.app/?r={_pid_for_url}"
+                    f"{public_base_url()}/?r={_pid_for_url}"
                     if _pid_for_url else None
                 )
                 _pair_map = {
@@ -6227,8 +6230,7 @@ elif page == "standings":
         if not _share_pid:
             st.info("Guarda los resultados primero para generar el enlace público.")
         else:
-            from src.branding import BRAND_NAME as _BN_st
-            _pub_rank_url = f"https://{_BN_st.lower()}.streamlit.app/?r={_share_pid}"
+            _pub_rank_url = f"{public_base_url()}/?r={_share_pid}"
             st.caption("Cualquiera con este enlace puede ver la clasificación actualizada **sin iniciar sesión** (solo lectura).")
             st.code(_pub_rank_url, language="text")
             st.markdown(f"[🔎 Abrir clasificación pública en una pestaña nueva]({_pub_rank_url})")
@@ -6265,7 +6267,10 @@ elif page == "export":
         if st.button("Generar Excel (tabla)", type="secondary"):
             with st.spinner("Generando Excel..."):
                 path = export_to_excel(result, phase)
-            st.success(f"✅ Excel generado: `{path}`")
+            st.success(
+                f"✅ Excel generado · {len(phase.groups)} grupos · "
+                f"{len(result.scheduled)} partidos. Descárgalo abajo."
+            )
             with open(path, "rb") as f:
                 st.download_button(
                     "⬇️ Descargar Excel (tabla)",
@@ -7456,9 +7461,8 @@ elif page == "t_config":
     if _cfg_tid and _cfg_t:
         st.divider()
         with st.expander("📩 Inscripciones públicas — enlace para jugadores", expanded=False):
-            from src.branding import BRAND_NAME as _BN_cfg
             import datetime as _dt_reg
-            _join_url_cfg  = f"https://{_BN_cfg.lower()}.streamlit.app/?join={_cfg_tid}"
+            _join_url_cfg  = f"{public_base_url()}/?join={_cfg_tid}"
             _reg_active    = _cfg_t.is_registration_active()
             _reg_open_cfg  = getattr(_cfg_t, "registration_open", False)
             _opens_cfg     = getattr(_cfg_t, "registration_opens_date", None)
@@ -7953,7 +7957,9 @@ elif page == "t_pairs":
                         _autosave_tournament(t)
                         st.success(f"✅ {len(new_pairs_csv)} parejas importadas."); st.rerun()
             except Exception as _csv_err:
-                st.error(f"Error: {_csv_err}")
+                st.error("No se pudo leer el archivo. Revisa que sea un CSV válido con las columnas esperadas (pair_name, player1_name, player2_name…).")
+                with st.expander("Detalle técnico"):
+                    st.code(str(_csv_err))
 
     st.divider()
     if t.pairs:
@@ -8498,7 +8504,7 @@ elif page == "t_generate":
             if is_email_configured():
                 _tid_notif = st.session_state.get("db_tournament_id")
                 _pub_t_url = (
-                    f"https://{BRAND_NAME.lower()}.streamlit.app/?t={_tid_notif}"
+                    f"{public_base_url()}/?t={_tid_notif}"
                     if _tid_notif else None
                 )
                 if _pub_t_url:
@@ -8871,9 +8877,8 @@ elif page == "t_results":
         if not _share_tid:
             st.info("Guarda el torneo primero para generar los enlaces.")
         else:
-            from src.branding import BRAND_NAME as _BN
-            _pub_url  = f"https://{_BN.lower()}.streamlit.app/?t={_share_tid}"
-            _join_url = f"https://{_BN.lower()}.streamlit.app/?join={_share_tid}"
+            _pub_url  = f"{public_base_url()}/?t={_share_tid}"
+            _join_url = f"{public_base_url()}/?join={_share_tid}"
             _tr_c1, _tr_c2 = st.columns(2)
             with _tr_c1:
                 st.markdown("**📺 Ver resultados y calendario**")
@@ -9279,8 +9284,11 @@ elif page == "players":
             try:
                 _players_ls = _elo_rank(_cid_pl, _ctx)
             except Exception as _e_pl:
-                st.error(f"No se pudo cargar el listado: {_e_pl}. "
-                         "¿Has ejecutado `src/db_elo.sql` en Supabase?")
+                st.error("No se pudo cargar el listado de jugadores. "
+                         "Si acabas de instalar Voltreo, puede faltar la configuración de la base de datos.")
+                with st.expander("Detalle técnico"):
+                    st.code(str(_e_pl))
+                    st.caption("Comprueba que `src/db_elo.sql` se ha ejecutado en Supabase.")
                 continue
             # Solo jugadores con partidos en este contexto van arriba; resto debajo
             _con_partidos = [p for p in _players_ls if p.get(_pj_col, 0) > 0]
@@ -9293,8 +9301,9 @@ elif page == "players":
             _rows_t = []
             for _pos, _p in enumerate(_con_partidos + _sin_partidos, 1):
                 _pj = _p.get(_pj_col, 0); _g = _p.get(_g_col, 0)
+                _rank_cell = (_medal.get(_pos, str(_pos))) if _pj else "–"
                 _rows_t.append({
-                    "#": _medal.get(_pos, str(_pos)),
+                    "#": _rank_cell,
                     "Jugador": _p["full_name"],
                     "ELO": _p.get(_elo_col, 1200),
                     "PJ": _pj, "G": _g,
@@ -9302,12 +9311,19 @@ elif page == "players":
                 })
             st.dataframe(pd.DataFrame(_rows_t), hide_index=True,
                          use_container_width=True, height=420)
-            _names = {f'{_p["full_name"]}': _p["id"]
-                      for _p in (_con_partidos + _sin_partidos)}
-            _sel_name = st.selectbox("Ver perfil de jugador", ["—"] + list(_names),
-                                     key=f"players_sel_{_ctx}")
-            if _sel_name != "—":
-                st.session_state["_players_selected_id"] = _names[_sel_name]
+            _ordered_pl = _con_partidos + _sin_partidos
+            _label_by_id = {
+                _p["id"]: f'{_p["full_name"]} · ELO {_p.get(_elo_col, 1200)}'
+                for _p in _ordered_pl
+            }
+            _sel_id = st.selectbox(
+                "Ver perfil de jugador",
+                ["—"] + [_p["id"] for _p in _ordered_pl],
+                format_func=lambda _i: "—" if _i == "—" else _label_by_id.get(_i, _i),
+                key=f"players_sel_{_ctx}",
+            )
+            if _sel_id != "—":
+                st.session_state["_players_selected_id"] = _sel_id
                 st.rerun()
 
     st.caption("El ELO de ranking y el de torneos son independientes: cada partido "

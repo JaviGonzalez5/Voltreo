@@ -11,7 +11,7 @@ import streamlit as st
 from .db import get_db, is_db_configured
 from .db_converters import phase_from_db
 from .ranking_scorer import compute_standings, standings_by_group, ScoringRules
-from .branding import BRAND_NAME, BRAND_MONOGRAM, BRAND_GRADIENT
+from .branding import BRAND_NAME, BRAND_MONOGRAM, BRAND_GRADIENT, public_base_url
 
 
 _PUBLIC_CSS = f"""
@@ -192,7 +192,7 @@ def _render_public_ranking_impl(phase_id: str) -> None:
 
     st.markdown(
         f'<div class="pubr-foot">Generado con '
-        f'<a href="https://{BRAND_NAME.lower()}.streamlit.app">{escape(BRAND_NAME)}</a>'
+        f'<a href="{public_base_url()}">{escape(BRAND_NAME)}</a>'
         f' · Gestión de torneos y rankings deportivos</div>',
         unsafe_allow_html=True,
     )

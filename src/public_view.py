@@ -13,7 +13,7 @@ from .db import get_db, is_db_configured
 from .db_converters import tournament_from_db
 from .tournament_models import MatchRound, TMatchStatus
 from .tournament_results import champions_by_division, group_standings
-from .branding import BRAND_NAME, BRAND_MONOGRAM, BRAND_GRADIENT
+from .branding import BRAND_NAME, BRAND_MONOGRAM, BRAND_GRADIENT, public_base_url
 
 
 _PUBLIC_CSS = f"""
@@ -709,7 +709,7 @@ def _render_public_tournament_impl(tournament_id: str) -> None:
         _render_division(None)
 
     st.markdown(
-        f'<div class="pv-foot">Organizado con <a href="https://{BRAND_NAME.lower()}.streamlit.app">'
+        f'<div class="pv-foot">Organizado con <a href="{public_base_url()}">'
         f'{escape(BRAND_NAME)}</a> · Gestión de torneos y rankings deportivos</div>',
         unsafe_allow_html=True,
     )
@@ -844,7 +844,7 @@ def _render_public_registration_impl(tournament_id: str) -> None:
 
         st.markdown(
             f'<div class="pv-foot">Organizado con '
-            f'<a href="https://{BRAND_NAME.lower()}.streamlit.app">{escape(BRAND_NAME)}</a></div>',
+            f'<a href="{public_base_url()}">{escape(BRAND_NAME)}</a></div>',
             unsafe_allow_html=True,
         )
         st.stop()
@@ -1125,7 +1125,7 @@ def _render_public_registration_impl(tournament_id: str) -> None:
 
     st.markdown(
         f'<div class="pv-foot">Organizado con '
-        f'<a href="https://{BRAND_NAME.lower()}.streamlit.app">{escape(BRAND_NAME)}</a></div>',
+        f'<a href="{public_base_url()}">{escape(BRAND_NAME)}</a></div>',
         unsafe_allow_html=True,
     )
     st.stop()
