@@ -4762,6 +4762,104 @@ elif page == "import":
                                 "No se encontraron grupos. Revisa los IDs de niveles y el número de rotación."
                             )
 
+        # ---- B: Importar resultados y horarios del ranking ----
+        st.markdown("---")
+        st.markdown("#### 🏁 Importar resultados desde Syltek")
+        st.info(
+            "Lee los marcadores ya introducidos en Syltek (página de **rotación**, "
+            "`/rankings/showtab/{id}/round{rotacion}`) y rellena la clasificación de "
+            "Voltreo automáticamente. Importa primero los grupos, arriba."
+        )
+        if st.button("🏁 Importar resultados desde Syltek", type="primary", key="btn_import_results"):
+            if not syl_imp_url or not syl_imp_user or not syl_imp_pass:
+                st.error("Rellena URL, usuario y contraseña.")
+            elif not st.session_state.get("groups"):
+                st.warning("Importa primero los grupos y parejas (botón de arriba).")
+            else:
+                try:
+                    _level_ids_r = [int(x.strip()) for x in level_ids_str.split(",") if x.strip()]
+                except ValueError:
+                    _level_ids_r = []
+                    st.error("IDs de niveles inválidos. Usa números separados por comas.")
+
+                if _level_ids_r:
+                    _conn_res = SyltekConnector(
+                        url=syl_imp_url, user=syl_imp_user, password=syl_imp_pass, dry_run=True
+                    )
+                    _ok_r, _msg_r = _conn_res.login()
+                    if not _ok_r:
+                        st.error(f"❌ Login fallido: {_msg_r}")
+                    else:
+                        from src.syltek_sync import build_results_from_round
+                        _parsed_all: list = []
+                        _sched_total = 0
+                        _prog_r = st.progress(0, text="Leyendo rotaciones de Syltek...")
+                        for _i_r, _lid in enumerate(_level_ids_r):
+                            try:
+                                _blocks = _conn_res.read_round_results(_lid, int(grp_rotation))
+                                _parsed_all.extend(_blocks)
+                                _sched_total += sum(len(b.get("schedules", [])) for b in _blocks)
+                            except Exception as _e_r:
+                                logging.exception("Error leyendo resultados del nivel %s", _lid)
+                                st.warning(f"Nivel {_lid}: {_e_r}")
+                            _prog_r.progress((_i_r + 1) / len(_level_ids_r),
+                                             text=f"Nivel {_i_r + 1}/{len(_level_ids_r)}")
+                        _prog_r.empty()
+
+                        _new_results, _unmatched = build_results_from_round(
+                            _parsed_all, st.session_state.get("groups") or []
+                        )
+
+                        if not _new_results:
+                            st.warning(
+                                "No se pudo casar ningún resultado. Revisa que los grupos "
+                                "importados coincidan con los de Syltek y la rotación sea correcta."
+                            )
+                        else:
+                            _ph_r = st.session_state.get("phase")
+                            if _ph_r is None:
+                                st.error("No hay una fase de ranking activa. Crea o abre la fase antes de importar resultados.")
+                            else:
+                                # Fundir por match_id (reimportar reemplaza, no duplica)
+                                _existing_r = {r.match_id: r for r in getattr(_ph_r, "match_results", []) or []}
+                                for _r in _new_results:
+                                    _existing_r[_r.match_id] = _r
+                                _ph_r.match_results = list(_existing_r.values())
+                                _ph_r.groups = st.session_state.get("groups") or _ph_r.groups
+                                st.session_state["phase"] = _ph_r
+
+                                if _db_ok and _db is not None:
+                                    _cid_r = current_club_id()
+                                    _pid_r = st.session_state.get("db_phase_id")
+                                    if _cid_r and _pid_r:
+                                        try:
+                                            _pl_r = phase_to_db(_ph_r, _cid_r, _pid_r)
+                                            _db.upsert_phase(
+                                                club_id=_cid_r, name=_pl_r["name"],
+                                                start_date=_pl_r["start_date"], end_date=_pl_r["end_date"],
+                                                phase_config=_pl_r["phase_config"], groups_data=_pl_r["groups_data"],
+                                                bookings_data=_pl_r["bookings_data"],
+                                                schedule_result=schedule_result_to_db(st.session_state.get("schedule_result")),
+                                                phase_id=_pid_r,
+                                            )
+                                        except Exception:
+                                            logging.exception("Error persistiendo resultados de Syltek")
+                                            st.warning("⚠️ Importado en la sesión, pero falló el guardado en la nube.")
+
+                                st.success(
+                                    f"✅ {len(_new_results)} resultado(s) importados. "
+                                    "Ve a **🏅 Clasificación** para verlos."
+                                )
+                                if _sched_total:
+                                    st.caption(
+                                        f"ℹ️ Además se detectaron {_sched_total} partidos programados "
+                                        "(horarios) en Syltek aún sin jugar."
+                                    )
+                                if _unmatched:
+                                    with st.expander(f"⚠️ {len(_unmatched)} partido(s) sin casar"):
+                                        for _u in _unmatched:
+                                            st.write(f"• {_u}")
+
         # ---- Diagnóstico: valores columna Grupo ----
         with st.expander("🔎 Diagnóstico — valores columna Grupo por nivel"):
             diag_level_id2 = st.number_input("ID de nivel", value=101, step=1, key="diag_level_id2")
