@@ -6335,16 +6335,18 @@ elif page == "standings":
     def _render_group_matrix(_grp):
         _mx = build_group_matrix(_grp.pairs, _results, _rules)
         _order = sorted(_mx["pairs"], key=lambda p: _mx["rows"][p["id"]]["clas"])
+        # La última pareja (peor clasificada) NO necesita columna: todos sus
+        # partidos se leen en su propia fila (igual que la planilla del club / Syltek).
+        _cols = _order[:-1]
         _h = ['<div class="cm-wrap"><table class="cm-tab"><thead><tr>',
-              '<th>#</th><th class="cm-name">Pareja</th>']
-        for _p in _order:
+              '<th class="cm-name">Pareja</th>']
+        for _p in _cols:
             _h.append(f'<th class="cm-colhead">{escape(_p["name"])}</th>')
-        _h.append('<th>PJ</th><th>Dif S</th><th>Dif J</th><th>Pts</th></tr></thead><tbody>')
+        _h.append('<th>PJ</th><th>Dif S</th><th>Dif J</th><th>Pts</th><th>Clas</th></tr></thead><tbody>')
         for _p in _order:
             _r = _mx["rows"][_p["id"]]
-            _h.append(f'<tr><td class="cm-clas">{_r["clas"]}</td>'
-                      f'<td class="cm-name">{escape(_p["name"])}</td>')
-            for _q in _order:
+            _h.append(f'<tr><td class="cm-name">{escape(_p["name"])}</td>')
+            for _q in _cols:
                 if _q["id"] == _p["id"]:
                     _h.append('<td class="cm-diag"></td>')
                     continue
@@ -6353,7 +6355,8 @@ elif page == "standings":
             _h.append(f'<td>{_r["played"]}</td>'
                       f'<td>{_r["set_diff"]:+d}</td>'
                       f'<td>{_r["game_diff"]:+d}</td>'
-                      f'<td class="cm-pts">{_r["points"]}</td></tr>')
+                      f'<td class="cm-pts">{_r["points"]}</td>'
+                      f'<td class="cm-clas">{_r["clas"]}</td></tr>')
         _h.append('</tbody></table></div>')
         st.markdown("".join(_h), unsafe_allow_html=True)
 
