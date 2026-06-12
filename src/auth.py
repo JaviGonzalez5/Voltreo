@@ -605,6 +605,28 @@ def render_landing_screen() -> None:
             .lp-grid {{ grid-template-columns: 1fr; }}
             .lp-h1 {{ font-size: 2rem; }}
         }}
+
+        /* ── Override del tema oscuro global: esta es página de marketing,
+              fondo claro. El config.toml de Streamlit es base="dark" y tiñe
+              los títulos de claro; aquí los forzamos a oscuro legible. ── */
+        .stApp .lp-h1 {{ color: #07111d !important; }}
+        .stApp .lp-h1 .accent {{ color: #00843d !important; }}
+        .stApp .lp-section-title {{ color: #07111d !important; }}
+        .stApp .lp-pricing h2 {{ color: #07111d !important; }}
+        .stApp .lp-stat-n {{ color: #07111d !important; }}
+        .stApp .lp-card-title {{ color: #07111d !important; }}
+        /* Botón secundario "Solicitar acceso" (st.link_button) legible en claro */
+        [data-testid="stLinkButton"] a {{
+            background: #ffffff !important;
+            color: #0b1a2b !important;
+            border: 1.5px solid #d8e8f4 !important;
+        }}
+        [data-testid="stLinkButton"] a:hover {{
+            border-color: #00c853 !important;
+            color: #00843d !important;
+            background: #f3fbf6 !important;
+        }}
+        [data-testid="stLinkButton"] a p {{ color: inherit !important; }}
         </style>
         """,
         unsafe_allow_html=True,
