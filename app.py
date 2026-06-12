@@ -3134,7 +3134,6 @@ _R_STEPS = [
     ("import",    "Importar datos",     "Sube grupos, parejas y reservas",      _s.data_loaded),
     ("pairs",     "Parejas y grupos",   "Disponibilidad y subidas/bajadas",     _s.data_loaded),
     ("generate",  "Generar calendario", "Crea los partidos automáticamente",    _s.matches_generated),
-    ("results",   "Registrar resultados", "Introduce los marcadores de cada partido", _has_results),
     ("standings", "Clasificación",      "Ranking automático por puntos",         _has_results),
     ("export",    "Exportar",           "Excel, mensajes WhatsApp y más",       _s.matches_scheduled),
     ("review",    "Revisión",           "Comprueba conflictos y ajustes",       _s.matches_scheduled and _s.get("schedule_violations") is not None),
@@ -3173,10 +3172,10 @@ div[data-key^="rkstep_"] button[kind="primary"],
 </style>
 """
 
-_RK_CORE_STEPS = ["config", "import", "pairs", "generate", "results", "standings", "export"]
+_RK_CORE_STEPS = ["config", "import", "pairs", "generate", "standings", "export"]
 _RK_SHORT = {
     "config": "Configurar", "import": "Importar", "pairs": "Parejas",
-    "generate": "Generar", "results": "Resultados", "standings": "Clasificación",
+    "generate": "Generar", "standings": "Clasificación",
     "export": "Exportar",
 }
 _RK_KEYCAP = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣"]
@@ -6266,8 +6265,11 @@ elif page == "results":
 # ---------------------------------------------------------------------------
 
 elif page == "standings":
-    from src.ranking_scorer import compute_standings, standings_by_group, ScoringRules
+    from src.ranking_scorer import compute_standings, standings_by_group, ScoringRules, MatchResult, SetScore
     from src.cross_matrix import build_group_matrix
+    _clas_flash = st.session_state.pop("_clas_flash", None)
+    if _clas_flash:
+        st.success(_clas_flash)
     _page_header("🏅", "Clasificación", "Ranking automático calculado a partir de los resultados")
     _ranking_stepper("standings")
 
@@ -6279,7 +6281,8 @@ elif page == "standings":
     _results = getattr(_sphase, "match_results", [])
     if not _results:
         _empty_state("📝", "Sin resultados todavía",
-                     "Registra los marcadores en <strong>Registrar resultados</strong>.")
+                     "Importa los resultados desde Syltek en <strong>Importar datos</strong> "
+                     "(o corrige un marcador desde aquí cuando los haya).")
         st.stop()
 
     _rules = getattr(_sphase, "scoring_rules", None) or ScoringRules()
@@ -6360,6 +6363,96 @@ elif page == "standings":
         _h.append('</tbody></table></div>')
         st.markdown("".join(_h), unsafe_allow_html=True)
 
+    def _persist_phase(_ph):
+        """Guarda la fase en Supabase (tras corregir un resultado)."""
+        if _db_ok and _db is not None:
+            _cid = current_club_id()
+            _pid = st.session_state.get("db_phase_id")
+            if _cid and _pid:
+                try:
+                    _pl = phase_to_db(_ph, _cid, _pid)
+                    _db.upsert_phase(
+                        club_id=_cid, name=_pl["name"],
+                        start_date=_pl["start_date"], end_date=_pl["end_date"],
+                        phase_config=_pl["phase_config"], groups_data=_pl["groups_data"],
+                        bookings_data=_pl["bookings_data"],
+                        schedule_result=schedule_result_to_db(st.session_state.get("schedule_result")),
+                        phase_id=_pid,
+                    )
+                except Exception:
+                    logging.exception("Error guardando corrección de resultado")
+                    st.warning("⚠️ Guardado en la sesión, pero falló la conexión a la nube.")
+
+    import re as _re_ed
+    from uuid import uuid4 as _u4_ed
+
+    def _render_group_editor(_grp):
+        """Editor inline: elige un partido del grupo y corrige su marcador."""
+        _ps = list(_grp.pairs)
+        _opts = ["—"]
+        _omap = {}
+        for _ia in range(len(_ps)):
+            for _ib in range(_ia + 1, len(_ps)):
+                _lab = f"{_ps[_ia].display_name}  vs  {_ps[_ib].display_name}"
+                _opts.append(_lab)
+                _omap[_lab] = (_ps[_ia], _ps[_ib])
+
+        st.markdown('<div style="font-size:.78rem;color:#7fffc0;margin:.35rem 0 .1rem">'
+                    '✏️ Corregir un resultado</div>', unsafe_allow_html=True)
+        _sel = st.selectbox("Partido a corregir", _opts, key=f"edsel_{_grp.id}",
+                            label_visibility="collapsed")
+        if _sel == "—":
+            return
+        _pa, _pb = _omap[_sel]
+        _cur = next((r for r in (_sphase.match_results or [])
+                     if {r.pair_1_id, r.pair_2_id} == {_pa.id, _pb.id}), None)
+        _prefill = ""
+        if _cur:
+            if _cur.pair_1_id == _pa.id:
+                _prefill = ", ".join(f"{s.games_1}-{s.games_2}" for s in _cur.sets)
+            else:
+                _prefill = ", ".join(f"{s.games_2}-{s.games_1}" for s in _cur.sets)
+
+        st.caption(f"Marcador con **{_pa.display_name}** primero (ej. 6-4, 1-6, 6-4):")
+        _txt = st.text_input("Sets", value=_prefill, key=f"edtxt_{_grp.id}",
+                             label_visibility="collapsed", placeholder="6-4, 1-6, 6-4")
+        _b1, _b2 = st.columns(2)
+        if _b1.button("💾 Guardar", key=f"edsave_{_grp.id}", type="primary", use_container_width=True):
+            _parts = [p for p in _re_ed.split(r"[,\s]+", _txt.strip()) if p]
+            _sets, _bad = [], False
+            for _pt in _parts:
+                _mm = _re_ed.match(r"^(\d{1,2})[-/](\d{1,2})$", _pt)
+                if not _mm:
+                    _bad = True
+                    break
+                _sets.append((int(_mm.group(1)), int(_mm.group(2))))
+            if _bad or not _sets:
+                st.error("Formato no válido. Escribe los sets como 6-4, 1-6, 6-4.")
+            else:
+                _new = MatchResult(
+                    match_id=(_cur.match_id if _cur else str(_u4_ed())),
+                    pair_1_id=_pa.id, pair_2_id=_pb.id,
+                    group_id=getattr(_pa, "group_id", None) or _grp.id,
+                    sets=[SetScore(games_1=a, games_2=b) for a, b in _sets],
+                )
+                _sphase.match_results = [
+                    r for r in (_sphase.match_results or [])
+                    if {r.pair_1_id, r.pair_2_id} != {_pa.id, _pb.id}
+                ] + [_new]
+                st.session_state["phase"] = _sphase
+                _persist_phase(_sphase)
+                st.session_state["_clas_flash"] = f"✅ Resultado actualizado: {_sel}"
+                st.rerun()
+        if _cur and _b2.button("🗑️ Borrar", key=f"eddel_{_grp.id}", use_container_width=True):
+            _sphase.match_results = [
+                r for r in (_sphase.match_results or [])
+                if {r.pair_1_id, r.pair_2_id} != {_pa.id, _pb.id}
+            ]
+            st.session_state["phase"] = _sphase
+            _persist_phase(_sphase)
+            st.session_state["_clas_flash"] = f"🗑️ Resultado borrado: {_sel}"
+            st.rerun()
+
     # ── Agrupar por NIVEL → un desplegable por nivel con sus subgrupos ──────────
     import re as _re_lvl
 
@@ -6393,6 +6486,7 @@ elif page == "standings":
                 for _grp in _grps:
                     st.markdown(f"**{escape(_grp_short(_grp.name))}**")
                     _render_group_matrix(_grp)
+                    _render_group_editor(_grp)
 
     st.caption("PJ=Jugados · Dif S=Diferencia de sets · Dif J=Diferencia de juegos · Pts=Puntos "
                "(3 victoria / 1 derrota). Orden: puntos → dif. sets → dif. juegos → victorias → cara a cara.")
