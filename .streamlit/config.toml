@@ -6,6 +6,11 @@ secondaryBackgroundColor = "#0f2231"
 textColor       = "#e9f3fc"
 font            = "sans serif"
 
+[client]
+toolbarMode = "viewer"
+showErrorDetails = "none"
+showErrorLinks = false
+
 [server]
 headless = true
 enableCORS = false

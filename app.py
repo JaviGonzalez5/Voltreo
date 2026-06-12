@@ -1358,7 +1358,52 @@ div[data-key="mobile_club_switcher"] {
     .main .block-container {
         padding-top: .55rem !important;
         padding-bottom: 1.3rem !important;
+        padding-left: .85rem !important;
+        padding-right: .85rem !important;
+        max-width: 100vw !important;
+        overflow-x: hidden !important;
     }
+
+    /* En móvil la navegación propia sustituye al sidebar/toolbar de Streamlit. */
+    header[data-testid="stHeader"],
+    header[data-testid="stHeader"] *,
+    [data-testid="stSidebar"],
+    [data-testid="stSidebar"] *,
+    [data-testid="collapsedControl"],
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="stToolbar"],
+    [data-testid="stToolbar"] *,
+    [data-testid="stStatusWidget"],
+    [data-testid="stStatusWidget"] *,
+    .stDeployButton,
+    .stDeployButton * {
+        display: none !important;
+        visibility: hidden !important;
+        width: 0 !important;
+        height: 0 !important;
+        pointer-events: none !important;
+    }
+
+    .main, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
+        margin-left: 0 !important;
+        left: 0 !important;
+        width: 100vw !important;
+        max-width: 100vw !important;
+        overflow-x: hidden !important;
+    }
+
+    /* Streamlit columns do not always wrap well on phones. Default: 2-up,
+       nav overrides below keep five compact buttons. */
+    [data-testid="stHorizontalBlock"] {
+        flex-wrap: wrap !important;
+        gap: .6rem !important;
+    }
+    [data-testid="stHorizontalBlock"] > [data-testid="column"] {
+        flex: 1 1 calc(50% - .6rem) !important;
+        min-width: calc(50% - .6rem) !important;
+        max-width: 100% !important;
+    }
+
     .st-key-mobile_club_switcher,
     div[data-key="mobile_club_switcher"] {
         display: block !important;
@@ -1377,29 +1422,6 @@ div[data-key="mobile_club_switcher"] {
         letter-spacing: .08em !important;
         text-transform: uppercase !important;
     }
-    header[data-testid="stHeader"] {
-        display: block !important;
-        visibility: visible !important;
-        height: 3rem !important;
-        background: transparent !important;
-        pointer-events: none !important;
-    }
-    header[data-testid="stHeader"] [data-testid="collapsedControl"],
-    header[data-testid="stHeader"] [data-testid="stSidebarCollapsedControl"],
-    [data-testid="collapsedControl"],
-    [data-testid="stSidebarCollapsedControl"] {
-        display: flex !important;
-        visibility: visible !important;
-        pointer-events: auto !important;
-        top: .45rem !important;
-        left: .45rem !important;
-        z-index: 100001 !important;
-    }
-    header[data-testid="stHeader"] [data-testid="collapsedControl"] *,
-    header[data-testid="stHeader"] [data-testid="stSidebarCollapsedControl"] * {
-        display: initial !important;
-        visibility: visible !important;
-    }
     .st-key-mobile_bottom_nav_real,
     div[data-key="mobile_bottom_nav_real"] {
         display: block !important;
@@ -1416,10 +1438,13 @@ div[data-key="mobile_club_switcher"] {
     }
     .st-key-mobile_bottom_nav_real [data-testid="stHorizontalBlock"],
     div[data-key="mobile_bottom_nav_real"] [data-testid="stHorizontalBlock"] {
+        flex-wrap: nowrap !important;
         gap: .2rem !important;
     }
     .st-key-mobile_bottom_nav_real [data-testid="column"],
     div[data-key="mobile_bottom_nav_real"] [data-testid="column"] {
+        flex: 1 1 0 !important;
+        min-width: 0 !important;
         padding: 0 !important;
     }
     .st-key-mobile_bottom_nav_real .stButton > button,
@@ -1474,6 +1499,7 @@ div[data-key="mobile_club_switcher"] {
         min-height: 104px !important;
         padding: .78rem .82rem !important;
         border-radius: 12px !important;
+        overflow: hidden !important;
     }
     .pp-kpi-label {
         font-size: .6rem !important;
@@ -1508,6 +1534,23 @@ div[data-key="mobile_club_switcher"] {
     .pp-onboarding-card {
         padding: .9rem .95rem !important;
         border-radius: 12px !important;
+    }
+    [data-testid="stMetric"] {
+        min-width: 0 !important;
+        padding: .35rem 0 !important;
+    }
+    [data-testid="stMetricLabel"] {
+        font-size: .78rem !important;
+        line-height: 1.2 !important;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: 1.45rem !important;
+        line-height: 1.05 !important;
+        white-space: normal !important;
+    }
+    [data-testid="stAlert"] {
+        font-size: .82rem !important;
+        line-height: 1.35 !important;
     }
 }
 
