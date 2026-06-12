@@ -17,6 +17,8 @@ App **en producción** en `https://voltreo.streamlit.app` (deploy desde `main`).
 
 **URL pública centralizada:** `branding.public_base_url()` (override con secret `VOLTREO_PUBLIC_URL` para dominio propio). No hardcodear `streamlit.app`.
 
+**Seguridad multi-club (auditada 2026-06-12):** aislamiento por `club_id` sólido en db.py; gestión de usuarios solo-superadmin (gate `is_superadmin()`); service_role solo server-side (RLS = defensa-en-profundidad, confirmado activo en Supabase: RLS on + policies en todas las tablas, varias con API DISABLED). Inscripción pública endurecida + **tabla `tournament_registrations`** (INSERT atómico, elimina lost-update) — ⚠️ requiere ejecutar `src/db_registrations.sql` en Supabase. Hasta ejecutarlo, el código cae al flujo JSONB antiguo (sin regresión).
+
 **Pulido UX hecho 2026-06-12** (8 fixes, todos compilan):
 1. Contraste onboarding home (texto invisible sobre tarjeta oscura)
 2. 2× `st.error` crudos → mensaje humano + detalle técnico en expander

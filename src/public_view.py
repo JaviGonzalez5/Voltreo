@@ -1089,55 +1089,17 @@ def _render_public_registration_impl(tournament_id: str) -> None:
                         status               = RegistrationStatus.PENDING,
                         submitted_at         = _dtt.utcnow().isoformat(),
                     )
-                    # Recargar el torneo FRESCO justo antes de guardar: evita pisar
-                    # cambios del admin u otras inscripciones hechas mientras el
-                    # formulario estaba abierto (reduce la ventana de lost-update).
                     _cid_reg = row.get("club_id", "")
-                    try:
-                        _fresh_row = get_db().get_tournament_public(tournament_id)
-                        t_save = _tfdb(_fresh_row) if _fresh_row else t
-                    except Exception:
-                        t_save = t
-                    # Anti-duplicado: la misma pareja (ambos emails) ya inscrita.
                     _new_emails = {reg.player1_email.strip().lower(),
                                    reg.player2_email.strip().lower()}
-                    _already = any(
-                        {(_r.player1_email or "").strip().lower(),
-                         (_r.player2_email or "").strip().lower()} == _new_emails
-                        for _r in (t_save.registrations or [])
-                    )
-                    if _already:
-                        st.warning(
-                            "Ya existe una inscripción con estos dos emails. "
-                            "Si necesitas modificar algo, contacta con el club."
-                        )
-                    else:
-                      try:
-                        t_save.registrations.append(reg)
-                        from .db_converters import tournament_to_db as _ttdb
-                        payload = _ttdb(t_save, _cid_reg, t_save.id)
-                        get_db().upsert_tournament(
-                            club_id         = _cid_reg,
-                            name            = payload["name"],
-                            start_date      = payload["start_date"],
-                            end_date        = payload["end_date"],
-                            tournament_data = payload["tournament_data"],
-                            tournament_id   = t_save.id,
-                        )
-                        st.session_state[f"_reg_done_{tournament_id}"] = True
-                        # ── Enviar correo de confirmación (opcional) ──────
+
+                    def _send_reg_confirmation():
                         try:
                             from .email_sender import notify_registration_received
                             _p1_full = " ".join(filter(None, [
-                                reg.player1_name,
-                                reg.player1_surname1,
-                                reg.player1_surname2,
-                            ]))
+                                reg.player1_name, reg.player1_surname1, reg.player1_surname2]))
                             _p2_full = " ".join(filter(None, [
-                                reg.player2_name,
-                                reg.player2_surname1,
-                                reg.player2_surname2,
-                            ]))
+                                reg.player2_name, reg.player2_surname1, reg.player2_surname2]))
                             notify_registration_received(
                                 to_emails       = [reg.player1_email, reg.player2_email],
                                 tournament_name = t.name,
@@ -1148,9 +1110,68 @@ def _render_public_registration_impl(tournament_id: str) -> None:
                             )
                         except Exception:
                             pass  # El email es opcional; la inscripción ya está guardada
-                        st.rerun()
-                      except Exception as _e:
-                        st.error(f"Error al guardar la inscripción: {_e}")
+
+                    # ── Camino preferente: INSERT atómico en tabla dedicada ──────
+                    # Evita el read-modify-write sobre el JSONB del torneo (carrera).
+                    _db_reg = get_db()
+                    _existing_rows = _db_reg.list_registrations(tournament_id)
+
+                    def _row_emails(_rr):
+                        _d = _rr.get("data") or {}
+                        return {(_d.get("player1_email") or "").strip().lower(),
+                                (_d.get("player2_email") or "").strip().lower()}
+
+                    if _existing_rows and any(_row_emails(_rr) == _new_emails for _rr in _existing_rows):
+                        st.warning(
+                            "Ya existe una inscripción con estos dos emails. "
+                            "Si necesitas modificar algo, contacta con el club."
+                        )
+                    else:
+                        _saved_row = _db_reg.add_registration(
+                            tournament_id, _cid_reg, reg.model_dump(mode="json"), reg.id
+                        )
+                        if _saved_row is not None:
+                            # Guardada atómicamente; el JSONB del torneo NO se toca
+                            # (el admin la drenará al abrir t_pairs).
+                            st.session_state[f"_reg_done_{tournament_id}"] = True
+                            _send_reg_confirmation()
+                            st.rerun()
+                        else:
+                            # ── FALLBACK (tabla aún no creada): flujo antiguo sobre
+                            #    el JSONB, con recarga fresca + anti-duplicado. ──────
+                            try:
+                                _fresh_row = get_db().get_tournament_public(tournament_id)
+                                t_save = _tfdb(_fresh_row) if _fresh_row else t
+                            except Exception:
+                                t_save = t
+                            _dup_json = any(
+                                {(_r.player1_email or "").strip().lower(),
+                                 (_r.player2_email or "").strip().lower()} == _new_emails
+                                for _r in (t_save.registrations or [])
+                            )
+                            if _dup_json:
+                                st.warning(
+                                    "Ya existe una inscripción con estos dos emails. "
+                                    "Si necesitas modificar algo, contacta con el club."
+                                )
+                            else:
+                                try:
+                                    t_save.registrations.append(reg)
+                                    from .db_converters import tournament_to_db as _ttdb
+                                    payload = _ttdb(t_save, _cid_reg, t_save.id)
+                                    get_db().upsert_tournament(
+                                        club_id         = _cid_reg,
+                                        name            = payload["name"],
+                                        start_date      = payload["start_date"],
+                                        end_date        = payload["end_date"],
+                                        tournament_data = payload["tournament_data"],
+                                        tournament_id   = t_save.id,
+                                    )
+                                    st.session_state[f"_reg_done_{tournament_id}"] = True
+                                    _send_reg_confirmation()
+                                    st.rerun()
+                                except Exception as _e:
+                                    st.error(f"Error al guardar la inscripción: {_e}")
 
     st.markdown(
         f'<div class="pv-foot">Organizado con '

@@ -7717,6 +7717,40 @@ elif page == "t_pairs":
 
     from src.tournament_models import RegistrationStatus as _RegSt
 
+    # ── Drenar inscripciones de la tabla atómica al JSONB del torneo ──────────
+    # La inscripción pública (?join) inserta filas en `tournament_registrations`
+    # (insert atómico, sin carrera). Aquí las incorporamos UNA vez a
+    # t.registrations y borramos las filas, de modo que TODO el flujo del admin
+    # de abajo sigue trabajando sobre t.registrations sin cambios. Si la tabla
+    # aún no existe, list_registrations() devuelve [] y esto es un no-op.
+    if _db_ok and _db is not None and getattr(t, "id", None):
+        _reg_rows = _db.list_registrations(t.id)
+        if _reg_rows:
+            from src.tournament_models import TournamentRegistration as _TReg
+            _existing_ids = {getattr(_r, "id", None) for _r in (t.registrations or [])}
+            _drained_ids, _added = [], 0
+            for _rr in _reg_rows:
+                _rid = _rr.get("id")
+                if not _rid:
+                    continue
+                if _rid not in _existing_ids:
+                    try:
+                        _nr = _TReg.model_validate(_rr.get("data") or {})
+                        _nr.id = _rid
+                        t.registrations.append(_nr)
+                        _added += 1
+                    except Exception:
+                        # Fila corrupta: no la borramos (preservar dato) ni bloqueamos.
+                        continue
+                _drained_ids.append(_rid)
+            _save_ok = True
+            if _added:
+                st.session_state["tournament"] = t
+                _autosave_tournament(t)
+                _save_ok = not st.session_state.get("_autosave_failed")
+            if _save_ok and _drained_ids:
+                _db.delete_registrations(_drained_ids)
+
     # ── Pestañas principales ──────────────────────────────────────────────────
     _all_regs   = getattr(t, "registrations", []) or []
     _pending_regs = [r for r in _all_regs if r.status == _RegSt.PENDING]

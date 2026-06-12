@@ -476,6 +476,67 @@ class SupabaseDB:
         _invalidate_tournament_cache()
 
     # ================================================================
+    # TOURNAMENT REGISTRATIONS — inscripciones públicas (insert atómico)
+    # ================================================================
+    # La tabla `tournament_registrations` permite que la inscripción pública
+    # (?join) escriba UNA fila de forma atómica, en vez de re-guardar todo el
+    # JSONB del torneo (que causaba lost-update). El admin las "drena" al JSONB.
+    #
+    # TODOS estos métodos fallan en silencio (None / []) si la tabla aún no
+    # existe (SQL sin ejecutar): el llamador hace fallback al flujo antiguo.
+
+    def add_registration(
+        self,
+        tournament_id: str,
+        club_id: Optional[str],
+        data: dict,
+        registration_id: Optional[str] = None,
+    ) -> Optional[dict]:
+        """Inserta UNA inscripción de forma atómica. Devuelve la fila, o None si
+        la tabla no existe / falla (el llamador hará fallback al JSONB)."""
+        payload: dict[str, Any] = {
+            "tournament_id": tournament_id,
+            "club_id":       club_id or None,
+            "data":          data,
+            "status":        (data or {}).get("status") or "pending",
+        }
+        if registration_id:
+            payload["id"] = registration_id
+        try:
+            resp = self._c.table("tournament_registrations").insert(payload).execute()
+            return resp.data[0] if resp.data else payload
+        except Exception:
+            logging.exception("add_registration falló (tournament_id=%s)", tournament_id)
+            return None
+
+    def list_registrations(self, tournament_id: str) -> list[dict]:
+        """Lista las filas de inscripción de un torneo (ordenadas por created_at).
+        Devuelve [] si la tabla no existe / falla."""
+        try:
+            resp = (
+                self._c.table("tournament_registrations")
+                .select("*")
+                .eq("tournament_id", tournament_id)
+                .execute()
+            )
+            rows = resp.data or []
+            rows.sort(key=lambda r: r.get("created_at") or "")
+            return rows
+        except Exception:
+            return []
+
+    def delete_registrations(self, registration_ids: list[str]) -> None:
+        """Borra filas de inscripción por id (tras drenarlas al JSONB del torneo)."""
+        if not registration_ids:
+            return
+        try:
+            self._c.table("tournament_registrations").delete().in_(
+                "id", registration_ids
+            ).execute()
+        except Exception:
+            logging.exception("delete_registrations falló")
+
+    # ================================================================
     # AUDIT LOG
     # ================================================================
 

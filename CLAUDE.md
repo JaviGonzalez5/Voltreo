@@ -78,6 +78,7 @@ tests/
 | `users` | ✅ | Usuarios admin (no jugadores) |
 | `ranking_phases` | ✅ | Fases/temporadas del ranking |
 | `tournaments` | ✅ | Torneos completos (JSONB) |
+| `tournament_registrations` | ✅ | Inscripciones públicas (`?join`) — INSERT atómico, el admin las drena al JSONB del torneo en t_pairs. SQL: `src/db_registrations.sql` ⚠️ ejecutar en Supabase |
 | `audit_log` | ✅ | Log de acciones (login + fases) |
 
 **Clave importante:** la app usa `SUPABASE_KEY` = **service_role key**.  
