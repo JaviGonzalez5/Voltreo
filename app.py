@@ -6332,34 +6332,64 @@ elif page == "standings":
         _c = "cm-win" if _cell["pts"] == _win_pts else "cm-loss"
         return _t, _c
 
-    for _gid, _table in _by_group.items():
-        _section_start("🏅", _group_label.get(_gid, "Clasificación"))
-        _grp = _group_by_id.get(_gid)
-        if _grp and getattr(_grp, "pairs", None):
-            _mx = build_group_matrix(_grp.pairs, _results, _rules)
-            _order = sorted(_mx["pairs"], key=lambda p: _mx["rows"][p["id"]]["clas"])
+    def _render_group_matrix(_grp):
+        _mx = build_group_matrix(_grp.pairs, _results, _rules)
+        _order = sorted(_mx["pairs"], key=lambda p: _mx["rows"][p["id"]]["clas"])
+        _h = ['<div class="cm-wrap"><table class="cm-tab"><thead><tr>',
+              '<th>#</th><th class="cm-name">Pareja</th>']
+        for _p in _order:
+            _h.append(f'<th class="cm-colhead">{escape(_p["name"])}</th>')
+        _h.append('<th>PJ</th><th>Dif S</th><th>Dif J</th><th>Pts</th></tr></thead><tbody>')
+        for _p in _order:
+            _r = _mx["rows"][_p["id"]]
+            _h.append(f'<tr><td class="cm-clas">{_r["clas"]}</td>'
+                      f'<td class="cm-name">{escape(_p["name"])}</td>')
+            for _q in _order:
+                if _q["id"] == _p["id"]:
+                    _h.append('<td class="cm-diag"></td>')
+                    continue
+                _txt, _cls = _cm_cell(_mx["cells"].get((_p["id"], _q["id"])))
+                _h.append(f'<td class="{_cls}">{_txt}</td>')
+            _h.append(f'<td>{_r["played"]}</td>'
+                      f'<td>{_r["set_diff"]:+d}</td>'
+                      f'<td>{_r["game_diff"]:+d}</td>'
+                      f'<td class="cm-pts">{_r["points"]}</td></tr>')
+        _h.append('</tbody></table></div>')
+        st.markdown("".join(_h), unsafe_allow_html=True)
 
-            _h = ['<div class="cm-wrap"><table class="cm-tab"><thead><tr>',
-                  '<th>#</th><th class="cm-name">Pareja</th>']
-            for _p in _order:
-                _h.append(f'<th class="cm-colhead">{escape(_p["name"])}</th>')
-            _h.append('<th>PJ</th><th>Dif S</th><th>Dif J</th><th>Pts</th></tr></thead><tbody>')
-            for _p in _order:
-                _r = _mx["rows"][_p["id"]]
-                _h.append(f'<tr><td class="cm-clas">{_r["clas"]}</td>'
-                          f'<td class="cm-name">{escape(_p["name"])}</td>')
-                for _q in _order:
-                    if _q["id"] == _p["id"]:
-                        _h.append('<td class="cm-diag"></td>')
-                        continue
-                    _txt, _cls = _cm_cell(_mx["cells"].get((_p["id"], _q["id"])))
-                    _h.append(f'<td class="{_cls}">{_txt}</td>')
-                _h.append(f'<td>{_r["played"]}</td>'
-                          f'<td>{_r["set_diff"]:+d}</td>'
-                          f'<td>{_r["game_diff"]:+d}</td>'
-                          f'<td class="cm-pts">{_r["points"]}</td></tr>')
-            _h.append('</tbody></table></div>')
-            st.markdown("".join(_h), unsafe_allow_html=True)
+    # ── Agrupar por NIVEL → un desplegable por nivel con sus subgrupos ──────────
+    import re as _re_lvl
+
+    def _lvl_num(_name):
+        _m = _re_lvl.search(r"nivel\s*(\d+)", _name or "", _re_lvl.I)
+        return int(_m.group(1)) if _m else 9999
+
+    def _grp_num(_name):
+        _m = _re_lvl.search(r"grupo\s*(\d+)", _name or "", _re_lvl.I)
+        return int(_m.group(1)) if _m else 0
+
+    def _grp_short(_name):
+        _m = _re_lvl.search(r"grupo\s*\d+", _name or "", _re_lvl.I)
+        return _m.group(0).capitalize() if _m else (_name or "Grupo")
+
+    _levels: dict = {}
+    for _g in _sphase.groups:
+        if getattr(_g, "pairs", None):
+            _levels.setdefault(_lvl_num(_g.name), []).append(_g)
+
+    if not _levels:
+        _empty_state("📭", "Sin grupos",
+                     "Importa los grupos del ranking para ver la clasificación.")
+    else:
+        _first_lvl = min(_levels)
+        for _lvl in sorted(_levels):
+            _grps = sorted(_levels[_lvl], key=lambda g: _grp_num(g.name))
+            _lvl_title = f"Nivel {_lvl}" if _lvl != 9999 else "Otros grupos"
+            with st.expander(f"🏆 {_lvl_title} · {len(_grps)} grupo(s)",
+                             expanded=(_lvl == _first_lvl)):
+                for _grp in _grps:
+                    st.markdown(f"**{escape(_grp_short(_grp.name))}**")
+                    _render_group_matrix(_grp)
 
     st.caption("PJ=Jugados · Dif S=Diferencia de sets · Dif J=Diferencia de juegos · Pts=Puntos "
                "(3 victoria / 1 derrota). Orden: puntos → dif. sets → dif. juegos → victorias → cara a cara.")
