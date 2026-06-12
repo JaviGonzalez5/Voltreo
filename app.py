@@ -1458,21 +1458,23 @@ div[data-key="mobile_club_switcher"] {
     }
     .st-key-mobile_bottom_nav_real .stButton > button,
     div[data-key="mobile_bottom_nav_real"] .stButton > button {
-        height: 42px !important;
-        min-height: 42px !important;
-        padding: .25rem .1rem !important;
+        height: 40px !important;
+        min-height: 40px !important;
+        padding: .2rem .08rem !important;
         background: #0d2030 !important;
         border: 1px solid rgba(255,255,255,.08) !important;
         border-radius: 11px !important;
         color: #9ec0dc !important;
         box-shadow: none !important;
-        font-size: .62rem !important;
+        font-size: .64rem !important;
         font-weight: 850 !important;
-        letter-spacing: .02em !important;
-        line-height: 1.05 !important;
-        white-space: normal !important;
+        letter-spacing: 0 !important;
+        line-height: 1 !important;
+        white-space: nowrap !important;
         text-align: center !important;
         justify-content: center !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
     }
     .st-key-mobile_bottom_nav_real .stButton > button[kind="primary"],
     div[data-key="mobile_bottom_nav_real"] .stButton > button[kind="primary"] {
@@ -1485,6 +1487,42 @@ div[data-key="mobile_club_switcher"] {
         background: #122a3a !important;
         border-color: rgba(127,255,192,.28) !important;
         color: #e9f3fc !important;
+    }
+    [data-testid="stHorizontalBlock"]:has(div[data-key^="rkstep_"]),
+    [data-testid="stHorizontalBlock"]:has(div[data-key^="t_bc_"]) {
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        gap: .45rem !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        padding: .05rem 0 .45rem !important;
+        margin-bottom: .35rem !important;
+        -webkit-overflow-scrolling: touch !important;
+        scrollbar-width: none !important;
+    }
+    [data-testid="stHorizontalBlock"]:has(div[data-key^="rkstep_"])::-webkit-scrollbar,
+    [data-testid="stHorizontalBlock"]:has(div[data-key^="t_bc_"])::-webkit-scrollbar {
+        display: none !important;
+    }
+    [data-testid="stHorizontalBlock"]:has(div[data-key^="rkstep_"]) > [data-testid="column"],
+    [data-testid="stHorizontalBlock"]:has(div[data-key^="t_bc_"]) > [data-testid="column"] {
+        flex: 0 0 auto !important;
+        min-width: auto !important;
+        width: auto !important;
+        max-width: none !important;
+        padding: 0 !important;
+    }
+    div[data-key^="rkstep_"] button,
+    [class*="st-key-rkstep_"] button,
+    div[data-key^="t_bc_"] button,
+    [class*="st-key-t_bc_"] button {
+        min-height: 38px !important;
+        height: 38px !important;
+        padding: 0 .85rem !important;
+        border-radius: 999px !important;
+        font-size: .72rem !important;
+        white-space: nowrap !important;
+        width: auto !important;
     }
     .pp-hero {
         padding: 1rem .95rem !important;
@@ -1728,22 +1766,22 @@ def _render_mobile_nav(current_page: str) -> None:
     with st.container(key="mobile_bottom_nav_real"):
         _mn0, _mn1, _mn2, _mn3, _mn4 = st.columns(5)
         with _mn0:
-            if st.button("↩\nAtrás", key="mob_back", use_container_width=True):
+            if st.button("← Atrás", key="mob_back", use_container_width=True):
                 _nav_back()
         with _mn1:
-            if st.button("⌂\nInicio", key="mob_home", use_container_width=True,
+            if st.button("Inicio", key="mob_home", use_container_width=True,
                          type="primary" if current_page == "home" else "secondary"):
                 _nav_to("home")
         with _mn2:
-            if st.button("▥\nRanking", key="mob_ranking", use_container_width=True,
+            if st.button("Ranking", key="mob_ranking", use_container_width=True,
                          type="primary" if current_page in _ranking_pages else "secondary"):
                 _nav_to("config" if current_page not in _ranking_pages else current_page)
         with _mn3:
-            if st.button("🏆\nTorneos", key="mob_torneos", use_container_width=True,
+            if st.button("Torneos", key="mob_torneos", use_container_width=True,
                          type="primary" if current_page in _tournament_pages else "secondary"):
                 _nav_to("t_config" if current_page not in _tournament_pages else current_page)
         with _mn4:
-            if st.button("⚙\nClub", key="mob_club", use_container_width=True,
+            if st.button("Club", key="mob_club", use_container_width=True,
                          type="primary" if current_page == "club_config" else "secondary"):
                 _nav_to("club_config")
 
