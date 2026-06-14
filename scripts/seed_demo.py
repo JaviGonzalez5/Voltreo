@@ -24,6 +24,7 @@ Uso:
 
 from __future__ import annotations
 
+import argparse
 import os
 import secrets
 import sys
@@ -56,6 +57,9 @@ from src.tournament_generator import generate_tournament_structure
 DEMO_CLUB_NAME = "Club Demo Voltreo"
 DEMO_CLUB_SLUG = "club-demo-voltreo"
 DEMO_ADMIN_USERNAME = "demo_admin"
+
+# Slugs de PRODUCCIÓN que el script NUNCA debe borrar. Lista negra dura.
+PROTECTED_SLUGS = {"padelplus", "bahiapickleball"}
 
 # 12 jugadores realistas. (nombre, apellido)
 DEMO_PLAYERS: list[tuple[str, str]] = [
@@ -114,11 +118,77 @@ def _fabricate_result(pair_1_id: str, pair_2_id: str, group_id: str, match_id: s
 # Pasos
 # ---------------------------------------------------------------------------
 
-def wipe_existing(db) -> bool:
-    """Borra el club demo si existe (incluidas inscripciones sin cascade FK)."""
+def _supabase_url() -> str:
+    """URL de Supabase activa (sin la key), igual fuente que la app."""
+    try:
+        import streamlit as st
+        url = st.secrets.get("SUPABASE_URL")
+        if url:
+            return url
+    except Exception:
+        pass
+    return os.environ.get("SUPABASE_URL", "(desconocida)")
+
+
+def assert_safe_to_delete(club: dict) -> None:
+    """LISTA NEGRA DURA: aborta si el club a borrar no es EXACTAMENTE el demo.
+    Protege los clubes de producción ante cualquier cambio futuro del código."""
+    slug = (club or {}).get("slug")
+    if slug in PROTECTED_SLUGS:
+        raise SystemExit(
+            f"ABORTADO: '{slug}' es un club de PRODUCCIÓN protegido. "
+            "No se ha tocado nada."
+        )
+    if slug != DEMO_CLUB_SLUG:
+        raise SystemExit(
+            f"ABORTADO: el club a borrar tiene slug {slug!r}, distinto de "
+            f"{DEMO_CLUB_SLUG!r}. Por seguridad no se borra nada."
+        )
+
+
+def confirm_deletion(club: dict, auto_confirm: bool) -> None:
+    """CONFIRMACIÓN MANUAL: muestra a dónde se conecta y qué va a borrar.
+    Sin confirmación (flag --confirm o respuesta 's'), aborta sin borrar."""
+    print("\n" + "!" * 60)
+    print("  BORRADO DE CLUB — CONFIRMACIÓN REQUERIDA")
+    print("!" * 60)
+    print(f"  Supabase URL : {_supabase_url()}")
+    print(f"  Club a borrar: {club.get('name')!r}")
+    print(f"  Slug         : {club.get('slug')}")
+    print(f"  club_id      : {club.get('id')}")
+    print("!" * 60)
+    if auto_confirm:
+        print("  --confirm presente: continúo sin preguntar.")
+        return
+    ans = input("  ¿Borrar este club y recrearlo limpio? [s/N]: ").strip().lower()
+    if ans not in ("s", "si", "sí"):
+        raise SystemExit("Cancelado por el usuario. No se ha borrado nada.")
+
+
+def verify_protected_intact(db) -> None:
+    """VERIFICACIÓN FINAL: los clubes de producción siguen existiendo."""
+    print("\n→ Verificación final de clubes de producción:")
+    all_ok = True
+    for slug in sorted(PROTECTED_SLUGS):
+        row = db.get_club_by_slug(slug)
+        if row:
+            print(f"  ✅ '{slug}' intacto (club_id={row['id']})")
+        else:
+            all_ok = False
+            print(f"  ⚠️  '{slug}' NO aparece en la tabla clubs — REVÍSALO.")
+    if not all_ok:
+        print("  ATENCIÓN: algún club protegido no se encontró.")
+
+
+def wipe_existing(db, auto_confirm: bool) -> bool:
+    """Borra el club demo si existe, tras lista negra dura + confirmación."""
     existing = db.get_club_by_slug(DEMO_CLUB_SLUG)
     if not existing:
         return False
+    # 1) Lista negra dura: jamás borrar algo que no sea el club demo.
+    assert_safe_to_delete(existing)
+    # 2) Confirmación manual antes de tocar nada.
+    confirm_deletion(existing, auto_confirm)
     club_id = existing["id"]
     # tournament_registrations no tiene FK cascade → limpiar a mano primero.
     for t in db.list_tournaments(club_id):
@@ -293,7 +363,16 @@ def build_tournament(db, club_id: str, players: list[dict]) -> dict:
 # Main
 # ---------------------------------------------------------------------------
 
-def main() -> int:
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Genera datos demo de Voltreo en Supabase."
+    )
+    parser.add_argument(
+        "--confirm", action="store_true",
+        help="Salta la confirmación interactiva del borrado del club demo.",
+    )
+    args = parser.parse_args(argv)
+
     if not is_db_configured():
         print("ERROR: faltan SUPABASE_URL y SUPABASE_KEY en el entorno.")
         print("Configúralas antes de ejecutar (igual que la app).")
@@ -305,7 +384,7 @@ def main() -> int:
     db = get_db()
 
     print("→ Limpiando club demo previo (si existe)...")
-    wiped = wipe_existing(db)
+    wiped = wipe_existing(db, args.confirm)
     print(f"  {'borrado y recreado' if wiped else 'no existía, creando de cero'}")
 
     print("→ Creando club y usuario admin...")
@@ -319,6 +398,9 @@ def main() -> int:
 
     print("→ Generando torneo (grupos + cuadro)...")
     tt = build_tournament(db, club_id, players)
+
+    # ---- Verificación final: los clubes de producción siguen intactos ----
+    verify_protected_intact(db)
 
     # ---- Resumen ----
     print("\n" + "=" * 56)
