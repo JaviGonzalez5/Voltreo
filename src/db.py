@@ -356,8 +356,9 @@ class SupabaseDB:
 
     def set_phase_active(self, phase_id: str, club_id: str) -> None:
         """Activa esta fase y desactiva el resto del club (en un solo paso para evitar race)."""
-        # Primero activar la nueva, luego desactivar las demás
-        self._c.table("ranking_phases").update({"is_active": True}).eq("id", phase_id).execute()
+        # Primero activar la nueva, luego desactivar las demás.
+        # El .eq("club_id", club_id) impide activar una fase de otro club.
+        self._c.table("ranking_phases").update({"is_active": True}).eq("id", phase_id).eq("club_id", club_id).execute()
         self._c.table("ranking_phases").update({"is_active": False}).eq(
             "club_id", club_id
         ).neq("id", phase_id).execute()
