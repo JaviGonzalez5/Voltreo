@@ -150,7 +150,7 @@ def record_match_result(
     all_ids = list(pair_a_player_ids) + list(pair_b_player_ids)
     resp = (db._c.table("players")
             .select(f"id, {elo_col}, {played_col}, {won_col}")
-            .in_("id", all_ids).execute())
+            .in_("id", all_ids).eq("club_id", club_id).execute())
     rows_by_id = {r["id"]: r for r in (resp.data or [])}
     elos_before = {pid: rows_by_id.get(pid, {}).get(elo_col, DEFAULT_ELO)
                    for pid in all_ids}
@@ -172,7 +172,7 @@ def record_match_result(
                 played_col: existing.get(played_col, 0) + 1,
                 won_col: existing.get(won_col, 0) + (1 if is_winner else 0),
                 "updated_at": datetime.now(timezone.utc).isoformat(),
-            }).eq("id", d.player_id).execute()
+            }).eq("id", d.player_id).eq("club_id", club_id).execute()
         except Exception:
             log.exception("Error actualizando ELO (%s) de jugador %s", context, d.player_id)
             continue
