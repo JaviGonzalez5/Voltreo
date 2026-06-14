@@ -35,3 +35,7 @@ create policy tr_service_role_all
     to service_role
     using (true)
     with check (true);
+
+-- Privilegio a nivel de tabla (capa distinta de RLS): sin este GRANT,
+-- service_role recibe "permission denied for table". Idempotente.
+grant all on public.tournament_registrations to service_role;
