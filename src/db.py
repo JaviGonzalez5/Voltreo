@@ -148,6 +148,16 @@ class SupabaseDB:
     # ================================================================
     # USERS
     # ================================================================
+    #
+    # AISLAMIENTO ENTRE CLUBES (decisión consciente, no deuda):
+    # Las escrituras por id (update_user_password, update_user,
+    # set_user_active, delete_user) NO filtran por club_id a propósito.
+    # El aislamiento aquí lo garantiza el gate superadmin de la página
+    # "admin" (app.py), único punto que las invoca. Además, update_user
+    # implementa "mover usuario de club", que necesita cambiar club_id;
+    # filtrar por club_id chocaría con esa feature. Si en el futuro estas
+    # funciones se expusieran fuera del gate superadmin, habría que añadir
+    # un filtro por el club_id de destino.
 
     def get_user_by_username(self, username: str) -> Optional[dict]:
         resp = (
