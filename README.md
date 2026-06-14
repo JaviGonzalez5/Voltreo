@@ -1,132 +1,65 @@
-# 🎾 Ranking Pádel Automator
+# 🎾 Voltreo
 
-Aplicación para automatizar la gestión del ranking de pádel de un club.
-Genera enfrentamientos round-robin, asigna horarios disponibles, detecta conflictos
-y exporta todo a Excel.
+**Software de gestión de rankings y torneos para clubes de pádel y pickleball.**
 
-## Requisitos
+---
 
-- Python 3.11+
-- Windows / macOS / Linux
+## Para qué sirve
 
-## Instalación rápida (Windows)
+Organizar a mano los rankings y torneos de un club es lento y propenso a errores: emparejar grupos, cuadrar horarios sin que dos parejas coincidan ni se solapen las pistas, y recalcular clasificaciones cada jornada consume horas. Voltreo automatiza todo ese trabajo: genera los enfrentamientos, asigna los horarios respetando la disponibilidad de pistas y jugadores, y mantiene la clasificación al día sola. Además comunica los resultados, los cuadros y las inscripciones a los jugadores por email y permite descargar todo en Excel listo para imprimir o publicar.
 
-```powershell
-# 1. Clonar o descomprimir el proyecto
-cd ranking-padel-automator
+---
 
-# 2. Crear entorno virtual
-python -m venv .venv
-.venv\Scripts\Activate.ps1
+## Características principales
 
-# 3. Instalar dependencias
-pip install -r requirements.txt
+- **Rankings por fases** — grupos round-robin con clasificación automática por puntos configurables (victoria / empate / derrota, bonus opcional) y desempates encadenados (diferencia de sets, diferencia de juegos, victorias, head-to-head). Soporta walkover/retirada.
+- **Torneos con cuadro eliminatorio** — fase de grupos + cuadro (final, semifinales, cuadros de 4/8/16), partido de 3er/4º puesto opcional y soporte multi-categoría/división.
+- **Inscripción pública de torneos** — los jugadores se inscriben desde un enlace público, sin necesidad de cuenta.
+- **Generación de horarios sin conflictos** — asigna pistas y franjas respetando disponibilidad de pistas y parejas, evita solapamientos, fuerza separación mínima de días entre partidos de la misma pareja y reparte días/horas/pistas de forma equilibrada. Incluye un validador que detecta conflictos y solapamientos.
+- **Exportación a Excel** — export básico y export con la plantilla del club (calendario por grupos, listado, auditoría de disponibilidad, pistas fijas, resumen de grupos y más).
+- **Emails a jugadores (Resend)** — notificación de resultado de partido, aviso de cuadro publicado y confirmación de inscripción.
+- **Vistas públicas sin login** — ranking público, resultados de torneo en directo y formulario de inscripción, cada uno con su enlace propio.
+- **Multi-club con aislamiento total** — cada club ve únicamente sus datos (aislamiento por `club_id`). Roles `superadmin` (todos los clubes) y `club_admin` (su club).
+- **Conector Syltek/Padelplus (opcional)** — lee rankings, grupos y reservas existentes para tenerlas en cuenta al cuadrar horarios.
 
-# 4. Instalar Playwright (solo si vas a usar el conector Syltek)
-playwright install chromium
+---
 
-# 5. Copiar y rellenar .env
-copy .env.example .env
-# Edita .env con tus credenciales de Syltek
+## Stack técnico
 
-# 6. Ejecutar la aplicación
-streamlit run app.py
-```
+| Capa | Tecnología |
+|---|---|
+| Frontend / UI | Streamlit |
+| Base de datos | Supabase (PostgreSQL) |
+| Modelos de datos | Pydantic v2 |
+| Autenticación | bcrypt + cookies firmadas (HMAC-SHA256) |
+| Email | Resend |
+| Lenguaje | Python 3.12 |
 
-## Uso sin Syltek (modo CSV)
+---
 
-No necesitas configurar Syltek para empezar. El flujo básico es:
+## Despliegue
 
-1. Abre `http://localhost:8501` en el navegador.
-2. Ve a **⚙️ Configuración** y guarda los parámetros de la fase (fechas, pistas, duración...).
-3. Ve a **📥 Importar datos** y sube el CSV de grupos (`sample_data/groups_example.csv`).
-4. Ve a **📅 Generar calendario**, pulsa *Generar enfrentamientos* y luego *Asignar horarios*.
-5. Revisa el calendario en la tabla.
-6. Ve a **📤 Exportar** para descargar el Excel o los mensajes.
+Voltreo se despliega en **Railway** (configurado vía `Procfile` y `railway.toml`, builder `nixpacks`) con **Supabase** como base de datos PostgreSQL.
 
-## Estructura del proyecto
+Variables de entorno necesarias:
 
-```
-ranking-padel-automator/
-├── app.py                  ← Interfaz Streamlit (punto de entrada)
-├── requirements.txt
-├── .env.example            ← Copia a .env con tus credenciales
-├── .gitignore
-├── src/
-│   ├── config.py           ← Configuración y variables de entorno
-│   ├── models.py           ← Modelos Pydantic (Player, Pair, Group, Match...)
-│   ├── ranking_generator.py← Generación round-robin de enfrentamientos
-│   ├── scheduler.py        ← Asignación de horarios sin conflictos
-│   ├── excel_exporter.py   ← Exportación a Excel formateado
-│   ├── message_generator.py← Generación de mensajes/emails para jugadores
-│   ├── validators.py       ← Validación de datos importados
-│   └── syltek_connector.py ← Conector Playwright con Syltek (en desarrollo)
-├── sample_data/            ← CSVs de ejemplo para pruebas
-├── exports/                ← Excels generados (ignorado por git)
-├── debug/                  ← Capturas y HTML de debug de Syltek
-└── tests/                  ← Tests con pytest
-```
+| Variable | Obligatoria | Descripción |
+|---|---|---|
+| `SUPABASE_URL` | ✅ | URL del proyecto Supabase |
+| `SUPABASE_KEY` | ✅ | **service_role key** de Supabase — secreto, nunca exponer |
+| `AUTH_COOKIE_SECRET` | ✅ | Clave para firmar las cookies de sesión |
+| `RESEND_API_KEY` | ❌ | API key de Resend. Sin ella, los emails se desactivan silenciosamente |
+| `EMAIL_FROM` | ❌ | Remitente de los emails (ej. `Voltreo <noreply@voltreo.app>`) |
+| `SYLTEK_USER` / `SYLTEK_PASSWORD` | ❌ | Credenciales del conector Syltek/Padelplus, si se usa |
 
-## Ejecutar tests
+Pasos:
 
-```powershell
-pytest tests/ -v
-```
+1. Crear el proyecto en Supabase y aplicar el esquema (`src/db_schema.sql`) y las políticas RLS (`src/db_rls.sql`).
+2. Conectar el repositorio a Railway.
+3. Definir las variables de entorno anteriores en Railway.
+4. Railway despliega automáticamente con cada push a la rama `main`.
 
-## Conectar con Syltek
-
-El módulo `src/syltek_connector.py` está preparado pero necesita los selectores CSS
-específicos de tu instalación de Syltek.
-
-**Pasos para configurarlo:**
-
-1. Abre tu Syltek en Chrome.
-2. Pulsa F12 → DevTools.
-3. Navega a la sección que quieras automatizar (login, grupos, reservas...).
-4. Usa el inspector para encontrar los selectores de los elementos.
-5. Abre `src/syltek_connector.py` y busca los comentarios `<<SELECTOR PENDIENTE>>`.
-6. Sustituye los selectores de ejemplo por los reales.
-7. Prueba el login desde la página **Configuración** de la app.
-
-**Selectores que necesitas identificar:**
-- Campo de usuario en la pantalla de login
-- Campo de contraseña
-- Botón de submit del formulario
-- Elemento que aparece solo cuando el login es correcto (ej. nombre de usuario en header)
-
-## Seguridad
-
-- Las credenciales van **siempre** en `.env`, nunca en el código.
-- `.env` está en `.gitignore`.
-- El modo **dry-run** está activo por defecto: la app nunca crea reservas reales.
-- Si Syltek muestra captcha o 2FA, la app se detiene y pide intervención manual.
-- Las contraseñas nunca aparecen en logs.
-
-## Formato del CSV de grupos
-
-| Columna | Descripción |
-|---------|-------------|
-| group_id | ID único del grupo (ej. G1) |
-| group_name | Nombre legible (ej. Grupo A) |
-| level | Nivel del grupo (opcional) |
-| pair_name | Nombre de la pareja |
-| player1_name | Nombre del jugador 1 |
-| player1_email | Email del jugador 1 (opcional) |
-| player1_phone | Teléfono del jugador 1 (opcional) |
-| player2_name | Nombre del jugador 2 |
-| player2_email | Email del jugador 2 (opcional) |
-| player2_phone | Teléfono del jugador 2 (opcional) |
-
-## Formato del CSV de reservas
-
-| Columna | Descripción |
-|---------|-------------|
-| court_id | ID de la pista (ej. court_1) |
-| court_name | Nombre de la pista (ej. Pista 1) |
-| start_datetime | Inicio de la reserva (YYYY-MM-DD HH:MM:SS) |
-| end_datetime | Fin de la reserva (YYYY-MM-DD HH:MM:SS) |
-| description | Descripción opcional |
-| source | Origen: syltek o manual |
+---
 
 ## Licencia
 
